@@ -1,0 +1,330 @@
+// ============================================================================
+// Types centraux du jeu Patrimoine
+// Tout le reste du code importe depuis ce fichier.
+// Les dates de jeu sont stockées en ISO string (sérialisable dans localStorage).
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Joueur & progression
+// ----------------------------------------------------------------------------
+
+export type MilestoneLevel =
+  | 'debutant'
+  | 'epargnant' // patrimoine >= 10k
+  | 'investisseur' // >= 50k
+  | 'rentier_partiel' // >= 200k
+  | 'rentier' // revenus passifs >= salaire
+  | 'millionnaire' // >= 1M
+  | 'multimillionnaire' // >= 5M
+
+export interface PlayerProfile {
+  name: string
+  age: number // âge de jeu, +1 chaque année de jeu
+  jobId: string
+  jobTitle: string
+  salary: number // salaire net mensuel
+  ownsResidence: boolean // si vrai, pas de loyer
+  milestone: MilestoneLevel
+}
+
+// ----------------------------------------------------------------------------
+// Investissements
+// ----------------------------------------------------------------------------
+
+export type InvestmentCategory =
+  | 'livret'
+  | 'assurance_vie'
+  | 'bourse_etf'
+  | 'crowdfunding_immo'
+  | 'scpi'
+  | 'business'
+  | 'parking'
+  | 'lmnp'
+  | 'immo_classique'
+
+export type TaxRegime =
+  | 'exonere' // Livret A
+  | 'flat_tax' // PFU 30%
+  | 'lmnp' // BIC avec amortissement
+  | 'revenus_fonciers'
+  | 'bic'
+
+/** Comment le rendement se matérialise. */
+export type YieldMode =
+  | 'compound' // la valeur grossit (ETF, assurance vie capitalisée)
+  | 'income' // verse un revenu mensuel en cash (loyers, dividendes, livret)
+
+/** Catégorie d'actif pour la répartition / fiscalité. */
+export interface InvestmentCatalogItem {
+  id: InvestmentCategory
+  name: string
+  shortName: string
+  description: string
+  minAmount: number
+  unlockThreshold: number // patrimoine net requis pour l'achat
+  riskLevel: 1 | 2 | 3 | 4 | 5
+  liquidityLevel: 1 | 2 | 3 | 4 | 5
+  baseAnnualReturn: number // ex: 0.015 pour 1,5%
+  returnVariance: number // 0 = fixe, 0.08 = ±8%
+  lockPeriodMonths: number | null
+  taxRegime: TaxRegime
+  yieldMode: YieldMode
+  reactsToMarket: boolean // sensible aux phases bull/bear/crash
+  isRealEstate: boolean
+  canUseMortgage: boolean
+  icon: string // nom d'icône lucide
+  color: string // couleur hex pour graphiques/cartes
+  gradient: string // classes tailwind pour le dégradé de carte
+}
+
+export interface PropertyDetails {
+  address: string
+  city: string
+  squareMeters: number
+  furnitureCost: number // LMNP
+  monthlyRent: number
+  isVacant: boolean
+  vacancyMonthsLeft: number
+  maintenanceCostYearly: number
+  depreciationBaseBuilding: number // LMNP : 70% du prix
+}
+
+export interface BusinessDetails {
+  businessType: string
+  monthlyRevenue: number
+  monthlyCosts: number
+  attentionMonthsLeft: number // si 0 → événement pénalité
+}
+
+export interface Investment {
+  instanceId: string
+  catalogId: InvestmentCategory
+  name: string
+  purchaseDateISO: string
+  purchasePrice: number // capital investi initial (hors crédit)
+  totalInvested: number // capital propre cumulé
+  currentValue: number // valeur de marché actuelle
+  annualReturnRate: number // taux effectif courant
+  monthlyIncome: number // revenu cash mensuel net (income mode)
+  realizedReturn: number // gains déjà encaissés
+  isLocked: boolean
+  unlockDateISO: string | null
+  mortgageId: string | null
+  propertyDetails?: PropertyDetails
+  businessDetails?: BusinessDetails
+  valueHistory: number[] // derniers points de valeur (pour sparkline), cappé
+}
+
+export interface Mortgage {
+  id: string
+  investmentId: string
+  principal: number
+  outstandingBalance: number
+  annualRate: number
+  monthlyPayment: number
+  termMonths: number
+  remainingMonths: number
+}
+
+// ----------------------------------------------------------------------------
+// Économie & marché
+// ----------------------------------------------------------------------------
+
+export type MarketPhase = 'bull' | 'neutral' | 'bear' | 'crash'
+
+export interface IndexPoint {
+  dateISO: string
+  value: number
+  phase: MarketPhase
+}
+
+export interface EconomyState {
+  marketPhase: MarketPhase
+  phaseMonthsElapsed: number
+  interestRateBase: number // taux crédit immo de base
+  inflationRate: number // annuel
+  realEstateIndex: number // multiplicateur valeur immo (départ 1.0)
+  stockIndex: number // indice cumulé (départ 100)
+  stockIndexHistory: IndexPoint[] // cappé
+}
+
+// ----------------------------------------------------------------------------
+// Charges & fiscalité
+// ----------------------------------------------------------------------------
+
+export interface MonthlyExpenses {
+  base: number
+  rent: number
+  insurance: number
+  total: number
+}
+
+export interface TaxLiability {
+  year: number
+  flatTaxBase: number // gains soumis au PFU accumulés sur l'année
+  revenusFonciers: number
+  bic: number
+  lmnpNetTaxable: number
+}
+
+// ----------------------------------------------------------------------------
+// Événements
+// ----------------------------------------------------------------------------
+
+export type EventCategory =
+  | 'market'
+  | 'property'
+  | 'job'
+  | 'tax'
+  | 'personal'
+  | 'business'
+  | 'milestone'
+
+export type EventSeverity = 'info' | 'good' | 'warning' | 'bad'
+
+export interface EventAction {
+  label: string
+  cost: number
+  effect: string // identifiant d'effet traité par le moteur
+}
+
+export interface GameEvent {
+  id: string
+  templateId?: string // référence au template pour appliquer les effets
+  dateISO: string
+  category: EventCategory
+  severity: EventSeverity
+  title: string
+  description: string
+  financialImpact: number // appliqué au cash (négatif = coût)
+  isRead: boolean
+  requiresAction: boolean
+  resolved: boolean
+  actionOptions?: EventAction[]
+}
+
+export type EventConditionType =
+  | 'hasCategory'
+  | 'minNetWorth'
+  | 'maxNetWorth'
+  | 'hasRealEstate'
+  | 'hasBusiness'
+  | 'isEmployed'
+
+export interface EventCondition {
+  type: EventConditionType
+  value: string | number
+}
+
+export interface EventTemplate {
+  id: string
+  category: EventCategory
+  severity: EventSeverity
+  title: string
+  description: string
+  monthlyProbability: number
+  conditions: EventCondition[]
+  impactRange: [number, number] // euros (peut être [0,0])
+  impactIsPercentOfSalary?: boolean
+  actionOptions?: EventAction[]
+  cooldownMonths?: number
+}
+
+// ----------------------------------------------------------------------------
+// Statistiques
+// ----------------------------------------------------------------------------
+
+export interface AssetBreakdown {
+  cash: number
+  livret: number
+  assurance_vie: number
+  bourse_etf: number
+  crowdfunding_immo: number
+  scpi: number
+  business: number
+  parking: number
+  lmnp: number
+  immo_classique: number
+}
+
+export interface StatsSnapshot {
+  dateISO: string
+  netWorth: number
+  cash: number
+  passiveIncome: number
+  salary: number
+  expenses: number
+  tax: number
+}
+
+// ----------------------------------------------------------------------------
+// État global du jeu
+// ----------------------------------------------------------------------------
+
+export interface GameState {
+  player: PlayerProfile
+  gameDateISO: string
+  lastRealTimestamp: number // ms epoch, pour progression offline
+  speedMultiplier: SpeedMultiplier
+  isPaused: boolean
+  cashBalance: number
+  investments: Investment[]
+  mortgages: Mortgage[]
+  events: GameEvent[]
+  economy: EconomyState
+  stats: StatsSnapshot[]
+  monthlyExpenses: MonthlyExpenses
+  taxLiability: TaxLiability
+  eventCooldowns: Record<string, number> // templateId -> mois restants
+  totalTaxPaid: number
+  gameVersion: number
+}
+
+export type SpeedMultiplier = 1 | 5 | 10 | 50
+
+// ----------------------------------------------------------------------------
+// UI / navigation
+// ----------------------------------------------------------------------------
+
+export type Screen =
+  | 'dashboard'
+  | 'portfolio'
+  | 'marketplace'
+  | 'properties'
+  | 'events'
+  | 'stats'
+
+export interface Toast {
+  id: string
+  title: string
+  description: string
+  severity: EventSeverity
+}
+
+export interface MortgageQuote {
+  approved: boolean
+  reason: string
+  principal: number
+  downPayment: number
+  monthlyPayment: number
+  annualRate: number
+  termMonths: number
+  maxLoan: number
+}
+
+// ----------------------------------------------------------------------------
+// Métiers (création de personnage)
+// ----------------------------------------------------------------------------
+
+export interface JobProfile {
+  id: string
+  title: string
+  monthlySalary: number
+  startingSavings: number
+  savingsMin: number
+  savingsMax: number
+  startingAge: number
+  description: string
+  icon: string
+  color: string
+}

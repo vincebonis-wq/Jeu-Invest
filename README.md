@@ -1,73 +1,72 @@
-# React + TypeScript + Vite
+# 💰 Patrimoine — Jeu de gestion d'investissement
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Un jeu de gestion de ressources où tu pars de zéro et fais fructifier ton argent
+pour devenir **rentier** puis **millionnaire**. Temps réel accéléré, vraies
+décisions, vraies difficultés.
 
-Currently, two official plugins are available:
+![Stack](https://img.shields.io/badge/React-18-61dafb) ![Stack](https://img.shields.io/badge/TypeScript-5-3178c6) ![Stack](https://img.shields.io/badge/Vite-8-646cff)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🎮 Le concept
 
-## React Compiler
+Tu choisis ta situation de départ (métier, salaire, épargne, âge), puis tu
+investis intelligemment pour faire grossir ton patrimoine. Le temps s'écoule en
+accéléré (**1 seconde réelle ≈ 1 jour de jeu**) et tout continue même quand tu
+fermes le jeu : à ton retour, tes investissements ont fructifié.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Caractéristiques
 
-## Expanding the ESLint configuration
+- ⏱️ **Temps réel accéléré** — vitesses ×1, ×5, ×10, ×50 + pause
+- 📈 **9 types d'investissements** débloqués progressivement selon ton patrimoine
+- 🏦 **Effet de levier** — crédit immobilier avec apport, taux et endettement réalistes
+- 🎲 **Événements aléatoires** — promotions, licenciements, krachs, héritages, réparations…
+- 📊 **Marché vivant** — cycles haussiers / baissiers / krachs qui impactent tes actifs
+- 🏆 **7 paliers de richesse** — de Débutant à Multimillionnaire
+- 💾 **Sauvegarde automatique** + progression hors-ligne
+- 🧾 **Fiscalité** — flat tax, revenus fonciers, amortissement LMNP
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Les placements
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+| Placement | Débloqué à | Rendement | Risque |
+|---|---|---|---|
+| Livret A | départ | 1,5% | très faible |
+| Assurance Vie | 500 € | 4% | très faible |
+| Bourse / ETF | 1 000 € | 5–12% | modéré |
+| Crowdfunding immo | 5 000 € | 8–10% | modéré |
+| SCPI | 10 000 € | 4–6% | faible |
+| Business automatisé | 15 000 € | variable | élevé |
+| Parking / Box | 25 000 € | 6–8% | faible |
+| Location meublée (LMNP) | 50 000 € | loyers | modéré |
+| Locatif classique | 80 000 € | loyers | modéré |
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 🚀 Lancer le jeu
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev        # → http://localhost:5173
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Build de production :
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
+npm run preview
 ```
+
+## 🧱 Architecture
+
+```
+src/
+  types/        Modèles TypeScript (source de vérité)
+  data/         Catalogues : investissements, métiers, événements
+  engine/       Moteur pur : gameLoop, economy, investments, events, fiscal
+  store/        Store Zustand : état + boucle de temps + sauvegarde
+  components/   ui · layout · game (écrans)
+  utils/        Formatage & calculs (patrimoine, cashflow, paliers)
+```
+
+Le cœur du jeu est `engine/gameLoop.ts` → `advanceDays(state, n)`, une fonction
+pure utilisée **à la fois** pour la progression en direct et hors-ligne.
+
+## 📦 Stack
+
+React 18 · TypeScript · Vite · Tailwind CSS · Zustand · Recharts · Lucide
