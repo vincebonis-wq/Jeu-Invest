@@ -313,6 +313,7 @@ export interface GameState {
   eventCooldowns: Record<string, number> // templateId -> mois restants
   totalTaxPaid: number
   gameVersion: number
+  hasSeenOnboarding?: boolean  // optional for backward compat
 }
 
 export type SpeedMultiplier = 1 | 5 | 10 | 50
@@ -364,4 +365,5 @@ export interface JobProfile {
   description: string
   icon: string
   color: string
+  requiredSkillIds: string[]
 }

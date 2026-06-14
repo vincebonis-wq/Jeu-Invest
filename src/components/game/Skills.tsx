@@ -36,10 +36,20 @@ export function Skills() {
     if (!skill || skill.trainingMonths === 0) return 100
     const start = new Date(activeTraining.startDateISO)
     const current = new Date(game.gameDateISO)
-    const monthsElapsed =
-      (current.getUTCFullYear() - start.getUTCFullYear()) * 12 +
-      (current.getUTCMonth() - start.getUTCMonth())
-    return Math.min(100, Math.round((monthsElapsed / skill.trainingMonths) * 100))
+    const daysElapsed = (current.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+    const totalDays = skill.trainingMonths * 30.44
+    return Math.min(99.9, (daysElapsed / totalDays) * 100)
+  }
+
+  function getTrainingDaysRemaining(): number {
+    if (!activeTraining) return 0
+    const skill = SKILL_BY_ID[activeTraining.skillId]
+    if (!skill || skill.trainingMonths === 0) return 0
+    const start = new Date(activeTraining.startDateISO)
+    const current = new Date(game.gameDateISO)
+    const daysElapsed = (current.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+    const totalDays = skill.trainingMonths * 30.44
+    return Math.max(0, Math.ceil(totalDays - daysElapsed))
   }
 
   function handleStart() {
@@ -67,6 +77,7 @@ export function Skills() {
   }
 
   const trainingProgress = getTrainingProgress()
+  const trainingDaysRemaining = getTrainingDaysRemaining()
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -93,13 +104,20 @@ export function Skills() {
           </div>
           <div className="w-full bg-brand-100 rounded-full h-3">
             <div
-              className="h-3 rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all duration-500"
+              className="h-3 rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all duration-1000 ease-out relative overflow-hidden"
               style={{ width: `${trainingProgress}%` }}
-            />
+            >
+              <div className="absolute inset-0 bg-white/20 animate-pulse" />
+            </div>
           </div>
-          <div className="text-xs text-brand-500 mt-2">
-            Démarrée le {formatMonthShort(activeTraining.startDateISO)} — durée totale :{' '}
-            {SKILL_BY_ID[activeTraining.skillId]?.trainingMonths} mois
+          <div className="flex items-center justify-between mt-2">
+            <div className="text-xs text-brand-500">
+              Démarrée le {formatMonthShort(activeTraining.startDateISO)} — durée totale :{' '}
+              {SKILL_BY_ID[activeTraining.skillId]?.trainingMonths} mois
+            </div>
+            <div className="text-xs font-semibold text-brand-600">
+              {trainingDaysRemaining > 0 ? `Encore ~${trainingDaysRemaining} jours` : 'Presque terminé !'}
+            </div>
           </div>
         </Card>
       )}

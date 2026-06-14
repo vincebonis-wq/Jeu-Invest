@@ -18,6 +18,7 @@ export const JOBS: JobProfile[] = [
       'Salaire modeste, départ difficile. Le vrai défi : épargner avant de pouvoir investir. La voie du self-made.',
     icon: 'User',
     color: '#64748b',
+    requiredSkillIds: [],
   },
   {
     id: 'professeur',
@@ -31,6 +32,7 @@ export const JOBS: JobProfile[] = [
       'Revenu stable et sécurité de l\'emploi. Une base solide pour construire patiemment son patrimoine.',
     icon: 'GraduationCap',
     color: '#0ea5e9',
+    requiredSkillIds: ['gestion_budgetaire'],
   },
   {
     id: 'commercant',
@@ -44,6 +46,7 @@ export const JOBS: JobProfile[] = [
       'Revenus corrects mais variables. Sens des affaires et goût du risque pour saisir les opportunités.',
     icon: 'Store',
     color: '#f59e0b',
+    requiredSkillIds: ['gestion_locative'],
   },
   {
     id: 'freelance',
@@ -57,6 +60,7 @@ export const JOBS: JobProfile[] = [
       'Indépendant et flexible. Bons revenus mais sans filet : la gestion du risque est essentielle.',
     icon: 'Laptop',
     color: '#8b5cf6',
+    requiredSkillIds: ['investissement_101'],
   },
   {
     id: 'cadre',
@@ -70,6 +74,7 @@ export const JOBS: JobProfile[] = [
       'Salaire confortable et progression de carrière. Capacité d\'épargne élevée dès le départ.',
     icon: 'Briefcase',
     color: '#1c84f5',
+    requiredSkillIds: ['investissement_101', 'negociation'],
   },
   {
     id: 'ingenieur',
@@ -83,6 +88,7 @@ export const JOBS: JobProfile[] = [
       'Excellent salaire et esprit analytique. Idéal pour optimiser sa stratégie d\'investissement.',
     icon: 'Cpu',
     color: '#06b6d4',
+    requiredSkillIds: ['analyse_financiere'],
   },
   {
     id: 'entrepreneur',
@@ -96,6 +102,7 @@ export const JOBS: JobProfile[] = [
       'Salaire variable mais belle épargne de départ. Prêt à prendre des risques pour viser gros.',
     icon: 'Rocket',
     color: '#a855f7',
+    requiredSkillIds: ['entrepreneuriat'],
   },
   {
     id: 'medecin',
@@ -109,6 +116,7 @@ export const JOBS: JobProfile[] = [
       'Hauts revenus et belle épargne. Le mode facile : tu peux investir gros rapidement. Reste discipliné !',
     icon: 'Stethoscope',
     color: '#ec4899',
+    requiredSkillIds: ['optimisation_fiscale'],
   },
 ]
 
