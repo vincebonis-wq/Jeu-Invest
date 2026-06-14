@@ -3,6 +3,7 @@ import {
   Area,
   AreaChart,
   Cell,
+  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -36,7 +37,7 @@ import {
   formatMonthShort,
   cn,
 } from '../../utils/formatting'
-import type { AssetBreakdown } from '../../types'
+import type { AssetBreakdown, GameState } from '../../types'
 
 const ALLOCATION_LABELS: Record<keyof AssetBreakdown, { label: string; color: string }> = {
   cash: { label: 'Liquidités', color: '#10b981' },
@@ -80,6 +81,9 @@ export function Dashboard() {
     () =>
       game.stats.slice(-24).map((s) => ({
         date: formatMonthShort(s.dateISO),
+        cash: s.cash ?? 0,
+        locked: s.lockedValue ?? 0,
+        unlocked: s.unlockedValue ?? 0,
         netWorth: s.netWorth,
       })),
     [game.stats],
@@ -145,6 +149,9 @@ export function Dashboard() {
         />
       </Card>
 
+      {/* Conseils contextuels */}
+      <TipsCard game={game} netWorth={netWorth} passiveIncome={passiveIncome} cashflow={cashflow} />
+
       <div className="grid lg:grid-cols-3 gap-4">
         {/* Évolution du patrimoine */}
         <Card className="p-5 lg:col-span-2">
@@ -157,37 +164,26 @@ export function Dashboard() {
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={chartData} margin={{ left: -10, right: 8, top: 4 }}>
                 <defs>
-                  <linearGradient id="nwGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#1c84f5" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#1c84f5" stopOpacity={0} />
+                  <linearGradient id="gradCash" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.8} />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.1} />
+                  </linearGradient>
+                  <linearGradient id="gradUnlocked" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#1c84f5" stopOpacity={0.7} />
+                    <stop offset="100%" stopColor="#1c84f5" stopOpacity={0.1} />
+                  </linearGradient>
+                  <linearGradient id="gradLocked" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#a855f7" stopOpacity={0.6} />
+                    <stop offset="100%" stopColor="#a855f7" stopOpacity={0.1} />
                   </linearGradient>
                 </defs>
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: '#94a3b8' }}
-                  tickLine={false}
-                  axisLine={false}
-                  interval="preserveStartEnd"
-                  minTickGap={30}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#94a3b8' }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => formatEuroCompact(v)}
-                  width={56}
-                />
-                <Tooltip
-                  formatter={(v) => [formatEuro(Number(v)), 'Patrimoine']}
-                  contentStyle={tooltipStyle}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="netWorth"
-                  stroke="#1c84f5"
-                  strokeWidth={2.5}
-                  fill="url(#nwGradient)"
-                />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={30} />
+                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} tickFormatter={(v) => formatEuroCompact(v)} width={56} />
+                <Tooltip formatter={(v) => [formatEuro(Number(v)), '']} contentStyle={tooltipStyle} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Area type="monotone" dataKey="locked" name="Bloqués" stackId="1" stroke="#a855f7" fill="url(#gradLocked)" strokeWidth={1.5} />
+                <Area type="monotone" dataKey="unlocked" name="Disponibles" stackId="1" stroke="#1c84f5" fill="url(#gradUnlocked)" strokeWidth={1.5} />
+                <Area type="monotone" dataKey="cash" name="Cash" stackId="1" stroke="#10b981" fill="url(#gradCash)" strokeWidth={1.5} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -272,6 +268,24 @@ export function Dashboard() {
             ]}
           />
         </div>
+        {/* Détail revenus passifs */}
+        {game.investments.filter(i => i.monthlyIncome !== 0).length > 0 && (
+          <div className="mt-3">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Détail revenus passifs</div>
+            <div className="space-y-1">
+              {game.investments.filter(i => i.monthlyIncome !== 0).map(inv => {
+                return (
+                  <div key={inv.instanceId} className="flex items-center justify-between text-xs px-1">
+                    <span className="text-slate-500 truncate flex-1 mr-2">{inv.name}</span>
+                    <span className={cn('font-semibold shrink-0', inv.monthlyIncome >= 0 ? 'text-emerald-600' : 'text-red-500')}>
+                      {inv.monthlyIncome >= 0 ? '+' : ''}{formatEuro(inv.monthlyIncome)}/mois
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
         <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
           <span className="font-display font-bold text-slate-700">Solde net</span>
           <span
@@ -378,5 +392,76 @@ function EmptyChart({ text }: { text: string }) {
     <div className="h-[170px] flex items-center justify-center text-center text-sm text-slate-400 px-6">
       {text}
     </div>
+  )
+}
+
+function TipsCard({
+  game,
+  netWorth,
+  passiveIncome,
+  cashflow,
+}: {
+  game: GameState
+  netWorth: number
+  passiveIncome: number
+  cashflow: number
+}) {
+  const tips = useMemo(() => {
+    const result: string[] = []
+    const { marketPhase } = game.economy
+    const hasETF = game.investments.some((i) => i.catalogId === 'bourse_etf')
+    const hasLivret = game.investments.some((i) => i.catalogId === 'livret')
+    const avInv = game.investments.find((i) => i.catalogId === 'assurance_vie')
+
+    if (game.cashBalance < 500) {
+      result.push("⚠️ Tes liquidités sont très faibles. Ne pas investir davantage tant que tu n'as pas 3 mois de charges en réserve.")
+    }
+    if (game.investments.length === 0 && game.cashBalance >= 10) {
+      result.push("💡 Commence par le Livret A — sans risque, pas de minimum. Même 100 € travaillent à 1,5 %/an.")
+    }
+    if (hasLivret && !hasETF && netWorth >= 1000) {
+      result.push("📈 Tu peux ouvrir un ETF ! Rendement historique ~8 %/an vs 1,5 % pour le Livret A. Idéal sur 5 ans+.")
+    }
+    if (marketPhase === 'crash' && hasETF) {
+      result.push("🔥 Krach en cours — ne vends pas tes ETF en panique. Les krachs durent en moyenne 12 mois, puis le marché repart.")
+    }
+    if (marketPhase === 'crash' && game.cashBalance > 3000 && netWorth >= 1000) {
+      result.push("💎 Opportunité rare : investir en bourse pendant un krach, c'est acheter en soldes. Le risque de court terme cache un gain de long terme.")
+    }
+    if (avInv) {
+      const purchaseDate = new Date(avInv.purchaseDateISO)
+      const current = new Date(game.gameDateISO)
+      const yearsHeld = (current.getTime() - purchaseDate.getTime()) / (365.25 * 86400000)
+      if (yearsHeld >= 7 && yearsHeld < 8) {
+        const monthsLeft = Math.ceil((8 - yearsHeld) * 12)
+        result.push(`⏰ Ton Assurance Vie approche des 8 ans (encore ${monthsLeft} mois). Attends pour payer ~50 % d'impôts en moins !`)
+      }
+    }
+    if (cashflow < -300) {
+      result.push("🚨 Cashflow négatif ! Tes sorties dépassent tes rentrées. Risque d'épuiser tes liquidités — vends un actif ou réduis les charges.")
+    }
+    if (netWorth >= 50000 && !game.investments.some((i) => i.catalogId === 'parking')) {
+      result.push("🏠 À 50 000 € de patrimoine, un parking avec crédit devient possible. Rendement 7 %/an + effet de levier bancaire.")
+    }
+    if (passiveIncome > 0 && passiveIncome < game.player.salary) {
+      const ratio = Math.round((passiveIncome / game.player.salary) * 100)
+      result.push(`📊 Tes revenus passifs couvrent ${ratio} % de ton salaire. Objectif : 100 % pour devenir rentier.`)
+    }
+    return result.slice(0, 3)
+  }, [game, netWorth, passiveIncome, cashflow])
+
+  if (tips.length === 0) return null
+
+  return (
+    <Card className="p-5">
+      <CardHeader title="Conseils" subtitle="Basés sur ta situation actuelle" icon={<span>🧠</span>} />
+      <div className="space-y-2 mt-3">
+        {tips.map((tip, i) => (
+          <div key={i} className="text-sm text-slate-600 bg-slate-50 rounded-xl px-4 py-2.5 leading-relaxed">
+            {tip}
+          </div>
+        ))}
+      </div>
+    </Card>
   )
 }

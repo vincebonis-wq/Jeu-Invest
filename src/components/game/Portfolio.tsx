@@ -8,6 +8,8 @@ import { Lock, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { getCatalogItem } from '../../data/investments'
 import type { Investment } from '../../types'
+import { getAVFiscalDetails } from '../../engine/fiscal'
+import type { AVFiscalDetails } from '../../engine/fiscal'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
@@ -199,6 +201,24 @@ function SellModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
     ? game.mortgages.find((m) => m.id === inv.mortgageId)
     : null
   const debt = mortgage?.outstandingBalance ?? 0
+  const item = getCatalogItem(inv.catalogId)
+  const gain = Math.max(0, inv.currentValue - inv.totalInvested)
+
+  // Fiscal details
+  let taxAmount = 0
+  let avDetails: AVFiscalDetails | null = null
+  if (inv.catalogId === 'assurance_vie') {
+    avDetails = getAVFiscalDetails(inv, game.gameDateISO)
+    taxAmount = avDetails.tax
+  } else if (item.taxRegime !== 'exonere') {
+    if (item.isRealEstate) {
+      taxAmount = gain * 0.3 * 0.5
+    } else {
+      taxAmount = gain * 0.3
+    }
+  }
+
+  const proceeds = Math.max(0, inv.currentValue - debt - taxAmount)
 
   function handleSell() {
     const res = sellInvestment(inv.instanceId)
@@ -207,33 +227,105 @@ function SellModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
   }
 
   return (
-    <Modal open onClose={onClose} title={`Vendre — ${inv.name}`} size="sm">
+    <Modal open onClose={onClose} title={`Vendre — ${inv.name}`} size="md">
       {result?.success ? (
         <div className="py-6 text-center animate-pop-in">
           <p className="font-display font-bold text-emerald-600">{result.message}</p>
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="rounded-2xl bg-slate-50 p-4 text-sm space-y-1.5">
+          {/* Résumé de la vente */}
+          <div className="rounded-2xl bg-slate-50 p-4 text-sm space-y-2">
             <div className="flex justify-between">
               <span className="text-slate-500">Valeur actuelle</span>
               <span className="font-semibold">{formatEuro(inv.currentValue)}</span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Capital investi</span>
+              <span className="font-semibold">{formatEuro(inv.totalInvested)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className={gain >= 0 ? 'text-emerald-600' : 'text-red-500'}>Plus-value</span>
+              <span className={`font-semibold ${gain >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                {gain >= 0 ? '+' : ''}{formatEuro(gain)}
+              </span>
+            </div>
             {debt > 0 && (
               <div className="flex justify-between">
-                <span className="text-slate-500">Crédit à rembourser</span>
+                <span className="text-slate-500">Crédit restant</span>
                 <span className="font-semibold text-red-500">-{formatEuro(debt)}</span>
               </div>
             )}
-            <div className="flex justify-between pt-1.5 border-t border-slate-200">
-              <span className="text-slate-600 font-semibold">Tu récupères ~</span>
-              <span className="font-display font-bold text-emerald-600">
-                {formatEuro(Math.max(0, inv.currentValue - debt))}
+          </div>
+
+          {/* Fiscalité */}
+          {inv.catalogId === 'assurance_vie' && avDetails ? (
+            <div className={`rounded-2xl p-4 text-sm space-y-2 ${avDetails.isFavorable ? 'bg-emerald-50 border border-emerald-100' : 'bg-amber-50 border border-amber-100'}`}>
+              <div className="font-semibold text-slate-700 mb-2">
+                {avDetails.isFavorable ? '✅' : '⏳'} Fiscalité Assurance Vie
+              </div>
+              <div className="text-xs text-slate-500 mb-2">{avDetails.regime}</div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Détenue depuis</span>
+                <span className="font-semibold">{avDetails.yearsHeld} ans {avDetails.monthsHeld % 12} mois</span>
+              </div>
+              {!avDetails.isFavorable && (
+                <div className="flex justify-between text-amber-700">
+                  <span>Avantage fiscal dans</span>
+                  <span className="font-semibold">{avDetails.yearsToFavorable.toFixed(1)} ans</span>
+                </div>
+              )}
+              {avDetails.allowance > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Abattement</span>
+                  <span className="font-semibold text-emerald-600">-{formatEuro(avDetails.allowance)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-slate-500">Base imposable</span>
+                <span className="font-semibold">{formatEuro(avDetails.taxableGain)}</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 pt-2">
+                <span className="font-semibold text-slate-600">Impôt estimé ({Math.round(avDetails.taxRate * 100)}%)</span>
+                <span className="font-bold text-red-500">-{formatEuro(avDetails.tax)}</span>
+              </div>
+              {!avDetails.isFavorable && gain > 0 && (
+                <p className="text-xs text-amber-700 mt-2 font-medium">
+                  💡 Attendre {avDetails.yearsToFavorable.toFixed(1)} ans économiserait environ {formatEuro(avDetails.tax - Math.max(0, gain - avDetails.allowance) * avDetails.taxRate * 0.8)} d'impôts.
+                </p>
+              )}
+            </div>
+          ) : taxAmount > 0 ? (
+            <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 text-sm space-y-2">
+              <div className="font-semibold text-slate-700 mb-1">Fiscalité</div>
+              <div className="text-xs text-slate-500 mb-2">
+                {item.taxRegime === 'exonere' ? 'Exonéré' :
+                 item.isRealEstate ? 'Plus-value immobilière (taux réduit après abattement)' :
+                 'PFU 30% (Flat Tax)'}
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Plus-value imposable</span>
+                <span className="font-semibold">{formatEuro(gain)}</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 pt-2">
+                <span className="font-semibold text-slate-600">Impôt estimé</span>
+                <span className="font-bold text-red-500">-{formatEuro(taxAmount)}</span>
+              </div>
+            </div>
+          ) : item.taxRegime === 'exonere' ? (
+            <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-3 text-sm text-emerald-700 font-semibold">
+              ✅ Exonéré d'impôt (Livret A)
+            </div>
+          ) : null}
+
+          {/* Net à récupérer */}
+          <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 p-4">
+            <div className="flex items-center justify-between">
+              <span className="font-display font-bold text-slate-700">Tu récupères</span>
+              <span className="font-display font-extrabold text-2xl text-emerald-600">
+                {formatEuro(proceeds)}
               </span>
             </div>
-            <p className="text-xs text-slate-400 pt-1">
-              (Hors impôt éventuel sur la plus-value, calculé à la vente)
-            </p>
           </div>
 
           {result && !result.success && (
@@ -243,12 +335,8 @@ function SellModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
           )}
 
           <div className="flex gap-3">
-            <Button variant="secondary" fullWidth onClick={onClose}>
-              Annuler
-            </Button>
-            <Button variant="danger" fullWidth onClick={handleSell}>
-              Confirmer la vente
-            </Button>
+            <Button variant="secondary" fullWidth onClick={onClose}>Annuler</Button>
+            <Button variant="danger" fullWidth onClick={handleSell}>Confirmer la vente</Button>
           </div>
         </div>
       )}
