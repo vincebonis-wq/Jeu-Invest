@@ -8,6 +8,7 @@ import {
   Home,
   Landmark,
   Receipt,
+  RotateCcw,
   TrendingUp,
 } from 'lucide-react'
 import type { LucideProps } from 'lucide-react'
@@ -15,6 +16,7 @@ import { useGameStore } from '../../store/gameStore'
 import type { EventCategory, EventSeverity, GameEvent } from '../../types'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
+import { Modal } from '../ui/Modal'
 import {
   formatEuroSigned,
   formatGameDate,
@@ -60,7 +62,9 @@ const FILTERS: { id: Filter; label: string }[] = [
 export function Events() {
   const game = useGameStore((s) => s.game)!
   const markAllRead = useGameStore((s) => s.markAllEventsRead)
+  const newGame = useGameStore((s) => s.newGame)
   const [filter, setFilter] = useState<Filter>('all')
+  const [confirmReset, setConfirmReset] = useState(false)
 
   // Marque tout comme lu en quittant l'écran.
   useEffect(() => {
@@ -111,6 +115,33 @@ export function Events() {
           ))}
         </div>
       )}
+
+      {/* Restart zone */}
+      <div className="mt-6 rounded-2xl bg-red-50 border border-red-100 p-4">
+        <div className="font-bold text-red-800 mb-1 flex items-center gap-2 text-sm">
+          <RotateCcw size={15} /> Recommencer depuis zéro
+        </div>
+        <p className="text-xs text-red-600 mb-3">
+          Efface définitivement ta progression actuelle — compétences, investissements et économies.
+        </p>
+        <Button variant="danger" size="sm" onClick={() => setConfirmReset(true)}>
+          <RotateCcw size={14} /> Nouvelle partie
+        </Button>
+      </div>
+
+      <Modal open={confirmReset} onClose={() => setConfirmReset(false)} title="Recommencer ?" size="sm">
+        <p className="text-sm text-slate-500 mb-4">
+          Cette action efface définitivement ta partie actuelle. Es-tu sûr ?
+        </p>
+        <div className="flex gap-3">
+          <Button variant="secondary" fullWidth onClick={() => setConfirmReset(false)}>
+            Annuler
+          </Button>
+          <Button variant="danger" fullWidth onClick={newGame}>
+            Tout effacer
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }

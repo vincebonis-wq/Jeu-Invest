@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { GraduationCap, CheckCircle2, Clock, Lock, ChevronRight, Zap } from 'lucide-react'
+import { GraduationCap, CheckCircle2, Clock, Lock, ChevronRight, Zap, Briefcase } from 'lucide-react'
 import { SKILLS, SKILL_BY_ID } from '../../data/skills'
 import type { GameSkill } from '../../types'
 import { useGameStore } from '../../store/gameStore'
@@ -7,15 +7,18 @@ import { calcNetWorth } from '../../utils/calculations'
 import { Card, CardHeader } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
+import { Job } from './Job'
 import { formatEuro, formatMonthShort, cn } from '../../utils/formatting'
 
 type SkillStatus = 'learned' | 'training' | 'available' | 'locked'
+type CareerTab = 'skills' | 'job'
 
 export function Skills() {
   const game = useGameStore((s) => s.game)!
   const startSkillTraining = useGameStore((s) => s.startSkillTraining)
   const [confirmSkill, setConfirmSkill] = useState<GameSkill | null>(null)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [activeTab, setActiveTab] = useState<CareerTab>('skills')
 
   const netWorth = calcNetWorth(game)
   const learned = game.player.learnedSkillIds || []
@@ -81,6 +84,36 @@ export function Skills() {
 
   return (
     <div className="space-y-5 animate-fade-in">
+      {/* Onglets Compétences / Emploi */}
+      <div className="flex gap-2 bg-slate-100 rounded-2xl p-1">
+        <button
+          onClick={() => setActiveTab('skills')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all',
+            activeTab === 'skills'
+              ? 'bg-white text-brand-600 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700',
+          )}
+        >
+          <GraduationCap size={16} /> Compétences
+        </button>
+        <button
+          onClick={() => setActiveTab('job')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all',
+            activeTab === 'job'
+              ? 'bg-white text-brand-600 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700',
+          )}
+        >
+          <Briefcase size={16} /> Mon Emploi
+        </button>
+      </div>
+
+      {activeTab === 'job' ? (
+        <Job />
+      ) : (
+      <>
       {/* Formation en cours */}
       {activeTraining && (
         <Card className="p-5 border-2 border-brand-200 bg-brand-50/30">
@@ -221,6 +254,8 @@ export function Skills() {
             </div>
           )}
         </Modal>
+      )}
+      </>
       )}
     </div>
   )

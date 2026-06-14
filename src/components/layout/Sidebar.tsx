@@ -1,12 +1,9 @@
 import {
   Bell,
-  Briefcase,
   Building2,
   GraduationCap,
   LayoutDashboard,
-  PieChart,
-  Store,
-  Wallet,
+  TrendingUp,
 } from 'lucide-react'
 import type { LucideProps } from 'lucide-react'
 import { useGameStore, selectUnreadCount } from '../../store/gameStore'
@@ -21,14 +18,11 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { screen: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-  { screen: 'marketplace', label: 'Investir', icon: Store },
-  { screen: 'portfolio', label: 'Portefeuille', icon: Wallet },
+  { screen: 'dashboard', label: 'Accueil', icon: LayoutDashboard },
+  { screen: 'marketplace', label: 'Investissements', icon: TrendingUp },
   { screen: 'properties', label: 'Biens', icon: Building2 },
-  { screen: 'skills', label: 'Compétences', icon: GraduationCap },
-  { screen: 'job', label: 'Mon Emploi', icon: Briefcase },
+  { screen: 'skills', label: 'Carrière', icon: GraduationCap },
   { screen: 'events', label: 'Actualités', icon: Bell },
-  { screen: 'stats', label: 'Statistiques', icon: PieChart },
 ]
 
 export function Sidebar() {
@@ -66,7 +60,7 @@ export function Sidebar() {
             <NavButton
               key={item.screen}
               item={item}
-              active={screen === item.screen}
+              active={screen === item.screen || (item.screen === 'marketplace' && (screen === 'portfolio')) || (item.screen === 'skills' && screen === 'job')}
               badge={item.screen === 'events' ? unread : 0}
               pulse={item.screen === 'skills' && !!activeTraining}
               onClick={() => setScreen(item.screen)}
@@ -80,6 +74,8 @@ export function Sidebar() {
         {NAV.map((item) => {
           const Icon = item.icon
           const active = screen === item.screen
+            || (item.screen === 'marketplace' && screen === 'portfolio')
+            || (item.screen === 'skills' && screen === 'job')
           return (
             <button
               key={item.screen}

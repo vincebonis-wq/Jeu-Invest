@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap } from 'lucide-react'
+import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap, Wallet } from 'lucide-react'
 import { INVESTMENT_CATALOG } from '../../data/investments'
 import { SKILL_BY_ID } from '../../data/skills'
 import type { InvestmentCatalogItem } from '../../types'
@@ -11,6 +11,7 @@ import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { Badge, RiskBadge } from '../ui/Badge'
 import { Icon } from '../ui/Icon'
+import { Portfolio } from './Portfolio'
 import {
   formatEuro,
   formatEuroCompact,
@@ -102,10 +103,46 @@ export function Marketplace() {
   const phase = game.economy.marketPhase
   const phaseInfo = PHASE_LABEL[phase]
   const [buyTarget, setBuyTarget] = useState<InvestmentCatalogItem | null>(null)
+  const [activeTab, setActiveTab] = useState<'invest' | 'portfolio'>('invest')
   const learned = game.player.learnedSkillIds || []
 
   return (
     <div className="space-y-4 animate-fade-in">
+      {/* Onglets */}
+      <div className="flex gap-2 bg-slate-100 rounded-2xl p-1">
+        <button
+          onClick={() => setActiveTab('invest')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all',
+            activeTab === 'invest'
+              ? 'bg-white text-brand-600 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700',
+          )}
+        >
+          <TrendingUp size={16} /> Investir
+        </button>
+        <button
+          onClick={() => setActiveTab('portfolio')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all',
+            activeTab === 'portfolio'
+              ? 'bg-white text-brand-600 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700',
+          )}
+        >
+          <Wallet size={16} /> Mon Portefeuille
+          {game.investments.length > 0 && (
+            <span className="bg-brand-100 text-brand-600 text-xs px-1.5 py-0.5 rounded-full font-bold">
+              {game.investments.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'portfolio' ? (
+        <Portfolio />
+      ) : (
+      <>
       {/* Bandeau marché */}
       <div
         className="rounded-2xl p-4 flex items-center gap-3"
@@ -146,6 +183,8 @@ export function Marketplace() {
 
       {buyTarget && (
         <BuyModal item={buyTarget} onClose={() => setBuyTarget(null)} />
+      )}
+      </>
       )}
     </div>
   )

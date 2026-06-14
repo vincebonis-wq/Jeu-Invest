@@ -4,7 +4,7 @@ import {
   AreaChart,
   ResponsiveContainer,
 } from 'recharts'
-import { Lock, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
+import { Lock, PiggyBank, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { getCatalogItem } from '../../data/investments'
 import type { Investment } from '../../types'
@@ -74,13 +74,13 @@ export function Portfolio() {
 
       {/* Liste */}
       <div className="space-y-2.5">
-        {game.investments.map((inv) => (
-          <InvestmentRow
-            key={inv.instanceId}
-            inv={inv}
-            onSell={() => setSellTarget(inv)}
-          />
-        ))}
+        {game.investments.map((inv) =>
+          inv.catalogId === 'livret' ? (
+            <LivretACard key={inv.instanceId} inv={inv} onSell={() => setSellTarget(inv)} />
+          ) : (
+            <InvestmentRow key={inv.instanceId} inv={inv} onSell={() => setSellTarget(inv)} />
+          )
+        )}
       </div>
 
       {sellTarget && (
@@ -178,17 +178,94 @@ function InvestmentRow({ inv, onSell }: { inv: Investment; onSell: () => void })
         </Button>
       </div>
 
-      {/* Revenu mensuel */}
-      {inv.monthlyIncome !== 0 && (
-        <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-          <span className="text-slate-400">Revenu mensuel net</span>
-          <span className={cn('font-semibold', inv.monthlyIncome >= 0 ? 'text-emerald-600' : 'text-red-500')}>
-            {inv.monthlyIncome >= 0 ? '+' : ''}
-            {formatEuro(inv.monthlyIncome)}
-          </span>
-        </div>
-      )}
+      {/* Revenu / rendement annuel estimé */}
+      <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs gap-4">
+        {inv.monthlyIncome !== 0 ? (
+          <>
+            <span className="text-slate-400">Revenu mensuel net</span>
+            <span className={cn('font-semibold', inv.monthlyIncome >= 0 ? 'text-emerald-600' : 'text-red-500')}>
+              {inv.monthlyIncome >= 0 ? '+' : ''}
+              {formatEuro(inv.monthlyIncome)}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-slate-400">Rendement annuel estimé</span>
+            <span className="font-semibold text-emerald-600">
+              ~+{formatEuro(Math.round(inv.currentValue * inv.annualReturnRate))} / an
+            </span>
+          </>
+        )}
+      </div>
     </Card>
+  )
+}
+
+function LivretACard({ inv, onSell }: { inv: Investment; onSell: () => void }) {
+  const annualYield = Math.round(inv.currentValue * 0.015)
+  const monthlyYield = Math.round(annualYield / 12)
+
+  return (
+    <div className="rounded-2xl overflow-hidden shadow-sm border border-sky-100">
+      {/* Bandeau carte bancaire */}
+      <div className="bg-gradient-to-br from-sky-500 via-sky-600 to-blue-700 p-5 text-white relative overflow-hidden">
+        {/* Fond décoratif */}
+        <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-white/5 -translate-y-20 translate-x-20" />
+        <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full bg-white/5 translate-y-12 -translate-x-12" />
+
+        <div className="relative">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                <PiggyBank size={18} />
+              </div>
+              <span className="font-bold text-sm uppercase tracking-widest">Livret A</span>
+            </div>
+            <span className="bg-white/20 text-xs font-bold px-2.5 py-1 rounded-full tracking-wide">
+              1,50% / an
+            </span>
+          </div>
+
+          <div className="mb-1">
+            <div className="text-sky-200 text-xs font-semibold uppercase tracking-wide mb-0.5">
+              Solde disponible
+            </div>
+            <div className="font-display font-extrabold text-3xl tracking-tight">
+              {formatEuro(inv.currentValue)}
+            </div>
+          </div>
+
+          <div className="text-sky-200 text-xs mt-1">
+            Depuis le {formatGameDate(inv.purchaseDateISO)} · Exonéré d'impôt
+          </div>
+        </div>
+      </div>
+
+      {/* Section rendement */}
+      <div className="bg-sky-50 border-t border-sky-100 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sky-700 text-xs font-bold uppercase tracking-wide mb-0.5">
+              Rendement annuel estimé
+            </div>
+            <div className="font-display font-extrabold text-xl text-sky-700">
+              +{formatEuro(annualYield)} / an
+            </div>
+            <div className="text-sky-500 text-xs mt-0.5">
+              soit +{formatEuro(monthlyYield)} / mois · {formatEuro(inv.currentValue)} × 1,5%
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onSell}
+            className="text-slate-500 shrink-0"
+          >
+            Retirer
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 

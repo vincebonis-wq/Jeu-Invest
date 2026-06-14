@@ -37,7 +37,7 @@ export const JOBS: JobProfile[] = [
   {
     id: 'commercant',
     title: 'Commerçant',
-    monthlySalary: 2800,
+    monthlySalary: 3500,
     startingSavings: 8000,
     savingsMin: 2000,
     savingsMax: 20000,
@@ -51,7 +51,7 @@ export const JOBS: JobProfile[] = [
   {
     id: 'freelance',
     title: 'Freelance',
-    monthlySalary: 3000,
+    monthlySalary: 2900,
     startingSavings: 6000,
     savingsMin: 1000,
     savingsMax: 15000,
@@ -65,7 +65,7 @@ export const JOBS: JobProfile[] = [
   {
     id: 'cadre',
     title: 'Cadre',
-    monthlySalary: 3500,
+    monthlySalary: 4300,
     startingSavings: 12000,
     savingsMin: 5000,
     savingsMax: 30000,
@@ -79,7 +79,7 @@ export const JOBS: JobProfile[] = [
   {
     id: 'ingenieur',
     title: 'Ingénieur',
-    monthlySalary: 4200,
+    monthlySalary: 5200,
     startingSavings: 18000,
     savingsMin: 8000,
     savingsMax: 40000,
@@ -93,21 +93,21 @@ export const JOBS: JobProfile[] = [
   {
     id: 'entrepreneur',
     title: 'Entrepreneur',
-    monthlySalary: 2500,
+    monthlySalary: 6500,
     startingSavings: 25000,
     savingsMin: 5000,
     savingsMax: 60000,
     startingAge: 33,
     description:
-      'Salaire variable mais belle épargne de départ. Prêt à prendre des risques pour viser gros.',
+      'Le fruit d\'années d\'effort. Tes businesses génèrent des revenus confortables en plus de ta liberté totale.',
     icon: 'Rocket',
     color: '#a855f7',
     requiredSkillIds: ['entrepreneuriat'],
   },
   {
     id: 'medecin',
-    title: 'Médecin',
-    monthlySalary: 6000,
+    title: 'Médecin / Expert',
+    monthlySalary: 8500,
     startingSavings: 35000,
     savingsMin: 15000,
     savingsMax: 80000,
