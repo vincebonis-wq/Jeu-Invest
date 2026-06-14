@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Briefcase, ChevronRight, Clock, TrendingDown, TrendingUp } from 'lucide-react'
+import { ChevronRight, TrendingDown, TrendingUp, Lock, CheckCircle2 } from 'lucide-react'
 import { JOBS } from '../../data/jobs'
+import { SKILL_BY_ID } from '../../data/skills'
+import type { JobProfile } from '../../types'
 import { useGameStore } from '../../store/gameStore'
 import { Card, CardHeader } from '../ui/Card'
 import { Button } from '../ui/Button'
@@ -8,12 +10,24 @@ import { Icon } from '../ui/Icon'
 import { Modal } from '../ui/Modal'
 import { formatEuro, cn } from '../../utils/formatting'
 
+type JobStatus = 'current' | 'available' | 'requires_skills' | 'locked'
+
 export function Job() {
   const game = useGameStore((s) => s.game)!
   const changeJob = useGameStore((s) => s.changeJob)
-  const [confirmJob, setConfirmJob] = useState<(typeof JOBS)[0] | null>(null)
+  const [confirmJob, setConfirmJob] = useState<JobProfile | null>(null)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
-  const cooldown = game.player.jobChangeCooldownMonths ?? 0
+
+  const learned = game.player.learnedSkillIds || []
+
+  function getJobStatus(job: JobProfile): JobStatus {
+    if (job.id === game.player.jobId) return 'current'
+    const allMet = (job.requiredSkillIds || []).every((id) => learned.includes(id))
+    if (allMet) return 'available'
+    const anyMet = (job.requiredSkillIds || []).some((id) => learned.includes(id))
+    if (anyMet) return 'requires_skills'
+    return 'locked'
+  }
 
   function handleChangeJob() {
     if (!confirmJob) return
@@ -27,16 +41,24 @@ export function Job() {
     }
   }
 
+  const currentJob = JOBS.find((j) => j.id === game.player.jobId)
+  const availableJobs = JOBS.filter((j) => getJobStatus(j) === 'available')
+  const progressJobs = JOBS.filter((j) => getJobStatus(j) === 'requires_skills')
+  const lockedJobs = JOBS.filter((j) => getJobStatus(j) === 'locked')
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Poste actuel */}
-      <Card className="p-5">
+      <Card className="p-5 ring-2 ring-brand-300 bg-brand-50/20">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
-            <Briefcase size={32} />
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0"
+            style={{ backgroundColor: `${currentJob?.color ?? '#1c84f5'}18`, color: currentJob?.color ?? '#1c84f5' }}
+          >
+            <Icon name={currentJob?.icon ?? 'Briefcase'} size={32} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-0.5">
+            <div className="text-xs text-brand-600 font-semibold uppercase tracking-wide mb-0.5">
               Poste actuel
             </div>
             <div className="font-display font-extrabold text-2xl text-slate-800">
@@ -47,12 +69,10 @@ export function Job() {
                 {formatEuro(game.player.salary)}
                 <span className="text-sm font-normal text-slate-400">/mois</span>
               </span>
-              {cooldown > 0 && (
-                <span className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-semibold">
-                  <Clock size={11} />
-                  Disponible dans {cooldown} mois
-                </span>
-              )}
+              <span className="flex items-center gap-1 text-xs text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full font-semibold">
+                <CheckCircle2 size={11} />
+                En poste
+              </span>
             </div>
           </div>
         </div>
@@ -62,97 +82,76 @@ export function Job() {
       <div className="rounded-2xl bg-blue-50 border border-blue-100 p-4 text-sm text-blue-800">
         <div className="font-bold mb-1">💡 Stratégie emploi</div>
         <p>
-          Augmenter ton salaire est le levier le plus puissant au départ. Chaque euro
-          mensuel de plus se transforme en capital investi. Une fois rentier, le salaire
-          devient secondaire — tes actifs travaillent à ta place.
+          Les postes se débloquent en apprenant des compétences dans l'onglet Compétences.
+          Chaque compétence acquise ouvre de nouvelles opportunités de carrière et augmente ton salaire.
         </p>
       </div>
 
-      {/* Liste des postes */}
-      <Card className="p-5">
-        <CardHeader
-          title="Changer de poste"
-          subtitle="Transition possible tous les 3 mois · Immédiat · Salaire ajusté"
-        />
-      </Card>
+      {/* Postes disponibles */}
+      {availableJobs.length > 0 && (
+        <Card className="p-5">
+          <CardHeader
+            title="Postes disponibles"
+            subtitle={`${availableJobs.length} poste${availableJobs.length > 1 ? 's' : ''} accessible${availableJobs.length > 1 ? 's' : ''} dès maintenant`}
+          />
+          <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            {availableJobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                status="available"
+                currentSalary={game.player.salary}
+                learned={learned}
+                onApply={() => setConfirmJob(job)}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
 
-      <div className="grid sm:grid-cols-2 gap-3">
-        {JOBS.map((job) => {
-          const isCurrent = job.id === game.player.jobId
-          const salaryDelta = job.monthlySalary - game.player.salary
-          return (
-            <Card
-              key={job.id}
-              className={cn(
-                'p-4 flex flex-col transition-all',
-                isCurrent ? 'ring-2 ring-brand-400 bg-brand-50/30' : '',
-              )}
-            >
-              <div className="flex items-start gap-3 flex-1">
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: `${job.color}18`, color: job.color }}
-                >
-                  <Icon name={job.icon} size={22} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="font-display font-bold text-slate-800">{job.title}</span>
-                    {isCurrent && (
-                      <span className="text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-semibold">
-                        Actuel
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5 leading-relaxed line-clamp-2">
-                    {job.description}
-                  </p>
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="font-bold text-slate-700">
-                      {formatEuro(job.monthlySalary)}/mois
-                    </span>
-                    {!isCurrent && (
-                      <span
-                        className={cn(
-                          'text-xs font-semibold flex items-center gap-0.5',
-                          salaryDelta >= 0 ? 'text-emerald-600' : 'text-red-500',
-                        )}
-                      >
-                        {salaryDelta >= 0 ? (
-                          <TrendingUp size={11} />
-                        ) : (
-                          <TrendingDown size={11} />
-                        )}
-                        {salaryDelta >= 0 ? '+' : ''}
-                        {formatEuro(salaryDelta)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
+      {/* En progression */}
+      {progressJobs.length > 0 && (
+        <Card className="p-5">
+          <CardHeader
+            title="En progression"
+            subtitle="Il te manque quelques compétences pour accéder à ces postes"
+          />
+          <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            {progressJobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                status="requires_skills"
+                currentSalary={game.player.salary}
+                learned={learned}
+                onApply={() => setConfirmJob(job)}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
 
-              {!isCurrent && (
-                <Button
-                  fullWidth
-                  variant={cooldown > 0 ? 'secondary' : 'primary'}
-                  size="sm"
-                  className="mt-3"
-                  disabled={cooldown > 0}
-                  onClick={() => setConfirmJob(job)}
-                >
-                  {cooldown > 0 ? (
-                    `Disponible dans ${cooldown} mois`
-                  ) : (
-                    <>
-                      Postuler <ChevronRight size={14} />
-                    </>
-                  )}
-                </Button>
-              )}
-            </Card>
-          )
-        })}
-      </div>
+      {/* Postes verrouillés */}
+      {lockedJobs.length > 0 && (
+        <Card className="p-5">
+          <CardHeader
+            title="Postes verrouillés"
+            subtitle="Développe tes compétences pour les débloquer"
+          />
+          <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            {lockedJobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                status="locked"
+                currentSalary={game.player.salary}
+                learned={learned}
+                onApply={() => {}}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
 
       {confirmJob && (
         <Modal
@@ -196,9 +195,6 @@ export function Job() {
                   </span>
                 </div>
               </div>
-              <p className="text-xs text-slate-400 text-center">
-                Prochain changement de poste possible dans 3 mois.
-              </p>
               {result && !result.success && (
                 <div className="text-sm text-red-600 bg-red-50 rounded-xl p-3">
                   {result.message}
@@ -224,5 +220,109 @@ export function Job() {
         </Modal>
       )}
     </div>
+  )
+}
+
+function JobCard({
+  job,
+  status,
+  currentSalary,
+  learned,
+  onApply,
+}: {
+  job: JobProfile
+  status: JobStatus
+  currentSalary: number
+  learned: string[]
+  onApply: () => void
+}) {
+  const salaryDelta = job.monthlySalary - currentSalary
+  const requiredSkills = job.requiredSkillIds || []
+  const metCount = requiredSkills.filter((id) => learned.includes(id)).length
+  const totalCount = requiredSkills.length
+
+  return (
+    <Card
+      className={cn(
+        'p-4 flex flex-col transition-all',
+        status === 'locked' ? 'opacity-60' : '',
+      )}
+    >
+      <div className="flex items-start gap-3 flex-1">
+        <div
+          className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+          style={{ backgroundColor: `${job.color}18`, color: job.color }}
+        >
+          <Icon name={job.icon} size={22} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="font-display font-bold text-slate-800">{job.title}</span>
+            {status === 'locked' && (
+              <Lock size={13} className="text-slate-400 shrink-0" />
+            )}
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed line-clamp-2">
+            {job.description}
+          </p>
+          <div className="flex items-center justify-between mt-2">
+            <span className="font-bold text-slate-700">
+              {formatEuro(job.monthlySalary)}/mois
+            </span>
+            <span
+              className={cn(
+                'text-xs font-semibold flex items-center gap-0.5',
+                salaryDelta >= 0 ? 'text-emerald-600' : 'text-red-500',
+              )}
+            >
+              {salaryDelta >= 0 ? (
+                <TrendingUp size={11} />
+              ) : (
+                <TrendingDown size={11} />
+              )}
+              {salaryDelta >= 0 ? '+' : ''}
+              {formatEuro(salaryDelta)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Compétences requises */}
+      {requiredSkills.length > 0 && status !== 'available' && (
+        <div className="mt-2 text-xs text-slate-500">
+          {status === 'requires_skills' ? (
+            <span className="text-amber-600">
+              Compétences : {metCount}/{totalCount} — {requiredSkills.filter((id) => !learned.includes(id)).map((id) => SKILL_BY_ID[id]?.name ?? id).join(', ')}
+            </span>
+          ) : (
+            <span>
+              Requiert : {requiredSkills.map((id) => SKILL_BY_ID[id]?.name ?? id).join(', ')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {status === 'available' && (
+        <Button
+          fullWidth
+          variant="primary"
+          size="sm"
+          className="mt-3"
+          onClick={onApply}
+        >
+          Postuler <ChevronRight size={14} />
+        </Button>
+      )}
+      {status === 'requires_skills' && (
+        <div className="mt-3 text-center py-2 px-3 rounded-xl bg-amber-50 text-xs font-semibold text-amber-700">
+          En progression ({metCount}/{totalCount} compétences)
+        </div>
+      )}
+      {status === 'locked' && (
+        <div className="mt-3 text-center py-2 px-3 rounded-xl bg-slate-50 text-xs font-semibold text-slate-400">
+          Non accessible
+        </div>
+      )}
+    </Card>
   )
 }

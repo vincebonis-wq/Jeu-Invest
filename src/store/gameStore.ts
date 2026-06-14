@@ -78,6 +78,7 @@ interface GameStore {
   markEventRead: (eventId: string) => void
   markAllEventsRead: () => void
   dismissToast: (id: string) => void
+  dismissOnboarding: () => void
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -311,12 +312,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
   changeJob: (jobId) => {
     const game = get().game
     if (!game) return { success: false, message: 'Aucune partie.' }
-    if ((game.player.jobChangeCooldownMonths ?? 0) > 0) {
-      return { success: false, message: `Changement de poste disponible dans ${game.player.jobChangeCooldownMonths} mois.` }
-    }
     const newJob = JOB_BY_ID[jobId]
     if (!newJob) return { success: false, message: 'Poste introuvable.' }
     if (newJob.id === game.player.jobId) return { success: false, message: 'Tu occupes déjà ce poste.' }
+
+    // Check required skills
+    const requiredSkills = newJob.requiredSkillIds || []
+    const learned = game.player.learnedSkillIds || []
+    const missingSkills = requiredSkills.filter((id) => !learned.includes(id))
+    if (missingSkills.length > 0) {
+      const names = missingSkills.map((id) => SKILL_BY_ID[id]?.name ?? id).join(', ')
+      return { success: false, message: `Compétences requises : ${names}` }
+    }
+
     set((s) => ({
       game: {
         ...s.game!,
@@ -325,7 +333,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           jobId: newJob.id,
           jobTitle: newJob.title,
           salary: newJob.monthlySalary,
-          jobChangeCooldownMonths: 3,
+          jobChangeCooldownMonths: 0,
         },
       },
     }))
@@ -613,6 +621,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   dismissToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+
+  dismissOnboarding: () => {
+    set((s) => s.game ? { game: { ...s.game, hasSeenOnboarding: true } } : s)
+    get().saveGame()
+  },
 }))
 
 // Sélecteurs utilitaires (évitent de recalculer dans chaque composant).

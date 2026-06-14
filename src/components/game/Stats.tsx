@@ -181,9 +181,18 @@ export function Stats() {
       {/* Réglages */}
       <Card className="p-5">
         <CardHeader title="Réglages" subtitle="Gestion de la partie" />
-        <Button variant="danger" onClick={() => setConfirmReset(true)}>
-          <RotateCcw size={16} /> Nouvelle partie
-        </Button>
+        <div className="rounded-2xl bg-red-50 border border-red-100 p-4 mb-4">
+          <div className="font-bold text-red-800 mb-1 flex items-center gap-2">
+            <RotateCcw size={16} /> Nouvelle partie
+          </div>
+          <p className="text-sm text-red-600 mb-3">
+            Efface définitivement ta progression actuelle et recommence depuis zéro.
+            Toutes tes compétences, investissements et économies seront perdus.
+          </p>
+          <Button variant="danger" onClick={() => setConfirmReset(true)}>
+            <RotateCcw size={16} /> Recommencer depuis zéro
+          </Button>
+        </div>
       </Card>
 
       <Modal open={confirmReset} onClose={() => setConfirmReset(false)} title="Recommencer ?" size="sm">

@@ -1,3 +1,4 @@
+import { Settings } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { calcNetWorth } from '../../utils/calculations'
 import { MILESTONE_INFO } from '../../utils/calculations'
@@ -8,6 +9,7 @@ import { formatEuroCompact } from '../../utils/formatting'
 
 export function Header() {
   const game = useGameStore((s) => s.game)
+  const setScreen = useGameStore((s) => s.setScreen)
   if (!game) return null
 
   const netWorth = calcNetWorth(game)
@@ -51,8 +53,17 @@ export function Header() {
           </span>
         </div>
 
-        {/* Droite : horloge */}
-        <GameClock />
+        {/* Droite : réglages + horloge */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setScreen('stats')}
+            className="hidden md:flex w-9 h-9 rounded-xl items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            title="Réglages"
+          >
+            <Settings size={18} />
+          </button>
+          <GameClock />
+        </div>
       </div>
     </header>
   )

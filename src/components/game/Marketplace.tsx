@@ -18,6 +18,84 @@ import {
   cn,
 } from '../../utils/formatting'
 
+// ============================================================================
+// Types pour la sélection de bien immobilier
+// ============================================================================
+
+interface PropertyOffer {
+  id: 'budget' | 'standard' | 'premium'
+  label: string
+  emoji: string
+  city: string
+  priceFactor: number        // multiplier on base price
+  yieldBonus: number         // additive to base yield
+  maintenanceFactor: number  // multiplier on maintenance
+  pros: string[]
+  cons: string[]
+  description: string
+  stars: number // 1-5 location quality
+}
+
+function generatePropertyOffers(item: InvestmentCatalogItem, baseAmount: number, gameDateISO: string): PropertyOffer[] {
+  const cities = ['Lyon', 'Bordeaux', 'Toulouse', 'Nantes', 'Lille', 'Montpellier', 'Strasbourg', 'Rennes']
+  const seed = new Date(gameDateISO).getMonth()
+  const c1 = cities[seed % cities.length]
+  const c2 = cities[(seed + 3) % cities.length]
+  const c3 = cities[(seed + 6) % cities.length]
+
+  const isParking = item.id === 'parking'
+  const isLmnp = item.id === 'lmnp'
+
+  // Suppress unused warning — baseAmount is used in callers via priceFactor
+  void baseAmount
+
+  return [
+    {
+      id: 'budget',
+      label: 'Affaire à saisir',
+      emoji: isParking ? '🅿️' : isLmnp ? '🛏️' : '🏠',
+      city: c1,
+      priceFactor: 0.78,
+      yieldBonus: 0.008,
+      maintenanceFactor: 1.5,
+      pros: ['Prix −22% sous le marché', 'Rendement locatif élevé', 'Fort potentiel de plus-value'],
+      cons: ['Travaux de rénovation à prévoir', 'Charges d\'entretien élevées', 'Risque locatif plus important'],
+      description: isParking ? 'Box vieillissant, idéal pour un investisseur bricoleur.' : 'Appartement à rénover dans un quartier en transition.',
+      stars: 2,
+    },
+    {
+      id: 'standard',
+      label: 'Rapport qualité/prix',
+      emoji: isParking ? '🏢' : isLmnp ? '🛋️' : '🏡',
+      city: c2,
+      priceFactor: 1.0,
+      yieldBonus: 0,
+      maintenanceFactor: 1.0,
+      pros: ['Équilibre rendement/risque', 'Locataire stable', 'Entretien raisonnable'],
+      cons: ['Prix de marché', 'Rendement standard'],
+      description: 'Le choix sûr et équilibré. Pas de surprise, pas d\'exploit.',
+      stars: 3,
+    },
+    {
+      id: 'premium',
+      label: 'Emplacement prime',
+      emoji: isParking ? '🌟' : isLmnp ? '🏨' : '🏛️',
+      city: c3,
+      priceFactor: 1.3,
+      yieldBonus: -0.004,
+      maintenanceFactor: 0.6,
+      pros: ['Centre-ville, forte demande', 'Vacance locative quasi nulle', 'Très faibles charges'],
+      cons: ['Prix élevé (+30%)', 'Rendement légèrement inférieur', 'Capital immobilisé plus important'],
+      description: 'L\'emplacement numéro 1. Moins rentable à court terme mais patrimoine solide.',
+      stars: 5,
+    },
+  ]
+}
+
+// ============================================================================
+// Composant principal
+// ============================================================================
+
 export function Marketplace() {
   const game = useGameStore((s) => s.game)!
   const netWorth = calcNetWorth(game)
@@ -175,6 +253,70 @@ function CatalogCard({
   )
 }
 
+// ============================================================================
+// PropertyOfferCard
+// ============================================================================
+
+function PropertyOfferCard({
+  offer,
+  onSelect,
+  baseAmount,
+}: {
+  offer: PropertyOffer
+  onSelect: () => void
+  baseAmount: number
+}) {
+  const price = Math.round(baseAmount * offer.priceFactor)
+  return (
+    <button
+      onClick={onSelect}
+      className="w-full text-left rounded-2xl border-2 border-slate-100 hover:border-brand-300 transition-all overflow-hidden hover:shadow-md"
+    >
+      {/* Visual header */}
+      <div
+        className={cn(
+          'h-20 flex items-center justify-center relative',
+          offer.id === 'budget'
+            ? 'bg-gradient-to-br from-slate-600 to-slate-800'
+            : offer.id === 'standard'
+              ? 'bg-gradient-to-br from-blue-600 to-indigo-700'
+              : 'bg-gradient-to-br from-amber-500 to-orange-600',
+        )}
+      >
+        <span className="text-4xl">{offer.emoji}</span>
+        <div className="absolute top-2 left-2 bg-black/30 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+          {offer.label}
+        </div>
+        <div className="absolute top-2 right-2 text-yellow-300 text-xs">
+          {'★'.repeat(offer.stars)}{'☆'.repeat(5 - offer.stars)}
+        </div>
+        <div className="absolute bottom-2 right-2 text-white/80 text-xs font-semibold">
+          📍 {offer.city}
+        </div>
+      </div>
+      {/* Content */}
+      <div className="p-3">
+        <div className="font-display font-bold text-slate-800 text-base mb-1">
+          {formatEuro(price)}
+        </div>
+        <p className="text-xs text-slate-500 mb-2">{offer.description}</p>
+        <div className="space-y-0.5">
+          {offer.pros.slice(0, 2).map((p, i) => (
+            <div key={i} className="text-xs text-emerald-700">✅ {p}</div>
+          ))}
+          {offer.cons.slice(0, 1).map((c, i) => (
+            <div key={i} className="text-xs text-red-500">❌ {c}</div>
+          ))}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+// ============================================================================
+// BuyModal
+// ============================================================================
+
 function BuyModal({
   item,
   onClose,
@@ -192,6 +334,8 @@ function BuyModal({
   )
   const [useMortgage, setUseMortgage] = useState(item.canUseMortgage)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [selectedOffer, setSelectedOffer] = useState<PropertyOffer | null>(null)
+  const [offerStep, setOfferStep] = useState<'select' | 'buy'>(item.isRealEstate ? 'select' : 'buy')
 
   const quote = useMemo(() => {
     if (!item.canUseMortgage || !useMortgage) return null
@@ -200,6 +344,8 @@ function BuyModal({
 
   const furnitureCost =
     item.id === 'lmnp' ? Math.max(4000, Math.round(amount * 0.06)) : 0
+
+  const purchaseCostPct = item.purchaseCostPct ?? 0
 
   function handleBuy() {
     const res = buyInvestment(item.id, amount, useMortgage)
@@ -223,15 +369,65 @@ function BuyModal({
           </div>
           <p className="font-display font-bold text-slate-800">{result.message}</p>
         </div>
-      ) : (
-        <div className="space-y-4">
-          <div className={cn('rounded-2xl p-4 bg-gradient-to-br text-white', item.gradient)}>
-            <div className="flex items-center gap-2 mb-1">
-              <Icon name={item.icon} size={18} />
-              <span className="font-display font-bold">{item.shortName}</span>
+      ) : offerStep === 'select' ? (
+        /* ---- Étape 1 : Sélection du bien ---- */
+        <div className="space-y-3">
+          <div className={cn('rounded-2xl p-3 bg-gradient-to-br text-white', item.gradient)}>
+            <div className="flex items-center gap-2 mb-0.5">
+              <Icon name={item.icon} size={16} />
+              <span className="font-display font-bold text-sm">{item.shortName}</span>
             </div>
             <p className="text-xs text-white/90">{item.description}</p>
           </div>
+          <div className="text-sm font-semibold text-slate-600 mb-2">Choisissez votre bien :</div>
+          {generatePropertyOffers(item, amount, game.gameDateISO).map((offer) => (
+            <PropertyOfferCard
+              key={offer.id}
+              offer={offer}
+              baseAmount={amount}
+              onSelect={() => {
+                setSelectedOffer(offer)
+                setAmount(Math.round(amount * offer.priceFactor))
+                setOfferStep('buy')
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        /* ---- Étape 2 : Confirmation d'achat ---- */
+        <div className="space-y-4">
+          {/* Bouton retour (immobilier uniquement) */}
+          {item.isRealEstate && (
+            <button
+              onClick={() => setOfferStep('select')}
+              className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 mb-2"
+            >
+              ← Changer de bien
+            </button>
+          )}
+
+          {/* Mini-carte du bien sélectionné */}
+          {selectedOffer && (
+            <div className="rounded-xl bg-slate-50 p-3 flex items-center gap-3">
+              <span className="text-2xl">{selectedOffer.emoji}</span>
+              <div>
+                <div className="font-bold text-sm text-slate-700">
+                  {selectedOffer.label} · {selectedOffer.city}
+                </div>
+                <div className="text-xs text-slate-400">{selectedOffer.description}</div>
+              </div>
+            </div>
+          )}
+
+          {!selectedOffer && (
+            <div className={cn('rounded-2xl p-4 bg-gradient-to-br text-white', item.gradient)}>
+              <div className="flex items-center gap-2 mb-1">
+                <Icon name={item.icon} size={18} />
+                <span className="font-display font-bold">{item.shortName}</span>
+              </div>
+              <p className="text-xs text-white/90">{item.description}</p>
+            </div>
+          )}
 
           {/* Montant */}
           <div>
@@ -317,11 +513,18 @@ function BuyModal({
           {!useMortgage && (
             <div className="rounded-2xl p-4 bg-slate-50 text-sm space-y-1.5">
               <Row label="Investissement" value={formatEuro(amount)} />
-              {item.purchaseCostPct > 0 && (
-                <Row label={`Frais d'achat (${(item.purchaseCostPct * 100).toFixed(0)}%)`} value={`-${formatEuro(amount * item.purchaseCostPct)}`} />
+              {purchaseCostPct > 0 && (
+                <Row
+                  label={`Frais notaire (${Math.round(purchaseCostPct * 100)}%)`}
+                  value={`-${formatEuro(Math.round(amount * purchaseCostPct))}`}
+                />
               )}
-              {item.purchaseCostPct > 0 && (
-                <Row label="Valeur nette initiale" value={formatEuro(amount * (1 - item.purchaseCostPct))} bold />
+              {purchaseCostPct > 0 && (
+                <Row
+                  label="Valeur nette initiale"
+                  value={formatEuro(Math.round(amount * (1 - purchaseCostPct)))}
+                  bold
+                />
               )}
               {furnitureCost > 0 && (
                 <Row label="Mobilier (LMNP)" value={formatEuro(furnitureCost)} />

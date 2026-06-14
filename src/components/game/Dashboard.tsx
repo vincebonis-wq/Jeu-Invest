@@ -14,9 +14,7 @@ import {
 import {
   ArrowDownRight,
   ArrowUpRight,
-  Banknote,
   TrendingUp,
-  Wallet,
 } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import {
@@ -30,6 +28,8 @@ import {
 import { SKILLS, SKILL_BY_ID } from '../../data/skills'
 import { Card, CardHeader } from '../ui/Card'
 import { ProgressBar } from '../ui/ProgressBar'
+import { NumberTicker } from '../ui/NumberTicker'
+import { OnboardingGuide } from '../ui/OnboardingGuide'
 import { Icon } from '../ui/Icon'
 import {
   formatEuro,
@@ -92,44 +92,30 @@ export function Dashboard() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {/* Banner liquidités */}
-      <div className="rounded-2xl p-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white flex items-center justify-between">
-        <div>
-          <div className="text-sm text-emerald-100 font-medium">Cash disponible</div>
-          <div className="font-display font-extrabold text-3xl">{formatEuro(game.cashBalance)}</div>
-          <div className="text-xs text-emerald-200 mt-0.5">
-            {game.cashBalance < game.monthlyExpenses.total * 2
-              ? '⚠️ Réserve faible — garde au moins 3 mois de charges'
-              : `≈ ${Math.floor(game.cashBalance / Math.max(1, game.monthlyExpenses.total))} mois de charges`}
+      {/* Guide d'onboarding */}
+      <OnboardingGuide />
+
+      {/* Top stats bar — tout en un seul coup d'œil */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 text-white p-4">
+          <div className="text-xs text-white/70 font-medium mb-1">Patrimoine net</div>
+          <NumberTicker value={netWorth} format={formatEuro} className="font-display font-extrabold text-xl" />
+        </div>
+        <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-4">
+          <div className="text-xs text-white/70 font-medium mb-1">Cash disponible</div>
+          <div className="font-display font-extrabold text-xl">{formatEuro(game.cashBalance)}</div>
+          <div className="text-xs text-white/60 mt-0.5">
+            {Math.floor(game.cashBalance / Math.max(1, game.monthlyExpenses.total))} mois charges
           </div>
         </div>
-        <div className="text-6xl opacity-20">💰</div>
-      </div>
-
-      {/* Bandeau patrimoine */}
-      <Card className="p-5 overflow-hidden relative">
-        <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-brand-50 opacity-60" />
-        <div className="relative grid md:grid-cols-3 gap-4">
-          <StatBlock
-            icon={<TrendingUp size={20} />}
-            label="Patrimoine net"
-            value={formatEuro(netWorth)}
-            accent="brand"
-          />
-          <StatBlock
-            icon={<Banknote size={20} />}
-            label="Revenus passifs / mois"
-            value={formatEuro(passiveIncome)}
-            accent="emerald"
-          />
-          <StatBlock
-            icon={<Wallet size={20} />}
-            label="Cashflow mensuel"
-            value={formatEuroSigned(cashflow)}
-            accent={cashflow >= 0 ? 'emerald' : 'red'}
-          />
+        <div className="rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white p-4">
+          <div className="text-xs text-white/70 font-medium mb-1">Revenus passifs</div>
+          <div className="font-display font-extrabold text-xl">{formatEuro(passiveIncome)}/mois</div>
+          <div className="text-xs text-white/60 mt-0.5">
+            vs {formatEuro(game.player.salary)}/mois salaire
+          </div>
         </div>
-      </Card>
+      </div>
 
       {/* Progression vers le prochain palier */}
       <Card className="p-5">
@@ -322,37 +308,6 @@ const tooltipStyle = {
   border: '1px solid #e2e8f0',
   fontSize: 12,
   boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-}
-
-function StatBlock({
-  icon,
-  label,
-  value,
-  accent,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  accent: 'brand' | 'emerald' | 'red'
-}) {
-  const colors = {
-    brand: 'text-brand-600 bg-brand-50',
-    emerald: 'text-emerald-600 bg-emerald-50',
-    red: 'text-red-500 bg-red-50',
-  }
-  return (
-    <div className="flex items-center gap-3">
-      <div className={cn('w-11 h-11 rounded-2xl flex items-center justify-center shrink-0', colors[accent])}>
-        {icon}
-      </div>
-      <div>
-        <div className="text-xs text-slate-400 font-medium">{label}</div>
-        <div className="font-display font-extrabold text-xl text-slate-800">
-          {value}
-        </div>
-      </div>
-    </div>
-  )
 }
 
 function FlowColumn({
