@@ -27,6 +27,7 @@ import {
   totalMortgagePayments,
   MILESTONE_INFO,
 } from '../../utils/calculations'
+import { SKILLS, SKILL_BY_ID } from '../../data/skills'
 import { Card, CardHeader } from '../ui/Card'
 import { ProgressBar } from '../ui/ProgressBar'
 import { Icon } from '../ui/Icon'
@@ -91,6 +92,20 @@ export function Dashboard() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      {/* Banner liquidités */}
+      <div className="rounded-2xl p-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white flex items-center justify-between">
+        <div>
+          <div className="text-sm text-emerald-100 font-medium">Cash disponible</div>
+          <div className="font-display font-extrabold text-3xl">{formatEuro(game.cashBalance)}</div>
+          <div className="text-xs text-emerald-200 mt-0.5">
+            {game.cashBalance < game.monthlyExpenses.total * 2
+              ? '⚠️ Réserve faible — garde au moins 3 mois de charges'
+              : `≈ ${Math.floor(game.cashBalance / Math.max(1, game.monthlyExpenses.total))} mois de charges`}
+          </div>
+        </div>
+        <div className="text-6xl opacity-20">💰</div>
+      </div>
+
       {/* Bandeau patrimoine */}
       <Card className="p-5 overflow-hidden relative">
         <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-brand-50 opacity-60" />
@@ -412,6 +427,7 @@ function TipsCard({
     const hasETF = game.investments.some((i) => i.catalogId === 'bourse_etf')
     const hasLivret = game.investments.some((i) => i.catalogId === 'livret')
     const avInv = game.investments.find((i) => i.catalogId === 'assurance_vie')
+    const learned = game.player.learnedSkillIds || []
 
     if (game.cashBalance < 500) {
       result.push("⚠️ Tes liquidités sont très faibles. Ne pas investir davantage tant que tu n'as pas 3 mois de charges en réserve.")
@@ -447,6 +463,39 @@ function TipsCard({
       const ratio = Math.round((passiveIncome / game.player.salary) * 100)
       result.push(`📊 Tes revenus passifs couvrent ${ratio} % de ton salaire. Objectif : 100 % pour devenir rentier.`)
     }
+
+    // Conseils sur les compétences
+    if (game.player.activeTraining) {
+      const skillId = game.player.activeTraining.skillId
+      const skill = SKILL_BY_ID[skillId]
+      if (skill) {
+        const start = new Date(game.player.activeTraining.startDateISO)
+        const current = new Date(game.gameDateISO)
+        const monthsElapsed =
+          (current.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+          (current.getUTCMonth() - start.getUTCMonth())
+        const progress = skill.trainingMonths > 0
+          ? Math.round((monthsElapsed / skill.trainingMonths) * 100)
+          : 100
+        if (progress >= 80) {
+          result.push(`🎓 Ta formation "${skill.name}" se termine bientôt (${progress}%) !`)
+        }
+      }
+    } else {
+      const availableSkills = SKILLS.filter((s) => {
+        if (learned.includes(s.id)) return false
+        const prereqsMet = s.prerequisiteIds.every((p) => learned.includes(p))
+        const wealthMet = !s.minNetWorth || netWorth >= s.minNetWorth
+        return prereqsMet && wealthMet
+      })
+      if (availableSkills.length > 0) {
+        const next = availableSkills[0]
+        result.push(
+          `📚 Compétence disponible : "${next.name}" (${next.trainingMonths} mois${next.cost > 0 ? `, ${formatEuro(next.cost)}` : ''}) — ${next.benefits[0]}`,
+        )
+      }
+    }
+
     return result.slice(0, 3)
   }, [game, netWorth, passiveIncome, cashflow])
 

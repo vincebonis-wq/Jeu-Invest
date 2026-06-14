@@ -2,6 +2,7 @@ import {
   Bell,
   Briefcase,
   Building2,
+  GraduationCap,
   LayoutDashboard,
   PieChart,
   Store,
@@ -24,6 +25,7 @@ const NAV: NavItem[] = [
   { screen: 'marketplace', label: 'Investir', icon: Store },
   { screen: 'portfolio', label: 'Portefeuille', icon: Wallet },
   { screen: 'properties', label: 'Biens', icon: Building2 },
+  { screen: 'skills', label: 'Compétences', icon: GraduationCap },
   { screen: 'job', label: 'Mon Emploi', icon: Briefcase },
   { screen: 'events', label: 'Actualités', icon: Bell },
   { screen: 'stats', label: 'Statistiques', icon: PieChart },
@@ -34,6 +36,7 @@ export function Sidebar() {
   const setScreen = useGameStore((s) => s.setScreen)
   const cash = useGameStore((s) => s.game?.cashBalance ?? 0)
   const unread = useGameStore(selectUnreadCount)
+  const activeTraining = useGameStore((s) => s.game?.player.activeTraining)
 
   return (
     <>
@@ -65,6 +68,7 @@ export function Sidebar() {
               item={item}
               active={screen === item.screen}
               badge={item.screen === 'events' ? unread : 0}
+              pulse={item.screen === 'skills' && !!activeTraining}
               onClick={() => setScreen(item.screen)}
             />
           ))}
@@ -104,11 +108,13 @@ function NavButton({
   item,
   active,
   badge,
+  pulse,
   onClick,
 }: {
   item: NavItem
   active: boolean
   badge: number
+  pulse?: boolean
   onClick: () => void
 }) {
   const Icon = item.icon
@@ -116,7 +122,7 @@ function NavButton({
     <button
       onClick={onClick}
       className={cn(
-        'flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all',
+        'relative flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all',
         active
           ? 'bg-brand-500/20 text-brand-300'
           : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200',
@@ -128,6 +134,9 @@ function NavButton({
         <span className="ml-auto w-5 h-5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center">
           {badge > 9 ? '9+' : badge}
         </span>
+      )}
+      {pulse && badge === 0 && (
+        <span className="ml-auto w-2.5 h-2.5 rounded-full bg-brand-400 animate-pulse" />
       )}
     </button>
   )

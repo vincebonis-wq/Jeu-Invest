@@ -20,6 +20,7 @@ import {
   getMortgageQuote,
 } from '../engine/investments'
 import { JOB_BY_ID } from '../data/jobs'
+import { SKILL_BY_ID, AUTO_SKILLS } from '../data/skills'
 import {
   calcMonthlyPassiveIncome,
   calcNetWorth,
@@ -70,6 +71,7 @@ interface GameStore {
   sellInvestment: (instanceId: string) => BuyResult
   getMortgageQuoteFor: (catalogId: InvestmentCategory, price: number) => MortgageQuote
   changeJob: (jobId: string) => { success: boolean; message: string }
+  startSkillTraining: (skillId: string) => { success: boolean; message: string }
 
   // Événements
   resolveEvent: (eventId: string, actionIndex: number) => void
@@ -105,6 +107,8 @@ function createInitialState(
       salary: job.monthlySalary,
       ownsResidence,
       milestone: 'debutant',
+      learnedSkillIds: [...AUTO_SKILLS],
+      activeTraining: undefined,
     },
     gameDateISO: startDate.toISOString(),
     lastRealTimestamp: Date.now(),
@@ -232,6 +236,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const saved = JSON.parse(raw) as GameState
       if (!saved.player) return false
 
+      // Backward compat: initialize skills if missing
+      if (!saved.player.learnedSkillIds) {
+        saved.player.learnedSkillIds = [...AUTO_SKILLS]
+      }
+
       // Progression offline : même moteur que le live.
       const elapsedMs = Date.now() - saved.lastRealTimestamp
       const offlineDays = Math.min(
@@ -282,12 +291,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const game = get().game!
     const monthlyIncome =
       game.player.salary + calcMonthlyPassiveIncome(game)
+    const learned = game.player.learnedSkillIds || []
+    let rateReduction = 0
+    for (const skillId of learned) {
+      const s = SKILL_BY_ID[skillId]
+      if (s?.mortgageRateReduction) rateReduction += s.mortgageRateReduction
+    }
     return getMortgageQuote(
       price,
       game.cashBalance,
       monthlyIncome,
       totalMortgagePayments(game),
       game.economy,
+      20,
+      rateReduction,
     )
   },
 
@@ -316,6 +333,77 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return { success: true, message: `Nouveau poste : ${newJob.title} — ${newJob.monthlySalary.toLocaleString('fr-FR')} €/mois.` }
   },
 
+  startSkillTraining: (skillId) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+
+    const skill = SKILL_BY_ID[skillId]
+    if (!skill) return { success: false, message: 'Compétence introuvable.' }
+
+    const learned = game.player.learnedSkillIds || []
+    if (learned.includes(skillId)) {
+      return { success: false, message: 'Compétence déjà apprise.' }
+    }
+    if (game.player.activeTraining) {
+      const current = SKILL_BY_ID[game.player.activeTraining.skillId]?.name
+      return { success: false, message: `Formation en cours : ${current ?? game.player.activeTraining.skillId}. Termine-la d'abord.` }
+    }
+
+    // Vérifier prérequis
+    for (const prereq of skill.prerequisiteIds) {
+      if (!learned.includes(prereq)) {
+        const prereqSkill = SKILL_BY_ID[prereq]
+        return { success: false, message: `Prérequis manquant : ${prereqSkill?.name ?? prereq}` }
+      }
+    }
+
+    // Vérifier patrimoine minimum
+    if (skill.minNetWorth) {
+      const nw = calcNetWorth(game)
+      if (nw < skill.minNetWorth) {
+        return { success: false, message: `Patrimoine insuffisant. Requis : ${skill.minNetWorth.toLocaleString('fr-FR')} €` }
+      }
+    }
+
+    // Vérifier cash pour le coût
+    if (skill.cost > 0 && game.cashBalance < skill.cost) {
+      return { success: false, message: `Fonds insuffisants. Coût de la formation : ${skill.cost.toLocaleString('fr-FR')} €` }
+    }
+
+    // Si formation instantanée (0 mois), l'appliquer immédiatement
+    if (skill.trainingMonths === 0) {
+      const newSkills = [...learned, skill.id]
+      set((s) => ({
+        game: {
+          ...s.game!,
+          cashBalance: s.game!.cashBalance - skill.cost,
+          player: {
+            ...s.game!.player,
+            learnedSkillIds: newSkills,
+            activeTraining: undefined,
+          },
+        },
+      }))
+      get().saveGame()
+      return { success: true, message: `Compétence obtenue immédiatement — ${skill.name}` }
+    }
+
+    set((s) => ({
+      game: {
+        ...s.game!,
+        cashBalance: s.game!.cashBalance - skill.cost,
+        player: {
+          ...s.game!.player,
+          activeTraining: { skillId, startDateISO: s.game!.gameDateISO },
+        },
+      },
+    }))
+    get().saveGame()
+
+    const duration = `Formation de ${skill.trainingMonths} mois démarrée`
+    return { success: true, message: `${duration} — ${skill.name}` }
+  },
+
   buyInvestment: (catalogId, amount, useMortgage) => {
     const game = get().game
     if (!game) return { success: false, message: 'Aucune partie en cours.' }
@@ -336,6 +424,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
 
+    // Vérifier la compétence requise
+    if (item.skillRequired) {
+      const learned = game.player.learnedSkillIds || []
+      if (!learned.includes(item.skillRequired)) {
+        const skillName = SKILL_BY_ID[item.skillRequired]?.name ?? item.skillRequired
+        return { success: false, message: `Compétence requise : "${skillName}". Apprends-la dans l'onglet Compétences.` }
+      }
+    }
+
     // Cas immobilier avec crédit.
     if (useMortgage && item.canUseMortgage) {
       const quote = get().getMortgageQuoteFor(catalogId, amount)
@@ -350,7 +447,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
           message: `Cash insuffisant. Il te faut ${Math.round(totalCashNeeded).toLocaleString('fr-FR')} € (apport + frais).`,
         }
       }
-      const inv = createInvestment(catalogId, quote.downPayment, game.gameDateISO, null)
+      // Pass amount (full property price) so createInvestment knows the real value
+      const inv = createInvestment(catalogId, quote.downPayment, game.gameDateISO, null, amount)
       const mortgage = createMortgage(inv.instanceId, quote)
       inv.mortgageId = mortgage.id
       const furnitureCost = inv.propertyDetails?.furnitureCost ?? 0

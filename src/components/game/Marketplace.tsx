@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Lock, TrendingUp, Droplets, Clock, Check } from 'lucide-react'
+import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap } from 'lucide-react'
 import { INVESTMENT_CATALOG } from '../../data/investments'
+import { SKILL_BY_ID } from '../../data/skills'
 import type { InvestmentCatalogItem } from '../../types'
 import { useGameStore } from '../../store/gameStore'
 import { calcNetWorth } from '../../utils/calculations'
@@ -23,6 +24,7 @@ export function Marketplace() {
   const phase = game.economy.marketPhase
   const phaseInfo = PHASE_LABEL[phase]
   const [buyTarget, setBuyTarget] = useState<InvestmentCatalogItem | null>(null)
+  const learned = game.player.learnedSkillIds || []
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -48,12 +50,16 @@ export function Marketplace() {
 
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {INVESTMENT_CATALOG.map((item) => {
-          const unlocked = netWorth >= item.unlockThreshold
+          const skillOk = !item.skillRequired || learned.includes(item.skillRequired)
+          const wealthOk = netWorth >= item.unlockThreshold
+          const unlocked = skillOk && wealthOk
           return (
             <CatalogCard
               key={item.id}
               item={item}
               unlocked={unlocked}
+              missingSkill={!skillOk ? item.skillRequired : undefined}
+              missingWealth={!wealthOk}
               onBuy={() => setBuyTarget(item)}
             />
           )
@@ -70,10 +76,14 @@ export function Marketplace() {
 function CatalogCard({
   item,
   unlocked,
+  missingSkill,
+  missingWealth,
   onBuy,
 }: {
   item: InvestmentCatalogItem
   unlocked: boolean
+  missingSkill?: string
+  missingWealth?: boolean
   onBuy: () => void
 }) {
   return (
@@ -127,6 +137,11 @@ function CatalogCard({
             <Droplets size={11} />
             Liquidité {item.liquidityLevel}/5
           </Badge>
+          {item.purchaseCostPct > 0 && (
+            <Badge tone="warning">
+              Frais {(item.purchaseCostPct * 100).toFixed(0)}%
+            </Badge>
+          )}
         </div>
 
         {unlocked ? (
@@ -134,9 +149,25 @@ function CatalogCard({
             Investir
           </Button>
         ) : (
-          <div className="text-center py-2.5 px-3 rounded-xl bg-slate-50 text-xs font-semibold text-slate-400">
-            <Lock size={12} className="inline mr-1" />
-            Débloqué à {formatEuroCompact(item.unlockThreshold)} de patrimoine
+          <div className="text-center py-2.5 px-3 rounded-xl bg-slate-50 text-xs font-semibold text-slate-400 space-y-1">
+            {missingSkill && (
+              <div className="flex items-center gap-1 justify-center text-amber-600">
+                <GraduationCap size={11} />
+                Requiert : {SKILL_BY_ID[missingSkill]?.name ?? missingSkill}
+              </div>
+            )}
+            {missingWealth && (
+              <div className="flex items-center gap-1 justify-center">
+                <Lock size={11} />
+                Débloqué à {formatEuroCompact(item.unlockThreshold)} de patrimoine
+              </div>
+            )}
+            {!missingSkill && !missingWealth && (
+              <div className="flex items-center gap-1 justify-center">
+                <Lock size={11} />
+                Non disponible
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -286,6 +317,12 @@ function BuyModal({
           {!useMortgage && (
             <div className="rounded-2xl p-4 bg-slate-50 text-sm space-y-1.5">
               <Row label="Investissement" value={formatEuro(amount)} />
+              {item.purchaseCostPct > 0 && (
+                <Row label={`Frais d'achat (${(item.purchaseCostPct * 100).toFixed(0)}%)`} value={`-${formatEuro(amount * item.purchaseCostPct)}`} />
+              )}
+              {item.purchaseCostPct > 0 && (
+                <Row label="Valeur nette initiale" value={formatEuro(amount * (1 - item.purchaseCostPct))} bold />
+              )}
               {furnitureCost > 0 && (
                 <Row label="Mobilier (LMNP)" value={formatEuro(furnitureCost)} />
               )}

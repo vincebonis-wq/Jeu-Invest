@@ -33,13 +33,16 @@ const MAX_VALUE_HISTORY = 60
 
 /**
  * Crée une nouvelle instance d'investissement.
- * `amount` = capital propre engagé. `mortgage` éventuel pour l'immobilier.
+ * `amount` = capital propre engagé (down payment si crédit).
+ * `mortgage` éventuel pour l'immobilier.
+ * `propertyPrice` = prix total du bien (override pour achat avec crédit).
  */
 export function createInvestment(
   catalogId: InvestmentCategory,
   amount: number,
   gameDateISO: string,
   mortgage: Mortgage | null,
+  propertyPrice?: number,
 ): Investment {
   const item = getCatalogItem(catalogId)
   const gameDate = new Date(gameDateISO)
@@ -51,8 +54,18 @@ export function createInvestment(
     unlockDateISO = d.toISOString()
   }
 
-  // Valeur totale du bien = apport + capital emprunté (immobilier).
-  const assetValue = amount + (mortgage ? mortgage.principal : 0)
+  // Valeur totale du bien = prix fourni, ou apport + capital emprunté (immobilier).
+  const assetValue = propertyPrice ?? (amount + (mortgage ? mortgage.principal : 0))
+
+  // Applique les frais d'achat (frais notaire, spread, etc.)
+  const purchaseCostPct = item.purchaseCostPct ?? 0
+  const effectiveValue = assetValue * (1 - purchaseCostPct)
+
+  const rawCurrentValue = item.isRealEstate ? effectiveValue : (
+    item.yieldMode === 'compound'
+      ? amount * (1 - purchaseCostPct)
+      : amount * (1 - purchaseCostPct)
+  )
 
   const inv: Investment = {
     instanceId: uid('inv'),
@@ -61,19 +74,19 @@ export function createInvestment(
     purchaseDateISO: gameDateISO,
     purchasePrice: amount,
     totalInvested: amount,
-    currentValue: item.isRealEstate ? assetValue : amount,
+    currentValue: rawCurrentValue,
     annualReturnRate: effectiveAnnualRate(item.baseAnnualReturn, item.returnVariance),
     monthlyIncome: 0,
     realizedReturn: 0,
     isLocked: item.lockPeriodMonths !== null,
     unlockDateISO,
     mortgageId: mortgage ? mortgage.id : null,
-    valueHistory: [item.isRealEstate ? assetValue : amount],
+    valueHistory: [Math.round(rawCurrentValue)],
   }
 
-  // Détails spécifiques immobilier.
+  // Détails spécifiques immobilier — rent based on full asset value (before fees).
   if (catalogId === 'lmnp' || catalogId === 'immo_classique' || catalogId === 'parking') {
-    const price = assetValue
+    const price = assetValue  // full price for rent calculations
     const isParking = catalogId === 'parking'
     const sqm = isParking ? randInt(12, 18) : Math.round(price / randRange(2800, 4200))
     const yearlyYield = item.baseAnnualReturn
@@ -246,6 +259,7 @@ export function monthlyPaymentFor(
  * `propertyPrice` = prix du bien, `availableCash` = cash dispo (apport),
  * `monthlyIncome` = salaire + passif net pour le calcul DTI,
  * `existingPayments` = mensualités de crédits en cours.
+ * `rateReduction` = réduction du taux grâce aux compétences.
  */
 export function getMortgageQuote(
   propertyPrice: number,
@@ -254,9 +268,10 @@ export function getMortgageQuote(
   existingPayments: number,
   economy: EconomyState,
   termYears = 20,
+  rateReduction = 0,
 ): MortgageQuote {
   const termMonths = termYears * 12
-  const annualRate = economy.interestRateBase + 0.01 // marge banque
+  const annualRate = Math.max(0.01, economy.interestRateBase + 0.01 - rateReduction) // marge banque
   const minDownPayment = propertyPrice * (1 - MAX_LTV)
   const maxLoan = propertyPrice * MAX_LTV
 

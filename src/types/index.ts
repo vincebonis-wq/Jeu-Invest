@@ -26,6 +26,36 @@ export interface PlayerProfile {
   ownsResidence: boolean // si vrai, pas de loyer
   milestone: MilestoneLevel
   jobChangeCooldownMonths?: number  // mois restants avant de pouvoir changer de poste
+  learnedSkillIds: string[]         // compétences maîtrisées
+  activeTraining?: ActiveTraining   // formation en cours
+}
+
+export interface ReturnBonus {
+  category: InvestmentCategory
+  bonus: number
+}
+
+export interface GameSkill {
+  id: string
+  name: string
+  category: 'professional' | 'financial' | 'entrepreneurial'
+  description: string
+  prerequisiteIds: string[]
+  trainingMonths: number  // game months required
+  cost: number            // upfront €
+  benefits: string[]      // human-readable
+  unlocks?: InvestmentCategory[]
+  salaryBonus?: number    // e.g. 0.12 = +12% salary
+  expenseReduction?: number
+  returnBonus?: ReturnBonus[]
+  taxReduction?: number
+  mortgageRateReduction?: number
+  minNetWorth?: number
+}
+
+export interface ActiveTraining {
+  skillId: string
+  startDateISO: string
 }
 
 // ----------------------------------------------------------------------------
@@ -76,6 +106,8 @@ export interface InvestmentCatalogItem {
   icon: string // nom d'icône lucide
   color: string // couleur hex pour graphiques/cartes
   gradient: string // classes tailwind pour le dégradé de carte
+  purchaseCostPct: number  // transaction/notaire fees — baked into initial value loss
+  skillRequired?: string   // skill ID required to unlock
 }
 
 export interface PropertyDetails {
@@ -297,6 +329,7 @@ export type Screen =
   | 'events'
   | 'stats'
   | 'job'
+  | 'skills'
 
 export interface Toast {
   id: string

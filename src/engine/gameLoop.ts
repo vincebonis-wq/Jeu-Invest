@@ -6,6 +6,7 @@ import {
   randRange,
   stepMarketPhase,
 } from './economy'
+import { SKILL_BY_ID } from '../data/skills'
 import {
   applyDailyYield,
   applyMonthlyIncome,
@@ -304,6 +305,45 @@ function processMonth(ctx: MonthContext) {
   // 8b. Décrément du cooldown de changement de poste.
   if (player.jobChangeCooldownMonths && player.jobChangeCooldownMonths > 0) {
     player = { ...player, jobChangeCooldownMonths: player.jobChangeCooldownMonths - 1 }
+  }
+
+  // 8c. Vérification de la formation en cours.
+  if (player.activeTraining) {
+    const training = player.activeTraining
+    const startDate = new Date(training.startDateISO)
+    const currentDate = ctx.gameDate
+    const monthsElapsed =
+      (currentDate.getUTCFullYear() - startDate.getUTCFullYear()) * 12 +
+      (currentDate.getUTCMonth() - startDate.getUTCMonth())
+    const skill = SKILL_BY_ID[training.skillId]
+    if (skill && monthsElapsed >= skill.trainingMonths) {
+      // Formation terminée !
+      const newSkills = [...(player.learnedSkillIds || []), skill.id]
+      player = { ...player, learnedSkillIds: newSkills, activeTraining: undefined }
+
+      // Appliquer les effets permanents
+      if (skill.salaryBonus) {
+        player = { ...player, salary: Math.round(player.salary * (1 + skill.salaryBonus)) }
+      }
+      if (skill.expenseReduction) {
+        monthlyExpenses.base = Math.round(monthlyExpenses.base * (1 - skill.expenseReduction))
+        monthlyExpenses.total = monthlyExpenses.base + monthlyExpenses.rent + monthlyExpenses.insurance
+      }
+
+      events = [...events, {
+        id: `skill_${skill.id}_${Date.now()}`,
+        dateISO: gameDateISO,
+        category: 'personal' as const,
+        severity: 'good' as const,
+        title: `Compétence débloquée : ${skill.name}`,
+        description: `Formation terminée ! ${skill.benefits.join(', ')}.`,
+        financialImpact: 0,
+        isRead: false,
+        requiresAction: false,
+        resolved: true,
+      }]
+      toasts.push(toast(`🎓 ${skill.name}`, skill.benefits.join(' · '), 'good'))
+    }
   }
 
   // 9. Événements aléatoires.
