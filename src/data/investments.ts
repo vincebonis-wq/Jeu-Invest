@@ -27,6 +27,8 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     icon: 'PiggyBank',
     color: '#38bdf8',
     gradient: 'from-sky-400 to-sky-600',
+    purchaseCostPct: 0,
+    skillRequired: 'epargne_base',
   },
   {
     id: 'assurance_vie',
@@ -35,7 +37,7 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     description:
       'Le placement préféré des Français. Capital garanti, rendement régulier et fiscalité avantageuse après 8 ans.',
     minAmount: 500,
-    unlockThreshold: 500,
+    unlockThreshold: 0,
     riskLevel: 1,
     liquidityLevel: 4,
     baseAnnualReturn: 0.04,
@@ -49,6 +51,8 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     icon: 'ShieldCheck',
     color: '#22c55e',
     gradient: 'from-emerald-400 to-emerald-600',
+    purchaseCostPct: 0,
+    skillRequired: 'investissement_101',
   },
   {
     id: 'bourse_etf',
@@ -57,7 +61,7 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     description:
       'Investis sur les marchés mondiaux. Rendement élevé sur le long terme, mais attention aux krachs : la valeur peut chuter !',
     minAmount: 1000,
-    unlockThreshold: 1000,
+    unlockThreshold: 0,
     riskLevel: 3,
     liquidityLevel: 5,
     baseAnnualReturn: 0.085,
@@ -71,6 +75,8 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     icon: 'LineChart',
     color: '#6366f1',
     gradient: 'from-indigo-400 to-indigo-600',
+    purchaseCostPct: 0.005,
+    skillRequired: 'investissement_101',
   },
   {
     id: 'crowdfunding_immo',
@@ -93,6 +99,8 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     icon: 'Building',
     color: '#f97316',
     gradient: 'from-orange-400 to-orange-600',
+    purchaseCostPct: 0.02,
+    skillRequired: 'analyse_financiere',
   },
   {
     id: 'scpi',
@@ -115,6 +123,8 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     icon: 'Landmark',
     color: '#14b8a6',
     gradient: 'from-teal-400 to-teal-600',
+    purchaseCostPct: 0.10,
+    skillRequired: 'gestion_locative',
   },
   {
     id: 'business',
@@ -137,6 +147,8 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     icon: 'Rocket',
     color: '#a855f7',
     gradient: 'from-purple-400 to-fuchsia-600',
+    purchaseCostPct: 0,
+    skillRequired: 'entrepreneuriat',
   },
   {
     id: 'parking',
@@ -145,7 +157,7 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     description:
       "Petit investissement immobilier accessible. Peu de gestion, rendement stable de 6 à 8% via la location d'une place.",
     minAmount: 25000,
-    unlockThreshold: 25000,
+    unlockThreshold: 15000,
     riskLevel: 2,
     liquidityLevel: 2,
     baseAnnualReturn: 0.07,
@@ -159,6 +171,8 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     icon: 'CarFront',
     color: '#64748b',
     gradient: 'from-slate-400 to-slate-600',
+    purchaseCostPct: 0.08,
+    skillRequired: 'gestion_locative',
   },
   {
     id: 'lmnp',
@@ -181,6 +195,8 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     icon: 'BedDouble',
     color: '#ec4899',
     gradient: 'from-pink-400 to-rose-600',
+    purchaseCostPct: 0.08,
+    skillRequired: 'comptabilite_lmnp',
   },
   {
     id: 'immo_classique',
@@ -203,6 +219,8 @@ export const INVESTMENT_CATALOG: InvestmentCatalogItem[] = [
     icon: 'Home',
     color: '#eab308',
     gradient: 'from-amber-400 to-yellow-600',
+    purchaseCostPct: 0.08,
+    skillRequired: 'investissement_immo',
   },
 ]
 

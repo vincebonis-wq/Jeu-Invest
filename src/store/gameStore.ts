@@ -10,6 +10,7 @@ import type {
   Toast,
 } from '../types'
 import { getCatalogItem } from '../data/investments'
+import { SKILL_BY_ID, AUTO_SKILLS } from '../data/skills'
 import { advanceDays } from '../engine/gameLoop'
 import {
   capitalGainsTax,
@@ -71,6 +72,9 @@ interface GameStore {
   getMortgageQuoteFor: (catalogId: InvestmentCategory, price: number) => MortgageQuote
   changeJob: (jobId: string) => { success: boolean; message: string }
 
+  // Compétences
+  startSkillTraining: (skillId: string) => { success: boolean; message: string }
+
   // Événements
   resolveEvent: (eventId: string, actionIndex: number) => void
   markEventRead: (eventId: string) => void
@@ -105,6 +109,8 @@ function createInitialState(
       salary: job.monthlySalary,
       ownsResidence,
       milestone: 'debutant',
+      learnedSkillIds: [...AUTO_SKILLS],
+      activeTraining: undefined,
     },
     gameDateISO: startDate.toISOString(),
     lastRealTimestamp: Date.now(),
@@ -232,6 +238,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const saved = JSON.parse(raw) as GameState
       if (!saved.player) return false
 
+      // Rétrocompatibilité : ajout des champs manquants.
+      if (!saved.player.learnedSkillIds) {
+        saved.player.learnedSkillIds = [...AUTO_SKILLS]
+      }
+
       // Progression offline : même moteur que le live.
       const elapsedMs = Date.now() - saved.lastRealTimestamp
       const offlineDays = Math.min(
@@ -282,12 +293,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const game = get().game!
     const monthlyIncome =
       game.player.salary + calcMonthlyPassiveIncome(game)
+    // Cumul des réductions de taux via les compétences apprises.
+    const learnedSkillIds = game.player.learnedSkillIds || []
+    const rateReduction = learnedSkillIds.reduce((total, skillId) => {
+      const skill = SKILL_BY_ID[skillId]
+      return total + (skill?.mortgageRateReduction ?? 0)
+    }, 0)
     return getMortgageQuote(
       price,
       game.cashBalance,
       monthlyIncome,
       totalMortgagePayments(game),
       game.economy,
+      20,
+      rateReduction,
     )
   },
 
@@ -329,6 +348,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
         message: `Patrimoine insuffisant. Il te faut ${item.unlockThreshold.toLocaleString('fr-FR')} € de patrimoine pour débloquer ${item.name}.`,
       }
     }
+
+    // Vérification de la compétence requise.
+    if (item.skillRequired) {
+      const learned = game.player.learnedSkillIds || []
+      if (!learned.includes(item.skillRequired)) {
+        const skillName = SKILL_BY_ID[item.skillRequired]?.name ?? item.skillRequired
+        return { success: false, message: `Compétence requise : "${skillName}". Apprends-la dans l'onglet Compétences.` }
+      }
+    }
+
     if (amount < item.minAmount) {
       return {
         success: false,
@@ -350,7 +379,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           message: `Cash insuffisant. Il te faut ${Math.round(totalCashNeeded).toLocaleString('fr-FR')} € (apport + frais).`,
         }
       }
-      const inv = createInvestment(catalogId, quote.downPayment, game.gameDateISO, null)
+      const inv = createInvestment(catalogId, quote.downPayment, game.gameDateISO, null, amount)
       const mortgage = createMortgage(inv.instanceId, quote)
       inv.mortgageId = mortgage.id
       const furnitureCost = inv.propertyDetails?.furnitureCost ?? 0
@@ -426,6 +455,71 @@ export const useGameStore = create<GameStore>((set, get) => ({
       success: true,
       message: `Vendu pour ${Math.round(proceeds).toLocaleString('fr-FR')} € net${tax > 0 ? ` (impôt : ${Math.round(tax).toLocaleString('fr-FR')} €)` : ''}.`,
     }
+  },
+
+  startSkillTraining: (skillId) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+
+    const skill = SKILL_BY_ID[skillId]
+    if (!skill) return { success: false, message: 'Compétence introuvable.' }
+
+    const learned = game.player.learnedSkillIds || []
+    if (learned.includes(skillId)) {
+      return { success: false, message: 'Compétence déjà apprise.' }
+    }
+    if (game.player.activeTraining) {
+      return { success: false, message: `Formation en cours : ${SKILL_BY_ID[game.player.activeTraining.skillId]?.name}. Termine-la d'abord.` }
+    }
+
+    for (const prereq of skill.prerequisiteIds) {
+      if (!learned.includes(prereq)) {
+        const prereqSkill = SKILL_BY_ID[prereq]
+        return { success: false, message: `Prérequis manquant : ${prereqSkill?.name ?? prereq}` }
+      }
+    }
+
+    if (skill.minNetWorth) {
+      const nw = calcNetWorth(game)
+      if (nw < skill.minNetWorth) {
+        return { success: false, message: `Patrimoine insuffisant. Requis : ${skill.minNetWorth.toLocaleString('fr-FR')} €` }
+      }
+    }
+
+    if (skill.cost > 0 && game.cashBalance < skill.cost) {
+      return { success: false, message: `Fonds insuffisants. Coût de la formation : ${skill.cost.toLocaleString('fr-FR')} €` }
+    }
+
+    // Formation instantanée (trainingMonths === 0) : on marque directement comme apprise.
+    if (skill.trainingMonths === 0) {
+      set((s) => ({
+        game: {
+          ...s.game!,
+          cashBalance: s.game!.cashBalance - skill.cost,
+          player: {
+            ...s.game!.player,
+            learnedSkillIds: [...(s.game!.player.learnedSkillIds || []), skillId],
+          },
+        },
+      }))
+    } else {
+      set((s) => ({
+        game: {
+          ...s.game!,
+          cashBalance: s.game!.cashBalance - skill.cost,
+          player: {
+            ...s.game!.player,
+            activeTraining: { skillId, startDateISO: s.game!.gameDateISO },
+          },
+        },
+      }))
+    }
+    get().saveGame()
+
+    const duration = skill.trainingMonths === 0
+      ? 'Immédiatement disponible'
+      : `Formation de ${skill.trainingMonths} mois démarrée`
+    return { success: true, message: `${duration} — ${skill.name}` }
   },
 
   resolveEvent: (eventId, actionIndex) => {

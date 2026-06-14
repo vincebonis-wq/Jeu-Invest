@@ -43,6 +43,14 @@ export function Header() {
           </div>
         </div>
 
+        {/* Centre : cash */}
+        <div className="hidden md:flex items-center gap-1.5 text-sm">
+          <span className="text-slate-400">Cash :</span>
+          <span className="font-display font-bold text-emerald-600">
+            {formatEuroCompact(game.cashBalance)}
+          </span>
+        </div>
+
         {/* Droite : horloge */}
         <GameClock />
       </div>

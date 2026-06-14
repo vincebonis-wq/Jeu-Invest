@@ -34,12 +34,14 @@ const MAX_VALUE_HISTORY = 60
 /**
  * Crée une nouvelle instance d'investissement.
  * `amount` = capital propre engagé. `mortgage` éventuel pour l'immobilier.
+ * `propertyPrice` = prix total du bien (si différent de amount, e.g. pour les crédits).
  */
 export function createInvestment(
   catalogId: InvestmentCategory,
   amount: number,
   gameDateISO: string,
   mortgage: Mortgage | null,
+  propertyPrice?: number,
 ): Investment {
   const item = getCatalogItem(catalogId)
   const gameDate = new Date(gameDateISO)
@@ -51,8 +53,14 @@ export function createInvestment(
     unlockDateISO = d.toISOString()
   }
 
-  // Valeur totale du bien = apport + capital emprunté (immobilier).
-  const assetValue = amount + (mortgage ? mortgage.principal : 0)
+  // Valeur totale du bien = prix fourni ou apport + capital emprunté.
+  const assetValue = propertyPrice ?? (amount + (mortgage ? mortgage.principal : 0))
+
+  // Frais d'achat (notaire, transaction) réduisent la valeur initiale.
+  const purchaseCostPct = item.purchaseCostPct ?? 0
+  const effectiveValue = assetValue * (1 - purchaseCostPct)
+
+  const startValue = item.isRealEstate ? effectiveValue : (amount * (1 - purchaseCostPct))
 
   const inv: Investment = {
     instanceId: uid('inv'),
@@ -61,17 +69,17 @@ export function createInvestment(
     purchaseDateISO: gameDateISO,
     purchasePrice: amount,
     totalInvested: amount,
-    currentValue: item.isRealEstate ? assetValue : amount,
+    currentValue: startValue,
     annualReturnRate: effectiveAnnualRate(item.baseAnnualReturn, item.returnVariance),
     monthlyIncome: 0,
     realizedReturn: 0,
     isLocked: item.lockPeriodMonths !== null,
     unlockDateISO,
     mortgageId: mortgage ? mortgage.id : null,
-    valueHistory: [item.isRealEstate ? assetValue : amount],
+    valueHistory: [startValue],
   }
 
-  // Détails spécifiques immobilier.
+  // Détails spécifiques immobilier (basés sur le prix complet pour les loyers).
   if (catalogId === 'lmnp' || catalogId === 'immo_classique' || catalogId === 'parking') {
     const price = assetValue
     const isParking = catalogId === 'parking'
@@ -254,9 +262,10 @@ export function getMortgageQuote(
   existingPayments: number,
   economy: EconomyState,
   termYears = 20,
+  rateReduction = 0,
 ): MortgageQuote {
   const termMonths = termYears * 12
-  const annualRate = economy.interestRateBase + 0.01 // marge banque
+  const annualRate = Math.max(0.01, economy.interestRateBase + 0.01 - rateReduction) // marge banque
   const minDownPayment = propertyPrice * (1 - MAX_LTV)
   const maxLoan = propertyPrice * MAX_LTV
 

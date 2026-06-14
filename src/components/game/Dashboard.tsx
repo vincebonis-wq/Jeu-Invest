@@ -91,6 +91,20 @@ export function Dashboard() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      {/* Cash disponible */}
+      <div className="rounded-2xl p-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white flex items-center justify-between">
+        <div>
+          <div className="text-sm text-emerald-100 font-medium">Cash disponible</div>
+          <div className="font-display font-extrabold text-3xl">{formatEuro(game.cashBalance)}</div>
+          <div className="text-xs text-emerald-200 mt-0.5">
+            {game.cashBalance < game.monthlyExpenses.total * 2
+              ? '⚠️ Réserve faible — garde au moins 3 mois de charges'
+              : `≈ ${Math.floor(game.cashBalance / game.monthlyExpenses.total)} mois de charges`}
+          </div>
+        </div>
+        <div className="text-6xl opacity-20">💰</div>
+      </div>
+
       {/* Bandeau patrimoine */}
       <Card className="p-5 overflow-hidden relative">
         <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-brand-50 opacity-60" />

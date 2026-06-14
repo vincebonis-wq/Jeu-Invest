@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Lock, TrendingUp, Droplets, Clock, Check } from 'lucide-react'
+import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap } from 'lucide-react'
 import { INVESTMENT_CATALOG } from '../../data/investments'
+import { SKILL_BY_ID } from '../../data/skills'
 import type { InvestmentCatalogItem } from '../../types'
 import { useGameStore } from '../../store/gameStore'
 import { calcNetWorth } from '../../utils/calculations'
@@ -48,12 +49,18 @@ export function Marketplace() {
 
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {INVESTMENT_CATALOG.map((item) => {
-          const unlocked = netWorth >= item.unlockThreshold
+          const learned = game.player.learnedSkillIds || []
+          const skillOk = !item.skillRequired || learned.includes(item.skillRequired)
+          const wealthOk = netWorth >= (item.unlockThreshold ?? 0)
+          const unlocked = skillOk && wealthOk
+          const missingSkill = !skillOk ? SKILL_BY_ID[item.skillRequired!]?.name : undefined
           return (
             <CatalogCard
               key={item.id}
               item={item}
               unlocked={unlocked}
+              missingSkill={missingSkill}
+              missingWealth={!wealthOk ? item.unlockThreshold : undefined}
               onBuy={() => setBuyTarget(item)}
             />
           )
@@ -70,10 +77,14 @@ export function Marketplace() {
 function CatalogCard({
   item,
   unlocked,
+  missingSkill,
+  missingWealth,
   onBuy,
 }: {
   item: InvestmentCatalogItem
   unlocked: boolean
+  missingSkill?: string
+  missingWealth?: number
   onBuy: () => void
 }) {
   return (
@@ -133,10 +144,15 @@ function CatalogCard({
           <Button fullWidth onClick={onBuy}>
             Investir
           </Button>
+        ) : missingSkill ? (
+          <div className="text-center py-2.5 px-3 rounded-xl bg-amber-50 text-xs font-semibold text-amber-600">
+            <GraduationCap size={12} className="inline mr-1" />
+            Compétence requise : {missingSkill}
+          </div>
         ) : (
           <div className="text-center py-2.5 px-3 rounded-xl bg-slate-50 text-xs font-semibold text-slate-400">
             <Lock size={12} className="inline mr-1" />
-            Débloqué à {formatEuroCompact(item.unlockThreshold)} de patrimoine
+            Débloqué à {formatEuroCompact(missingWealth ?? item.unlockThreshold)} de patrimoine
           </div>
         )}
       </div>

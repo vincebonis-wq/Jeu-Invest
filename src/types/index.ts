@@ -17,6 +17,34 @@ export type MilestoneLevel =
   | 'millionnaire' // >= 1M
   | 'multimillionnaire' // >= 5M
 
+export interface ReturnBonus {
+  category: InvestmentCategory
+  bonus: number
+}
+
+export interface GameSkill {
+  id: string
+  name: string
+  category: 'professional' | 'financial' | 'entrepreneurial'
+  description: string
+  prerequisiteIds: string[]
+  trainingMonths: number
+  cost: number
+  benefits: string[]
+  unlocks?: InvestmentCategory[]
+  salaryBonus?: number
+  expenseReduction?: number
+  returnBonus?: ReturnBonus[]
+  taxReduction?: number
+  mortgageRateReduction?: number
+  minNetWorth?: number
+}
+
+export interface ActiveTraining {
+  skillId: string
+  startDateISO: string
+}
+
 export interface PlayerProfile {
   name: string
   age: number // âge de jeu, +1 chaque année de jeu
@@ -26,6 +54,8 @@ export interface PlayerProfile {
   ownsResidence: boolean // si vrai, pas de loyer
   milestone: MilestoneLevel
   jobChangeCooldownMonths?: number  // mois restants avant de pouvoir changer de poste
+  learnedSkillIds: string[]
+  activeTraining?: ActiveTraining
 }
 
 // ----------------------------------------------------------------------------
@@ -76,6 +106,8 @@ export interface InvestmentCatalogItem {
   icon: string // nom d'icône lucide
   color: string // couleur hex pour graphiques/cartes
   gradient: string // classes tailwind pour le dégradé de carte
+  purchaseCostPct: number // frais notaire/transaction — appliqués à la valeur initiale
+  skillRequired?: string // skill ID requis pour débloquer
 }
 
 export interface PropertyDetails {
@@ -297,6 +329,7 @@ export type Screen =
   | 'events'
   | 'stats'
   | 'job'
+  | 'skills'
 
 export interface Toast {
   id: string

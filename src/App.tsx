@@ -11,6 +11,7 @@ import { Properties } from './components/game/Properties'
 import { Events } from './components/game/Events'
 import { Stats } from './components/game/Stats'
 import { Job } from './components/game/Job'
+import { Skills } from './components/game/Skills'
 import { Modal } from './components/ui/Modal'
 import { Button } from './components/ui/Button'
 import { formatEuroSigned } from './utils/formatting'
@@ -23,6 +24,7 @@ const SCREENS = {
   events: Events,
   stats: Stats,
   job: Job,
+  skills: Skills,
 }
 
 const SCREEN_TITLES: Record<string, string> = {
@@ -33,6 +35,7 @@ const SCREEN_TITLES: Record<string, string> = {
   events: 'Actualités',
   stats: 'Statistiques',
   job: 'Mon Emploi',
+  skills: 'Compétences',
 }
 
 export default function App() {
