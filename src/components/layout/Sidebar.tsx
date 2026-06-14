@@ -1,5 +1,6 @@
 import {
   Bell,
+  Briefcase,
   Building2,
   LayoutDashboard,
   PieChart,
@@ -23,6 +24,7 @@ const NAV: NavItem[] = [
   { screen: 'marketplace', label: 'Investir', icon: Store },
   { screen: 'portfolio', label: 'Portefeuille', icon: Wallet },
   { screen: 'properties', label: 'Biens', icon: Building2 },
+  { screen: 'job', label: 'Mon Emploi', icon: Briefcase },
   { screen: 'events', label: 'Actualités', icon: Bell },
   { screen: 'stats', label: 'Statistiques', icon: PieChart },
 ]
@@ -36,22 +38,22 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop : sidebar verticale */}
-      <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-white border-r border-slate-200 p-4">
+      <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-slate-900 border-r border-slate-700/50 p-4">
         <div className="flex items-center gap-2 px-2 mb-6">
           <div className="w-9 h-9 rounded-xl stat-gradient flex items-center justify-center text-white font-display font-extrabold text-lg">
             P
           </div>
-          <span className="font-display font-extrabold text-lg text-slate-800">
+          <span className="font-display font-extrabold text-lg text-white">
             Patrimoine
           </span>
         </div>
 
         {/* Cash dispo */}
-        <div className="mb-4 p-3 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-100">
-          <div className="text-xs text-emerald-600 font-semibold mb-0.5">
+        <div className="mb-4 p-3 rounded-2xl bg-emerald-500/20 border border-emerald-500/30">
+          <div className="text-xs text-emerald-400 font-semibold mb-0.5">
             Liquidités
           </div>
-          <div className="font-display font-extrabold text-xl text-emerald-700">
+          <div className="font-display font-extrabold text-xl text-emerald-300">
             {formatEuroCompact(cash)}
           </div>
         </div>
@@ -116,8 +118,8 @@ function NavButton({
       className={cn(
         'flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all',
         active
-          ? 'bg-brand-50 text-brand-700'
-          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700',
+          ? 'bg-brand-500/20 text-brand-300'
+          : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200',
       )}
     >
       <Icon size={20} />

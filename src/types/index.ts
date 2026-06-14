@@ -25,6 +25,7 @@ export interface PlayerProfile {
   salary: number // salaire net mensuel
   ownsResidence: boolean // si vrai, pas de loyer
   milestone: MilestoneLevel
+  jobChangeCooldownMonths?: number  // mois restants avant de pouvoir changer de poste
 }
 
 // ----------------------------------------------------------------------------
@@ -251,6 +252,8 @@ export interface StatsSnapshot {
   dateISO: string
   netWorth: number
   cash: number
+  lockedValue?: number     // valeur des investissements bloqués
+  unlockedValue?: number   // valeur des investissements disponibles
   passiveIncome: number
   salary: number
   expenses: number
@@ -293,6 +296,7 @@ export type Screen =
   | 'properties'
   | 'events'
   | 'stats'
+  | 'job'
 
 export interface Toast {
   id: string

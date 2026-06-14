@@ -38,22 +38,10 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     title: 'Licenciement économique 😰',
     description:
       'Mauvaise nouvelle : tu perds ton emploi. Ton salaire est réduit de 35% (chômage) jusqu\'à ce que tu rebondisses.',
-    monthlyProbability: 0.008,
+    monthlyProbability: 0.003,
     conditions: [{ type: 'isEmployed', value: 1 }],
     impactRange: [0, 0],
     cooldownMonths: 24,
-  },
-  {
-    id: 'new_job',
-    category: 'job',
-    severity: 'good',
-    title: 'Nouveau poste mieux payé',
-    description:
-      'Tu changes d\'entreprise pour un poste plus rémunérateur : +8% de salaire.',
-    monthlyProbability: 0.02,
-    conditions: [{ type: 'isEmployed', value: 1 }],
-    impactRange: [0, 0],
-    cooldownMonths: 14,
   },
 
   // ----- MARCHÉ -----

@@ -301,6 +301,11 @@ function processMonth(ctx: MonthContext) {
     eventCooldowns[key] = Math.max(0, eventCooldowns[key] - 1)
   }
 
+  // 8b. Décrément du cooldown de changement de poste.
+  if (player.jobChangeCooldownMonths && player.jobChangeCooldownMonths > 0) {
+    player = { ...player, jobChangeCooldownMonths: player.jobChangeCooldownMonths - 1 }
+  }
+
   // 9. Événements aléatoires.
   const netWorthNow =
     cash + investments.reduce((s, i) => s + i.currentValue, 0) -
@@ -333,12 +338,16 @@ function processMonth(ctx: MonthContext) {
 
   // 10. Snapshot statistique.
   const passiveIncome = investments.reduce((s, i) => s + i.monthlyIncome, 0)
+  const lockedValue = investments.filter(i => i.isLocked).reduce((s, i) => s + i.currentValue, 0)
+  const unlockedValue = investments.filter(i => !i.isLocked).reduce((s, i) => s + i.currentValue, 0)
   stats = [
     ...stats,
     {
       dateISO: gameDateISO,
       netWorth: Math.round(netWorthNow),
       cash: Math.round(cash),
+      lockedValue: Math.round(lockedValue),
+      unlockedValue: Math.round(unlockedValue),
       passiveIncome: Math.round(passiveIncome),
       salary: Math.round(player.salary),
       expenses: Math.round(monthlyExpenses.total + mortgagePaid),

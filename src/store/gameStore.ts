@@ -19,6 +19,7 @@ import {
   createMortgage,
   getMortgageQuote,
 } from '../engine/investments'
+import { JOB_BY_ID } from '../data/jobs'
 import {
   calcMonthlyPassiveIncome,
   calcNetWorth,
@@ -68,6 +69,7 @@ interface GameStore {
   buyInvestment: (catalogId: InvestmentCategory, amount: number, useMortgage: boolean) => BuyResult
   sellInvestment: (instanceId: string) => BuyResult
   getMortgageQuoteFor: (catalogId: InvestmentCategory, price: number) => MortgageQuote
+  changeJob: (jobId: string) => { success: boolean; message: string }
 
   // Événements
   resolveEvent: (eventId: string, actionIndex: number) => void
@@ -106,7 +108,7 @@ function createInitialState(
     },
     gameDateISO: startDate.toISOString(),
     lastRealTimestamp: Date.now(),
-    speedMultiplier: 5,
+    speedMultiplier: 1,
     isPaused: false,
     cashBalance: savings,
     investments: [],
@@ -188,7 +190,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       lastTick = now
 
       // 1 seconde réelle = 1 jour de jeu, scalé par la vitesse.
-      accumulator += (deltaMs / 1000) * game.speedMultiplier
+      accumulator += (deltaMs / 2000) * game.speedMultiplier
       let wholeDays = Math.floor(accumulator)
       if (wholeDays <= 0) return
       accumulator -= wholeDays
@@ -289,6 +291,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
     )
   },
 
+  changeJob: (jobId) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+    if ((game.player.jobChangeCooldownMonths ?? 0) > 0) {
+      return { success: false, message: `Changement de poste disponible dans ${game.player.jobChangeCooldownMonths} mois.` }
+    }
+    const newJob = JOB_BY_ID[jobId]
+    if (!newJob) return { success: false, message: 'Poste introuvable.' }
+    if (newJob.id === game.player.jobId) return { success: false, message: 'Tu occupes déjà ce poste.' }
+    set((s) => ({
+      game: {
+        ...s.game!,
+        player: {
+          ...s.game!.player,
+          jobId: newJob.id,
+          jobTitle: newJob.title,
+          salary: newJob.monthlySalary,
+          jobChangeCooldownMonths: 3,
+        },
+      },
+    }))
+    get().saveGame()
+    return { success: true, message: `Nouveau poste : ${newJob.title} — ${newJob.monthlySalary.toLocaleString('fr-FR')} €/mois.` }
+  },
+
   buyInvestment: (catalogId, amount, useMortgage) => {
     const game = get().game
     if (!game) return { success: false, message: 'Aucune partie en cours.' }
@@ -378,7 +405,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ? game.mortgages.find((m) => m.id === inv.mortgageId)
       : null
     const debt = mortgage ? mortgage.outstandingBalance : 0
-    const tax = capitalGainsTax(inv)
+    const tax = capitalGainsTax(inv, game.gameDateISO)
     const proceeds = inv.currentValue - debt - tax
 
     if (proceeds < 0) {
