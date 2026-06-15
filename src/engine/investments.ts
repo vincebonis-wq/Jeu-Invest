@@ -102,6 +102,8 @@ export function createInvestment(
       squareMeters: sqm,
       furnitureCost,
       monthlyRent,
+      baseMonthlyRent: monthlyRent,
+      tenantProfile: 'professional',
       isVacant: false,
       vacancyMonthsLeft: 0,
       maintenanceCostYearly: Math.round(price * 0.008),
@@ -275,9 +277,9 @@ export function getMortgageQuote(
   const minDownPayment = propertyPrice * (1 - MAX_LTV)
   const maxLoan = propertyPrice * MAX_LTV
 
-  // Apport = min entre cash dispo et ce qu'on doit mettre, on emprunte le reste.
-  const downPayment = Math.max(minDownPayment, Math.min(availableCash, propertyPrice))
-  const principal = Math.max(0, propertyPrice - downPayment)
+  // Apport fixe à 20% du prix. L'acquéreur emprunte toujours les 80% restants.
+  const downPayment = minDownPayment
+  const principal = propertyPrice - downPayment
   const monthlyPayment = monthlyPaymentFor(principal, annualRate, termMonths)
 
   const dti = (existingPayments + monthlyPayment) / Math.max(1, monthlyIncome)

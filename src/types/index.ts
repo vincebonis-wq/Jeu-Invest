@@ -116,6 +116,8 @@ export interface PropertyDetails {
   squareMeters: number
   furnitureCost: number // LMNP
   monthlyRent: number
+  baseMonthlyRent?: number  // loyer de référence avant profil locataire
+  tenantProfile?: string    // 'professional' | 'student' | 'family'
   isVacant: boolean
   vacancyMonthsLeft: number
   maintenanceCostYearly: number

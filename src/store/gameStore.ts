@@ -87,6 +87,9 @@ interface GameStore {
   clearAutoBuy: () => void
   dismissTutorial: () => void
   claimGig: (gigId: string) => { success: boolean; message: string; reward?: number }
+
+  // Gestion locataires
+  selectTenant: (instanceId: string, profile: string, rentMultiplier: number, maintenanceFactor: number) => void
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -203,8 +206,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const deltaMs = now - lastTick
       lastTick = now
 
-      // 1 seconde réelle = 1 jour de jeu, scalé par la vitesse.
-      accumulator += (deltaMs / 2000) * game.speedMultiplier
+      // 1 seconde réelle = 0,25 jour de jeu à ×1 (4 secondes par jour de jeu), scalé par la vitesse.
+      accumulator += (deltaMs / 4000) * game.speedMultiplier
       let wholeDays = Math.floor(accumulator)
       if (wholeDays <= 0) return
       accumulator -= wholeDays
@@ -671,6 +674,32 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }))
     get().saveGame()
     return { success: true, message: `${gig.emoji} +${reward} € — ${gig.label} !`, reward }
+  },
+
+  selectTenant: (instanceId, profile, rentMultiplier, maintenanceFactor) => {
+    set((s) => ({
+      game: {
+        ...s.game!,
+        investments: s.game!.investments.map((inv) => {
+          if (inv.instanceId !== instanceId || !inv.propertyDetails) return inv
+          const base = inv.propertyDetails.baseMonthlyRent ?? inv.propertyDetails.monthlyRent
+          const baseMaintenance = Math.round(inv.currentValue * 0.008)
+          return {
+            ...inv,
+            propertyDetails: {
+              ...inv.propertyDetails,
+              monthlyRent: Math.round(base * rentMultiplier),
+              baseMonthlyRent: base,
+              tenantProfile: profile,
+              isVacant: false,
+              vacancyMonthsLeft: 0,
+              maintenanceCostYearly: Math.round(baseMaintenance * maintenanceFactor),
+            },
+          }
+        }),
+      },
+    }))
+    get().saveGame()
   },
 }))
 
