@@ -21,6 +21,7 @@ import {
 } from '../engine/investments'
 import { JOB_BY_ID } from '../data/jobs'
 import { SKILL_BY_ID, AUTO_SKILLS } from '../data/skills'
+import { GIG_BY_ID } from '../data/gigs'
 import {
   calcMonthlyPassiveIncome,
   calcNetWorth,
@@ -49,6 +50,7 @@ interface GameStore {
   selectedInvestmentId: string | null
   toasts: Toast[]
   isRunning: boolean
+  pendingAutoBuy: InvestmentCategory | null
 
   // Cycle de vie
   createCharacter: (job: JobProfile, name: string, age: number, savings: number, ownsResidence: boolean) => void
@@ -79,6 +81,12 @@ interface GameStore {
   markAllEventsRead: () => void
   dismissToast: (id: string) => void
   dismissOnboarding: () => void
+
+  // Tutoriel guidé & missions express
+  triggerAutoBuy: (catalogId: InvestmentCategory) => void
+  clearAutoBuy: () => void
+  dismissTutorial: () => void
+  claimGig: (gigId: string) => { success: boolean; message: string; reward?: number }
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -169,6 +177,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedInvestmentId: null,
   toasts: [],
   isRunning: false,
+  pendingAutoBuy: null,
 
   createCharacter: (job, name, age, savings, ownsResidence) => {
     const game = createInitialState(job, name, age, savings, ownsResidence)
@@ -625,6 +634,43 @@ export const useGameStore = create<GameStore>((set, get) => ({
   dismissOnboarding: () => {
     set((s) => s.game ? { game: { ...s.game, hasSeenOnboarding: true } } : s)
     get().saveGame()
+  },
+
+  triggerAutoBuy: (catalogId) => set({ pendingAutoBuy: catalogId, screen: 'marketplace' }),
+
+  clearAutoBuy: () => set({ pendingAutoBuy: null }),
+
+  dismissTutorial: () => {
+    set((s) => s.game ? { game: { ...s.game, tutorialDismissed: true } } : s)
+    get().saveGame()
+  },
+
+  claimGig: (gigId) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+    const gig = GIG_BY_ID[gigId]
+    if (!gig) return { success: false, message: 'Mission introuvable.' }
+
+    const cooldowns = game.gigCooldowns || {}
+    const now = new Date(game.gameDateISO).getTime()
+    const availableAt = cooldowns[gigId] ? new Date(cooldowns[gigId]).getTime() : 0
+    if (now < availableAt) {
+      const daysLeft = Math.ceil((availableAt - now) / 86400000)
+      return { success: false, message: `Encore ${daysLeft} jour${daysLeft > 1 ? 's' : ''} avant de pouvoir refaire cette mission.` }
+    }
+
+    const reward = Math.round(gig.minReward + Math.random() * (gig.maxReward - gig.minReward))
+    const nextISO = new Date(now + gig.cooldownDays * 86400000).toISOString()
+
+    set((s) => ({
+      game: {
+        ...s.game!,
+        cashBalance: s.game!.cashBalance + reward,
+        gigCooldowns: { ...(s.game!.gigCooldowns || {}), [gigId]: nextISO },
+      },
+    }))
+    get().saveGame()
+    return { success: true, message: `${gig.emoji} +${reward} € — ${gig.label} !`, reward }
   },
 }))
 

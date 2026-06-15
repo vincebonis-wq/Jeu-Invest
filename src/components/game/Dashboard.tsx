@@ -30,6 +30,7 @@ import { Card, CardHeader } from '../ui/Card'
 import { ProgressBar } from '../ui/ProgressBar'
 import { NumberTicker } from '../ui/NumberTicker'
 import { OnboardingGuide } from '../ui/OnboardingGuide'
+import { GigsCard } from './GigsCard'
 import { Icon } from '../ui/Icon'
 import {
   formatEuro,
@@ -152,6 +153,9 @@ export function Dashboard() {
 
       {/* Conseils contextuels */}
       <TipsCard game={game} netWorth={netWorth} passiveIncome={passiveIncome} cashflow={cashflow} />
+
+      {/* Missions express — petit revenu d'appoint */}
+      <GigsCard />
 
       <div className="grid lg:grid-cols-3 gap-4">
         {/* Évolution du patrimoine */}
@@ -384,19 +388,27 @@ function TipsCard({
     const avInv = game.investments.find((i) => i.catalogId === 'assurance_vie')
     const learned = game.player.learnedSkillIds || []
 
+    const knowsInvesting = learned.includes('investissement_101')
+    const knowsRental = learned.includes('gestion_locative')
+
     if (game.cashBalance < 500) {
       result.push("⚠️ Tes liquidités sont très faibles. Ne pas investir davantage tant que tu n'as pas 3 mois de charges en réserve.")
     }
     if (game.investments.length === 0 && game.cashBalance >= 10) {
       result.push("💡 Commence par le Livret A — sans risque, pas de minimum. Même 100 € travaillent à 1,5 %/an.")
     }
-    if (hasLivret && !hasETF && netWorth >= 1000) {
+    // L'ETF n'est suggéré que si la compétence "Investissement 101" est acquise.
+    if (hasLivret && !hasETF && knowsInvesting && netWorth >= 1000) {
       result.push("📈 Tu peux ouvrir un ETF ! Rendement historique ~8 %/an vs 1,5 % pour le Livret A. Idéal sur 5 ans+.")
+    }
+    // Sinon, on oriente vers la formation qui débloque la bourse.
+    if (hasLivret && !knowsInvesting && !game.player.activeTraining) {
+      result.push("🎓 Pour investir en bourse ou en assurance vie, forme-toi d'abord avec \"Investissement 101\" dans l'onglet Carrière.")
     }
     if (marketPhase === 'crash' && hasETF) {
       result.push("🔥 Krach en cours — ne vends pas tes ETF en panique. Les krachs durent en moyenne 12 mois, puis le marché repart.")
     }
-    if (marketPhase === 'crash' && game.cashBalance > 3000 && netWorth >= 1000) {
+    if (marketPhase === 'crash' && knowsInvesting && game.cashBalance > 3000 && netWorth >= 1000) {
       result.push("💎 Opportunité rare : investir en bourse pendant un krach, c'est acheter en soldes. Le risque de court terme cache un gain de long terme.")
     }
     if (avInv) {
@@ -411,7 +423,7 @@ function TipsCard({
     if (cashflow < -300) {
       result.push("🚨 Cashflow négatif ! Tes sorties dépassent tes rentrées. Risque d'épuiser tes liquidités — vends un actif ou réduis les charges.")
     }
-    if (netWorth >= 50000 && !game.investments.some((i) => i.catalogId === 'parking')) {
+    if (knowsRental && netWorth >= 50000 && !game.investments.some((i) => i.catalogId === 'parking')) {
       result.push("🏠 À 50 000 € de patrimoine, un parking avec crédit devient possible. Rendement 7 %/an + effet de levier bancaire.")
     }
     if (passiveIncome > 0 && passiveIncome < game.player.salary) {

@@ -12,6 +12,7 @@ import { Events } from './components/game/Events'
 import { Stats } from './components/game/Stats'
 import { Job } from './components/game/Job'
 import { Skills } from './components/game/Skills'
+import { FirstStepModal } from './components/game/FirstStepModal'
 import { Modal } from './components/ui/Modal'
 import { Button } from './components/ui/Button'
 import { formatEuroSigned } from './utils/formatting'
@@ -84,6 +85,7 @@ export default function App() {
       </div>
       <Toaster />
       <PendingActionModal />
+      <FirstStepModal />
     </div>
   )
 }

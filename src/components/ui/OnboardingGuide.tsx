@@ -13,13 +13,13 @@ const STEPS = [
   {
     emoji: '🏦',
     title: 'Étape 1 : Livret A',
-    text: 'Mets ton cash sur le Livret A dès maintenant. C\'est ton filet de sécurité à 1,5%/an. Va dans "Investir" → Livret A.',
+    text: 'Mets ton cash sur le Livret A dès maintenant. C\'est ton filet de sécurité à 1,5%/an. Va dans "Investissements" → Livret A.',
     action: 'marketplace' as Screen,
   },
   {
     emoji: '🎓',
     title: 'Étape 2 : Se former',
-    text: 'Va dans "Compétences" et démarre "Investissement 101" (2 mois, 200€). Ça débloque la bourse et l\'assurance vie.',
+    text: 'Va dans "Carrière" et démarre "Investissement 101" (2 mois, 200€). Ça débloque la bourse et l\'assurance vie.',
     action: 'skills' as Screen,
   },
   {

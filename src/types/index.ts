@@ -314,6 +314,8 @@ export interface GameState {
   totalTaxPaid: number
   gameVersion: number
   hasSeenOnboarding?: boolean  // optional for backward compat
+  tutorialDismissed?: boolean  // 1er pas guidé (Livret A) terminé/passé
+  gigCooldowns?: Record<string, string> // gigId -> date ISO de disponibilité
 }
 
 export type SpeedMultiplier = 1 | 5 | 10 | 50

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
-import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap, Wallet } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap, Wallet, Info } from 'lucide-react'
 import { INVESTMENT_CATALOG } from '../../data/investments'
 import { SKILL_BY_ID } from '../../data/skills'
+import { INVESTMENT_EDU } from '../../data/education'
 import type { InvestmentCatalogItem } from '../../types'
 import { useGameStore } from '../../store/gameStore'
 import { calcNetWorth } from '../../utils/calculations'
@@ -12,6 +13,7 @@ import { Modal } from '../ui/Modal'
 import { Badge, RiskBadge } from '../ui/Badge'
 import { Icon } from '../ui/Icon'
 import { Portfolio } from './Portfolio'
+import { StockMarketWidget } from './StockMarketWidget'
 import {
   formatEuro,
   formatEuroCompact,
@@ -102,9 +104,23 @@ export function Marketplace() {
   const netWorth = calcNetWorth(game)
   const phase = game.economy.marketPhase
   const phaseInfo = PHASE_LABEL[phase]
+  const pendingAutoBuy = useGameStore((s) => s.pendingAutoBuy)
+  const clearAutoBuy = useGameStore((s) => s.clearAutoBuy)
   const [buyTarget, setBuyTarget] = useState<InvestmentCatalogItem | null>(null)
+  const [eduTarget, setEduTarget] = useState<InvestmentCatalogItem | null>(null)
   const [activeTab, setActiveTab] = useState<'invest' | 'portfolio'>('invest')
   const learned = game.player.learnedSkillIds || []
+
+  // Ouverture automatique d'un placement (tutoriel guidé : Livret A).
+  useEffect(() => {
+    if (!pendingAutoBuy) return
+    const item = INVESTMENT_CATALOG.find((i) => i.id === pendingAutoBuy)
+    if (item) {
+      setActiveTab('invest')
+      setBuyTarget(item)
+    }
+    clearAutoBuy()
+  }, [pendingAutoBuy, clearAutoBuy])
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -143,6 +159,9 @@ export function Marketplace() {
         <Portfolio />
       ) : (
       <>
+      {/* Marché boursier en direct */}
+      <StockMarketWidget />
+
       {/* Bandeau marché */}
       <div
         className="rounded-2xl p-4 flex items-center gap-3"
@@ -176,6 +195,7 @@ export function Marketplace() {
               missingSkill={!skillOk ? item.skillRequired : undefined}
               missingWealth={!wealthOk}
               onBuy={() => setBuyTarget(item)}
+              onInfo={() => setEduTarget(item)}
             />
           )
         })}
@@ -183,6 +203,9 @@ export function Marketplace() {
 
       {buyTarget && (
         <BuyModal item={buyTarget} onClose={() => setBuyTarget(null)} />
+      )}
+      {eduTarget && (
+        <EduModal item={eduTarget} onClose={() => setEduTarget(null)} />
       )}
       </>
       )}
@@ -196,12 +219,14 @@ function CatalogCard({
   missingSkill,
   missingWealth,
   onBuy,
+  onInfo,
 }: {
   item: InvestmentCatalogItem
   unlocked: boolean
   missingSkill?: string
   missingWealth?: boolean
   onBuy: () => void
+  onInfo: () => void
 }) {
   return (
     <Card className={cn('overflow-hidden flex flex-col', !unlocked && 'opacity-90')}>
@@ -224,11 +249,17 @@ function CatalogCard({
               </div>
             </div>
           </div>
-          {!unlocked && (
-            <div className="flex items-center gap-1 text-slate-400">
-              <Lock size={14} />
-            </div>
-          )}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={onInfo}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+              title="En savoir plus"
+              aria-label="En savoir plus"
+            >
+              <Info size={16} />
+            </button>
+            {!unlocked && <Lock size={14} className="text-slate-400" />}
+          </div>
         </div>
 
         <p className="text-xs text-slate-500 leading-relaxed mb-3 flex-1">
@@ -289,6 +320,96 @@ function CatalogCard({
         )}
       </div>
     </Card>
+  )
+}
+
+// ============================================================================
+// EduModal — fiche pédagogique d'un placement
+// ============================================================================
+
+function EduModal({
+  item,
+  onClose,
+}: {
+  item: InvestmentCatalogItem
+  onClose: () => void
+}) {
+  const edu = INVESTMENT_EDU[item.id]
+
+  return (
+    <Modal open onClose={onClose} title={item.name} size="md">
+      <div className="space-y-4">
+        {/* En-tête coloré */}
+        <div className={cn('rounded-2xl p-4 bg-gradient-to-br text-white', item.gradient)}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+              <Icon name={item.icon} size={22} />
+            </div>
+            <div>
+              <div className="font-display font-bold text-lg leading-tight">{item.shortName}</div>
+              <div className="text-sm text-white/85">{edu.tagline}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Repères chiffrés */}
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl bg-slate-50 p-2.5">
+            <div className="text-[11px] text-slate-400 uppercase tracking-wide">Rendement</div>
+            <div className="font-display font-bold text-slate-800 text-sm">
+              {item.returnVariance > 0 ? '~' : ''}{formatPercent(item.baseAnnualReturn)}/an
+            </div>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-2.5">
+            <div className="text-[11px] text-slate-400 uppercase tracking-wide">Risque</div>
+            <div className="font-display font-bold text-slate-800 text-sm">{item.riskLevel}/5</div>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-2.5">
+            <div className="text-[11px] text-slate-400 uppercase tracking-wide">Liquidité</div>
+            <div className="font-display font-bold text-slate-800 text-sm">{item.liquidityLevel}/5</div>
+          </div>
+        </div>
+
+        <EduSection emoji="⚙️" title="Comment ça marche" text={edu.howItWorks} tone="slate" />
+        <EduSection emoji="✅" title="Quand l'utiliser" text={edu.whenToUse} tone="emerald" />
+        <EduSection emoji="⚠️" title="À surveiller" text={edu.watchOut} tone="amber" />
+
+        <div className="rounded-2xl bg-brand-50 border border-brand-100 p-3.5 text-sm text-brand-800">
+          <span className="font-bold">💡 Exemple : </span>
+          {edu.example}
+        </div>
+
+        <Button fullWidth variant="secondary" onClick={onClose}>
+          J'ai compris
+        </Button>
+      </div>
+    </Modal>
+  )
+}
+
+function EduSection({
+  emoji,
+  title,
+  text,
+  tone,
+}: {
+  emoji: string
+  title: string
+  text: string
+  tone: 'slate' | 'emerald' | 'amber'
+}) {
+  const toneClass = {
+    slate: 'bg-slate-50 text-slate-600',
+    emerald: 'bg-emerald-50 text-emerald-800',
+    amber: 'bg-amber-50 text-amber-800',
+  }[tone]
+  return (
+    <div className={cn('rounded-2xl p-3.5', toneClass)}>
+      <div className="font-bold text-sm mb-1">
+        {emoji} {title}
+      </div>
+      <p className="text-sm leading-relaxed">{text}</p>
+    </div>
   )
 }
 

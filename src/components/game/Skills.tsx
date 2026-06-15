@@ -131,7 +131,7 @@ export function Skills() {
             </div>
             <div className="text-right shrink-0">
               <div className="font-display font-extrabold text-2xl text-brand-600">
-                {trainingProgress}%
+                {Math.round(trainingProgress)}%
               </div>
             </div>
           </div>
