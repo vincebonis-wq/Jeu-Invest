@@ -10,7 +10,7 @@ import type {
   Toast,
 } from '../types'
 import { getCatalogItem } from '../data/investments'
-import { advanceDays } from '../engine/gameLoop'
+import { advanceDays, checkRealTimeProgress } from '../engine/gameLoop'
 import {
   capitalGainsTax,
 } from '../engine/fiscal'
@@ -21,7 +21,8 @@ import {
 } from '../engine/investments'
 import { JOB_BY_ID } from '../data/jobs'
 import { SKILL_BY_ID, AUTO_SKILLS } from '../data/skills'
-import { GIG_BY_ID } from '../data/gigs'
+import { GIG_BY_ID, GIG_COOLDOWN_MS } from '../data/gigs'
+import { BUSINESS_DECISION_BY_ID, rollBusinessDecisionDelayMs } from '../data/businessDecisions'
 import {
   calcMonthlyPassiveIncome,
   calcNetWorth,
@@ -90,6 +91,9 @@ interface GameStore {
 
   // Gestion locataires
   selectTenant: (instanceId: string, profile: string, rentMultiplier: number, maintenanceFactor: number) => void
+
+  // Décisions business
+  resolveBusinessDecision: (instanceId: string, optionId: string) => { success: boolean; message: string }
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -197,11 +201,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ isRunning: true })
     intervalId = setInterval(() => {
       const state = get()
-      const game = state.game
-      if (!game || game.isPaused) {
+      let game = state.game
+      if (!game) {
         lastTick = Date.now()
         return
       }
+
+      // Progression en temps RÉEL (formations, décisions business) : tourne
+      // TOUJOURS, même en pause ou à vitesse ×1 — impossible à accélérer.
+      const realCheck = checkRealTimeProgress(game)
+      let pendingToasts: Toast[] = realCheck.toasts
+      if (realCheck.toasts.length > 0) {
+        game = realCheck.state
+      }
+
+      if (game.isPaused) {
+        lastTick = Date.now()
+        if (pendingToasts.length > 0) {
+          set((s) => ({ game, toasts: [...s.toasts, ...pendingToasts].slice(-5) }))
+          get().saveGame()
+        }
+        return
+      }
+
       const now = Date.now()
       const deltaMs = now - lastTick
       lastTick = now
@@ -209,14 +231,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // 1 seconde réelle = 0,25 jour de jeu à ×1 (4 secondes par jour de jeu), scalé par la vitesse.
       accumulator += (deltaMs / 4000) * game.speedMultiplier
       let wholeDays = Math.floor(accumulator)
-      if (wholeDays <= 0) return
+      if (wholeDays <= 0) {
+        if (pendingToasts.length > 0) {
+          set((s) => ({ game, toasts: [...s.toasts, ...pendingToasts].slice(-5) }))
+        }
+        return
+      }
       accumulator -= wholeDays
       if (wholeDays > MAX_CATCHUP_DAYS) wholeDays = MAX_CATCHUP_DAYS
 
       const { state: newGame, toasts } = advanceDays(game, wholeDays)
       set((s) => ({
         game: newGame,
-        toasts: [...s.toasts, ...toasts].slice(-5),
+        toasts: [...s.toasts, ...pendingToasts, ...toasts].slice(-5),
       }))
 
       // Sauvegarde throttlée.
@@ -254,6 +281,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
         saved.player.learnedSkillIds = [...AUTO_SKILLS]
       }
 
+      // Backward compat : anciennes sauvegardes avec cooldowns/formation en date de jeu (ISO).
+      if (saved.gigCooldowns) {
+        const fixed: Record<string, number> = {}
+        for (const [k, v] of Object.entries(saved.gigCooldowns)) {
+          fixed[k] = typeof v === 'string' ? new Date(v).getTime() : v
+        }
+        saved.gigCooldowns = fixed
+      }
+      if (saved.player.activeTraining && !saved.player.activeTraining.startedAtReal) {
+        saved.player.activeTraining = { ...saved.player.activeTraining, startedAtReal: Date.now() }
+      }
+      saved.investments = saved.investments.map((inv) =>
+        inv.businessDetails && inv.businessDetails.growthStage === undefined
+          ? {
+              ...inv,
+              businessDetails: {
+                ...inv.businessDetails,
+                growthStage: 0,
+                decisionAvailableAtReal: Date.now() + 12 * 3_600_000,
+                decisionHistory: [],
+              },
+            }
+          : inv,
+      )
+
       // Progression offline : même moteur que le live.
       const elapsedMs = Date.now() - saved.lastRealTimestamp
       const offlineDays = Math.min(
@@ -267,6 +319,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         game = result.state
         offlineToasts = result.toasts.slice(-3)
       }
+      // Rattrape les formations/décisions business débloquées pendant l'absence.
+      const realCheck = checkRealTimeProgress(game)
+      game = realCheck.state
+      offlineToasts = [...offlineToasts, ...realCheck.toasts].slice(-3)
       set({ game, toasts: offlineToasts })
       get().startLoop()
       return true
@@ -414,14 +470,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
         cashBalance: s.game!.cashBalance - skill.cost,
         player: {
           ...s.game!.player,
-          activeTraining: { skillId, startDateISO: s.game!.gameDateISO },
+          activeTraining: {
+            skillId,
+            startDateISO: s.game!.gameDateISO,
+            startedAtReal: Date.now(),
+          },
         },
       },
     }))
     get().saveGame()
 
-    const duration = `Formation de ${skill.trainingMonths} mois démarrée`
-    return { success: true, message: `${duration} — ${skill.name}` }
+    return { success: true, message: `Formation démarrée — ${skill.name}` }
   },
 
   buyInvestment: (catalogId, amount, useMortgage) => {
@@ -655,25 +714,85 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!gig) return { success: false, message: 'Mission introuvable.' }
 
     const cooldowns = game.gigCooldowns || {}
-    const now = new Date(game.gameDateISO).getTime()
-    const availableAt = cooldowns[gigId] ? new Date(cooldowns[gigId]).getTime() : 0
+    const now = Date.now()
+    const availableAt = cooldowns[gigId] ?? 0
     if (now < availableAt) {
-      const daysLeft = Math.ceil((availableAt - now) / 86400000)
-      return { success: false, message: `Encore ${daysLeft} jour${daysLeft > 1 ? 's' : ''} avant de pouvoir refaire cette mission.` }
+      const minutesLeft = Math.ceil((availableAt - now) / 60000)
+      const label = minutesLeft >= 60 ? `${Math.ceil(minutesLeft / 60)} h` : `${minutesLeft} min`
+      return { success: false, message: `Encore ${label} avant de pouvoir refaire cette mission.` }
     }
 
     const reward = Math.round(gig.minReward + Math.random() * (gig.maxReward - gig.minReward))
-    const nextISO = new Date(now + gig.cooldownDays * 86400000).toISOString()
+    const cooldownMs = GIG_COOLDOWN_MS[gigId] ?? gig.cooldownHours * 3_600_000
 
     set((s) => ({
       game: {
         ...s.game!,
         cashBalance: s.game!.cashBalance + reward,
-        gigCooldowns: { ...(s.game!.gigCooldowns || {}), [gigId]: nextISO },
+        gigCooldowns: { ...(s.game!.gigCooldowns || {}), [gigId]: now + cooldownMs },
       },
     }))
     get().saveGame()
     return { success: true, message: `${gig.emoji} +${reward} € — ${gig.label} !`, reward }
+  },
+
+  resolveBusinessDecision: (instanceId, optionId) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+    const inv = game.investments.find((i) => i.instanceId === instanceId)
+    if (!inv || !inv.businessDetails || !inv.businessDetails.pendingDecisionId) {
+      return { success: false, message: 'Aucune décision en attente.' }
+    }
+    const decision = BUSINESS_DECISION_BY_ID[inv.businessDetails.pendingDecisionId]
+    if (!decision) return { success: false, message: 'Décision introuvable.' }
+    const option = decision.options.find((o) => o.id === optionId)
+    if (!option) return { success: false, message: 'Option introuvable.' }
+    if (option.cost > 0 && game.cashBalance < option.cost) {
+      return { success: false, message: `Fonds insuffisants. Coût : ${option.cost.toLocaleString('fr-FR')} €` }
+    }
+
+    const failed = option.riskOfFailure ? Math.random() < option.riskOfFailure : false
+    const biz = inv.businessDetails
+
+    const newRevenue = failed && option.failureRevenueMultiplier !== undefined
+      ? Math.round(biz.monthlyRevenue * option.failureRevenueMultiplier)
+      : option.revenueMultiplier !== undefined
+        ? Math.round(biz.monthlyRevenue * option.revenueMultiplier)
+        : biz.monthlyRevenue
+    const newCosts = option.costMultiplier !== undefined
+      ? Math.round(biz.monthlyCosts * option.costMultiplier)
+      : biz.monthlyCosts
+    const newGrowthStage = (biz.growthStage ?? 0) + (!failed && option.growthStageDelta ? option.growthStageDelta : 0)
+
+    const message = failed
+      ? `${decision.emoji} Résultat décevant... le pari n'a pas payé.`
+      : `${decision.emoji} Décision appliquée — ${option.label}.`
+
+    set((s) => ({
+      game: {
+        ...s.game!,
+        cashBalance: s.game!.cashBalance - option.cost,
+        investments: s.game!.investments.map((i) =>
+          i.instanceId === instanceId && i.businessDetails
+            ? {
+                ...i,
+                businessDetails: {
+                  ...i.businessDetails,
+                  monthlyRevenue: Math.max(0, newRevenue),
+                  monthlyCosts: Math.max(0, newCosts),
+                  growthStage: newGrowthStage,
+                  attentionMonthsLeft: 5,
+                  pendingDecisionId: undefined,
+                  decisionAvailableAtReal: Date.now() + rollBusinessDecisionDelayMs(newGrowthStage),
+                  decisionHistory: [...(i.businessDetails.decisionHistory || []), decision.id].slice(-5),
+                },
+              }
+            : i,
+        ),
+      },
+    }))
+    get().saveGame()
+    return { success: true, message }
   },
 
   selectTenant: (instanceId, profile, rentMultiplier, maintenanceFactor) => {

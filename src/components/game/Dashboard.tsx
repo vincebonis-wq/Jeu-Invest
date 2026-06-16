@@ -37,6 +37,7 @@ import {
   formatEuroCompact,
   formatEuroSigned,
   formatMonthShort,
+  formatDuration,
   cn,
 } from '../../utils/formatting'
 import type { AssetBreakdown, GameState } from '../../types'
@@ -435,15 +436,9 @@ function TipsCard({
     if (game.player.activeTraining) {
       const skillId = game.player.activeTraining.skillId
       const skill = SKILL_BY_ID[skillId]
-      if (skill) {
-        const start = new Date(game.player.activeTraining.startDateISO)
-        const current = new Date(game.gameDateISO)
-        const monthsElapsed =
-          (current.getUTCFullYear() - start.getUTCFullYear()) * 12 +
-          (current.getUTCMonth() - start.getUTCMonth())
-        const progress = skill.trainingMonths > 0
-          ? Math.round((monthsElapsed / skill.trainingMonths) * 100)
-          : 100
+      if (skill && skill.realDurationMs > 0) {
+        const elapsed = Date.now() - game.player.activeTraining.startedAtReal
+        const progress = Math.round(Math.min(100, (elapsed / skill.realDurationMs) * 100))
         if (progress >= 80) {
           result.push(`🎓 Ta formation "${skill.name}" se termine bientôt (${progress}%) !`)
         }
@@ -458,7 +453,7 @@ function TipsCard({
       if (availableSkills.length > 0) {
         const next = availableSkills[0]
         result.push(
-          `📚 Compétence disponible : "${next.name}" (${next.trainingMonths} mois${next.cost > 0 ? `, ${formatEuro(next.cost)}` : ''}) — ${next.benefits[0]}`,
+          `📚 Compétence disponible : "${next.name}" (${formatDuration(next.realDurationMs)}${next.cost > 0 ? `, ${formatEuro(next.cost)}` : ''}) — ${next.benefits[0]}`,
         )
       }
     }

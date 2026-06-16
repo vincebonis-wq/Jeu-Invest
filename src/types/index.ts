@@ -39,11 +39,13 @@ export interface GameSkill {
   id: string
   name: string
   category: 'professional' | 'financial' | 'entrepreneurial'
+  tier: number             // 0-6, pour l'affichage en grille/arbre
   description: string
   prerequisiteIds: string[]
-  trainingMonths: number  // game months required
-  cost: number            // upfront €
-  benefits: string[]      // human-readable
+  trainingMonths: number   // flaveur narrative (durée "in-fiction")
+  realDurationMs: number   // durée RÉELLE requise (horloge du joueur, indépendante de la vitesse de jeu)
+  cost: number             // upfront €
+  benefits: string[]       // human-readable
   unlocks?: InvestmentCategory[]
   salaryBonus?: number    // e.g. 0.12 = +12% salary
   expenseReduction?: number
@@ -55,7 +57,8 @@ export interface GameSkill {
 
 export interface ActiveTraining {
   skillId: string
-  startDateISO: string
+  startDateISO: string   // date de jeu au moment du lancement (flaveur)
+  startedAtReal: number  // epoch ms réel — sert au calcul de progression
 }
 
 // ----------------------------------------------------------------------------
@@ -129,6 +132,35 @@ export interface BusinessDetails {
   monthlyRevenue: number
   monthlyCosts: number
   attentionMonthsLeft: number // si 0 → événement pénalité
+  growthStage: number              // niveau de développement (0 = jeune pousse)
+  pendingDecisionId?: string       // décision en attente de résolution
+  decisionAvailableAtReal?: number // epoch ms réel — prochaine décision dispo
+  decisionHistory?: string[]       // ids déjà résolus (anti-répétition)
+}
+
+// ----------------------------------------------------------------------------
+// Décisions business — choix stratégiques périodiques (temps réel)
+// ----------------------------------------------------------------------------
+
+export interface BusinessDecisionOption {
+  id: string
+  label: string
+  description: string
+  cost: number                       // coût immédiat en cash (0 = gratuit)
+  revenueMultiplier?: number         // appliqué à monthlyRevenue
+  costMultiplier?: number            // appliqué à monthlyCosts
+  growthStageDelta?: number          // évolution du stade de croissance
+  riskOfFailure?: number             // 0-1 — probabilité d'un résultat négatif
+  failureRevenueMultiplier?: number  // appliqué à la place si échec
+}
+
+export interface BusinessDecision {
+  id: string
+  emoji: string
+  title: string
+  prompt: string
+  minGrowthStage: number
+  options: BusinessDecisionOption[]
 }
 
 export interface Investment {
@@ -317,7 +349,7 @@ export interface GameState {
   gameVersion: number
   hasSeenOnboarding?: boolean  // optional for backward compat
   tutorialDismissed?: boolean  // 1er pas guidé (Livret A) terminé/passé
-  gigCooldowns?: Record<string, string> // gigId -> date ISO de disponibilité
+  gigCooldowns?: Record<string, number> // gigId -> epoch ms réel de disponibilité
 }
 
 export type SpeedMultiplier = 1 | 5 | 10 | 50

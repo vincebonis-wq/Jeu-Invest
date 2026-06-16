@@ -102,3 +102,15 @@ export function formatMonthShort(iso: string): string {
 export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(' ')
 }
+
+/** Formate une durée en ms en texte humain : "3 j 4 h", "12 h 30 min", "45 min". */
+export function formatDuration(ms: number): string {
+  if (ms <= 0) return '0 min'
+  const totalMinutes = Math.ceil(ms / 60000)
+  const days = Math.floor(totalMinutes / 1440)
+  const hours = Math.floor((totalMinutes % 1440) / 60)
+  const minutes = totalMinutes % 60
+  if (days > 0) return hours > 0 ? `${days} j ${hours} h` : `${days} j`
+  if (hours > 0) return minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`
+  return `${minutes} min`
+}

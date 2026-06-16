@@ -6,7 +6,6 @@ import {
   randRange,
   stepMarketPhase,
 } from './economy'
-import { SKILL_BY_ID } from '../data/skills'
 import {
   applyDailyYield,
   applyMonthlyIncome,
@@ -25,6 +24,8 @@ import {
   milestoneRank,
 } from '../utils/calculations'
 import { FLAT_TAX_RATE } from './fiscal'
+import { SKILL_BY_ID } from '../data/skills'
+import { pickBusinessDecision } from '../data/businessDecisions'
 
 // ============================================================================
 // Orchestrateur du temps de jeu.
@@ -192,6 +193,77 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
   return { state: newState, toasts }
 }
 
+/**
+ * Vérifie la progression liée au temps RÉEL (horloge du joueur) :
+ * complétion de formation, apparition de nouvelles décisions business.
+ * Totalement indépendant de `advanceDays` / de la vitesse de jeu / de la pause —
+ * appelé à chaque tick de la boucle pour empêcher tout contournement par la vitesse.
+ */
+export function checkRealTimeProgress(input: GameState): AdvanceResult {
+  let state = input
+  const toasts: Toast[] = []
+  const now = Date.now()
+
+  // --- Formation en cours ---
+  if (state.player.activeTraining) {
+    const training = state.player.activeTraining
+    const skill = SKILL_BY_ID[training.skillId]
+    if (skill && now - training.startedAtReal >= skill.realDurationMs) {
+      const newSkills = [...(state.player.learnedSkillIds || []), skill.id]
+      let player = { ...state.player, learnedSkillIds: newSkills, activeTraining: undefined }
+      const monthlyExpenses = { ...state.monthlyExpenses }
+
+      if (skill.salaryBonus) {
+        player = { ...player, salary: Math.round(player.salary * (1 + skill.salaryBonus)) }
+      }
+      if (skill.expenseReduction) {
+        monthlyExpenses.base = Math.round(monthlyExpenses.base * (1 - skill.expenseReduction))
+        monthlyExpenses.total = monthlyExpenses.base + monthlyExpenses.rent + monthlyExpenses.insurance
+      }
+
+      const events: GameEvent[] = [...state.events, {
+        id: `skill_${skill.id}_${Date.now()}`,
+        dateISO: state.gameDateISO,
+        category: 'personal',
+        severity: 'good',
+        title: `Compétence débloquée : ${skill.name}`,
+        description: `Formation terminée ! ${skill.benefits.join(', ')}.`,
+        financialImpact: 0,
+        isRead: false,
+        requiresAction: false,
+        resolved: true,
+      }]
+      toasts.push(toast(`🎓 ${skill.name}`, skill.benefits.join(' · '), 'good'))
+
+      state = { ...state, player, monthlyExpenses, events }
+    }
+  }
+
+  // --- Décisions business disponibles ---
+  let businessChanged = false
+  const investments = state.investments.map((inv) => {
+    if (!inv.businessDetails || inv.businessDetails.pendingDecisionId) return inv
+    const availableAt = inv.businessDetails.decisionAvailableAtReal ?? 0
+    if (now < availableAt) return inv
+    const decision = pickBusinessDecision(
+      inv.businessDetails.growthStage ?? 0,
+      inv.businessDetails.decisionHistory ?? [],
+    )
+    if (!decision) return inv
+    businessChanged = true
+    toasts.push(toast(`${decision.emoji} Décision business`, `${inv.name} : ${decision.title}`, 'info'))
+    return {
+      ...inv,
+      businessDetails: { ...inv.businessDetails, pendingDecisionId: decision.id },
+    }
+  })
+  if (businessChanged) {
+    state = { ...state, investments }
+  }
+
+  return { state, toasts }
+}
+
 // ----------------------------------------------------------------------------
 // Traitement mensuel
 // ----------------------------------------------------------------------------
@@ -307,44 +379,9 @@ function processMonth(ctx: MonthContext) {
     player = { ...player, jobChangeCooldownMonths: player.jobChangeCooldownMonths - 1 }
   }
 
-  // 8c. Vérification de la formation en cours.
-  if (player.activeTraining) {
-    const training = player.activeTraining
-    const startDate = new Date(training.startDateISO)
-    const currentDate = ctx.gameDate
-    const monthsElapsed =
-      (currentDate.getUTCFullYear() - startDate.getUTCFullYear()) * 12 +
-      (currentDate.getUTCMonth() - startDate.getUTCMonth())
-    const skill = SKILL_BY_ID[training.skillId]
-    if (skill && monthsElapsed >= skill.trainingMonths) {
-      // Formation terminée !
-      const newSkills = [...(player.learnedSkillIds || []), skill.id]
-      player = { ...player, learnedSkillIds: newSkills, activeTraining: undefined }
-
-      // Appliquer les effets permanents
-      if (skill.salaryBonus) {
-        player = { ...player, salary: Math.round(player.salary * (1 + skill.salaryBonus)) }
-      }
-      if (skill.expenseReduction) {
-        monthlyExpenses.base = Math.round(monthlyExpenses.base * (1 - skill.expenseReduction))
-        monthlyExpenses.total = monthlyExpenses.base + monthlyExpenses.rent + monthlyExpenses.insurance
-      }
-
-      events = [...events, {
-        id: `skill_${skill.id}_${Date.now()}`,
-        dateISO: gameDateISO,
-        category: 'personal' as const,
-        severity: 'good' as const,
-        title: `Compétence débloquée : ${skill.name}`,
-        description: `Formation terminée ! ${skill.benefits.join(', ')}.`,
-        financialImpact: 0,
-        isRead: false,
-        requiresAction: false,
-        resolved: true,
-      }]
-      toasts.push(toast(`🎓 ${skill.name}`, skill.benefits.join(' · '), 'good'))
-    }
-  }
+  // 8c. La complétion de formation est gérée en TEMPS RÉEL par le store
+  // (voir checkTrainingCompletion dans gameStore.ts), pas ici, pour empêcher
+  // de l'accélérer via la vitesse de jeu.
 
   // 9. Événements aléatoires.
   const netWorthNow =

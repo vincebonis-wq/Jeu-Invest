@@ -18,6 +18,7 @@ import {
   randRange,
 } from './economy'
 import { taxOnMonthlyIncome } from './fiscal'
+import { rollBusinessDecisionDelayMs } from '../data/businessDecisions'
 
 // ============================================================================
 // Opérations et calculs sur les investissements.
@@ -124,6 +125,9 @@ export function createInvestment(
       monthlyRevenue,
       monthlyCosts: Math.round(monthlyRevenue * randRange(0.2, 0.4)),
       attentionMonthsLeft: randInt(3, 6),
+      growthStage: 0,
+      decisionAvailableAtReal: Date.now() + rollBusinessDecisionDelayMs(0),
+      decisionHistory: [],
     }
   }
 

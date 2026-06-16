@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { GraduationCap, CheckCircle2, Clock, Lock, ChevronRight, Zap, Briefcase } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { GraduationCap, CheckCircle2, Clock, Lock, Zap, Briefcase, Sparkles } from 'lucide-react'
 import { SKILLS, SKILL_BY_ID } from '../../data/skills'
 import type { GameSkill } from '../../types'
 import { useGameStore } from '../../store/gameStore'
@@ -8,10 +8,20 @@ import { Card, CardHeader } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { Job } from './Job'
-import { formatEuro, formatMonthShort, cn } from '../../utils/formatting'
+import { formatEuro, formatDuration, cn } from '../../utils/formatting'
 
 type SkillStatus = 'learned' | 'training' | 'available' | 'locked'
 type CareerTab = 'skills' | 'job'
+
+const TIER_INFO: Record<number, { label: string; emoji: string }> = {
+  0: { label: 'Départ', emoji: '🌱' },
+  1: { label: 'Fondamentaux', emoji: '📘' },
+  2: { label: 'Premiers outils', emoji: '🛠️' },
+  3: { label: 'Expansion', emoji: '📊' },
+  4: { label: 'Expert', emoji: '🎯' },
+  5: { label: 'Ultra-fortune', emoji: '💎' },
+  6: { label: 'Légende', emoji: '👑' },
+}
 
 export function Skills() {
   const game = useGameStore((s) => s.game)!
@@ -19,6 +29,13 @@ export function Skills() {
   const [confirmSkill, setConfirmSkill] = useState<GameSkill | null>(null)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
   const [activeTab, setActiveTab] = useState<CareerTab>('skills')
+  const [now, setNow] = useState(() => Date.now())
+
+  // La progression de formation est RÉELLE : on rafraîchit chaque seconde.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
 
   const netWorth = calcNetWorth(game)
   const learned = game.player.learnedSkillIds || []
@@ -36,23 +53,17 @@ export function Skills() {
   function getTrainingProgress(): number {
     if (!activeTraining) return 0
     const skill = SKILL_BY_ID[activeTraining.skillId]
-    if (!skill || skill.trainingMonths === 0) return 100
-    const start = new Date(activeTraining.startDateISO)
-    const current = new Date(game.gameDateISO)
-    const daysElapsed = (current.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
-    const totalDays = skill.trainingMonths * 30.44
-    return Math.min(99.9, (daysElapsed / totalDays) * 100)
+    if (!skill || skill.realDurationMs === 0) return 100
+    const elapsed = now - activeTraining.startedAtReal
+    return Math.min(99.9, (elapsed / skill.realDurationMs) * 100)
   }
 
-  function getTrainingDaysRemaining(): number {
+  function getTrainingTimeRemaining(): number {
     if (!activeTraining) return 0
     const skill = SKILL_BY_ID[activeTraining.skillId]
-    if (!skill || skill.trainingMonths === 0) return 0
-    const start = new Date(activeTraining.startDateISO)
-    const current = new Date(game.gameDateISO)
-    const daysElapsed = (current.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
-    const totalDays = skill.trainingMonths * 30.44
-    return Math.max(0, Math.ceil(totalDays - daysElapsed))
+    if (!skill) return 0
+    const elapsed = now - activeTraining.startedAtReal
+    return Math.max(0, skill.realDurationMs - elapsed)
   }
 
   function handleStart() {
@@ -67,20 +78,11 @@ export function Skills() {
     }
   }
 
-  const categories = ['financial', 'professional', 'entrepreneurial'] as const
-  const catLabels: Record<typeof categories[number], string> = {
-    financial: 'Finance',
-    professional: 'Carrière',
-    entrepreneurial: 'Entrepreneuriat',
-  }
-  const catEmojis: Record<typeof categories[number], string> = {
-    financial: '💹',
-    professional: '💼',
-    entrepreneurial: '🚀',
-  }
-
   const trainingProgress = getTrainingProgress()
-  const trainingDaysRemaining = getTrainingDaysRemaining()
+  const trainingTimeRemaining = getTrainingTimeRemaining()
+  const tiers = [0, 1, 2, 3, 4, 5, 6]
+  const learnedCount = learned.length
+  const totalCount = SKILLS.length
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -114,6 +116,22 @@ export function Skills() {
         <Job />
       ) : (
       <>
+      {/* En-tête de progression globale */}
+      <Card className="p-4 flex items-center gap-4">
+        <div className="w-11 h-11 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
+          <Sparkles size={20} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-display font-bold text-slate-800">Arbre de compétences</div>
+          <div className="text-xs text-slate-400">
+            {learnedCount}/{totalCount} compétences maîtrisées — chaque formation prend un temps RÉEL, indépendant de la vitesse de jeu.
+          </div>
+        </div>
+        <div className="font-display font-extrabold text-xl text-brand-600 shrink-0">
+          {Math.round((learnedCount / totalCount) * 100)}%
+        </div>
+      </Card>
+
       {/* Formation en cours */}
       {activeTraining && (
         <Card className="p-5 border-2 border-brand-200 bg-brand-50/30">
@@ -123,7 +141,7 @@ export function Skills() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold text-brand-600 uppercase tracking-wide">
-                Formation en cours
+                Formation en cours (temps réel)
               </div>
               <div className="font-display font-bold text-slate-800">
                 {SKILL_BY_ID[activeTraining.skillId]?.name ?? activeTraining.skillId}
@@ -145,30 +163,32 @@ export function Skills() {
           </div>
           <div className="flex items-center justify-between mt-2">
             <div className="text-xs text-brand-500">
-              Démarrée le {formatMonthShort(activeTraining.startDateISO)} — durée totale :{' '}
-              {SKILL_BY_ID[activeTraining.skillId]?.trainingMonths} mois
+              Durée totale : {formatDuration(SKILL_BY_ID[activeTraining.skillId]?.realDurationMs ?? 0)} (réel)
             </div>
             <div className="text-xs font-semibold text-brand-600">
-              {trainingDaysRemaining > 0 ? `Encore ~${trainingDaysRemaining} jours` : 'Presque terminé !'}
+              {trainingTimeRemaining > 0 ? `Encore ${formatDuration(trainingTimeRemaining)}` : 'Presque terminé !'}
             </div>
           </div>
         </Card>
       )}
 
-      {/* Arbre de compétences par catégorie */}
-      {categories.map((cat) => {
-        const catSkills = SKILLS.filter((s) => s.category === cat)
+      {/* Arbre de compétences par palier (tier) */}
+      {tiers.map((tier) => {
+        const tierSkills = SKILLS.filter((s) => s.tier === tier)
+        if (tierSkills.length === 0) return null
+        const info = TIER_INFO[tier]
+        const tierLearned = tierSkills.filter((s) => learned.includes(s.id)).length
         return (
-          <Card key={cat} className="p-5">
+          <Card key={tier} className="p-5">
             <CardHeader
-              title={`${catEmojis[cat]} ${catLabels[cat]}`}
-              subtitle={`${catSkills.filter((s) => learned.includes(s.id)).length}/${catSkills.length} compétences`}
+              title={`${info.emoji} Palier ${tier} — ${info.label}`}
+              subtitle={`${tierLearned}/${tierSkills.length} compétences de ce palier`}
             />
-            <div className="space-y-2 mt-3">
-              {catSkills.map((skill) => {
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5 mt-3">
+              {tierSkills.map((skill) => {
                 const status = getStatus(skill)
                 return (
-                  <SkillRow
+                  <SkillTile
                     key={skill.id}
                     skill={skill}
                     status={status}
@@ -204,9 +224,9 @@ export function Skills() {
               <p className="text-sm text-slate-600">{confirmSkill.description}</p>
               <div className="rounded-2xl bg-slate-50 p-4 text-sm space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Durée de formation</span>
+                  <span className="text-slate-500">Durée de formation (réelle)</span>
                   <span className="font-semibold">
-                    {confirmSkill.trainingMonths === 0 ? 'Immédiat' : `${confirmSkill.trainingMonths} mois`}
+                    {confirmSkill.realDurationMs === 0 ? 'Immédiat' : formatDuration(confirmSkill.realDurationMs)}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -222,6 +242,12 @@ export function Skills() {
                   </div>
                 )}
               </div>
+              {confirmSkill.realDurationMs > 0 && (
+                <div className="rounded-2xl bg-amber-50 border border-amber-100 p-3 text-xs text-amber-700">
+                  ⏳ Cette formation se déroule en temps réel, même si tu quittes le jeu ou changes la vitesse.
+                  Reviens dans {formatDuration(confirmSkill.realDurationMs)} pour la voir terminée.
+                </div>
+              )}
               <div className="rounded-2xl bg-emerald-50 p-4">
                 <div className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-2">
                   Bénéfices
@@ -261,7 +287,7 @@ export function Skills() {
   )
 }
 
-function SkillRow({
+function SkillTile({
   skill,
   status,
   onSelect,
@@ -272,28 +298,28 @@ function SkillRow({
 }) {
   const statusConfig = {
     learned: {
-      icon: <CheckCircle2 size={18} />,
+      icon: <CheckCircle2 size={16} />,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
-      label: 'Maîtrisée',
+      ring: 'border-emerald-200',
     },
     training: {
-      icon: <Clock size={18} />,
+      icon: <Clock size={16} />,
       color: 'text-brand-600',
       bg: 'bg-brand-50',
-      label: 'En cours',
+      ring: 'border-brand-200',
     },
     available: {
-      icon: <ChevronRight size={18} />,
-      color: 'text-slate-600',
-      bg: 'bg-slate-100',
-      label: 'Disponible',
+      icon: <Sparkles size={16} />,
+      color: 'text-amber-600',
+      bg: 'bg-amber-50',
+      ring: 'border-amber-200',
     },
     locked: {
-      icon: <Lock size={18} />,
+      icon: <Lock size={16} />,
       color: 'text-slate-400',
       bg: 'bg-slate-50',
-      label: 'Bloquée',
+      ring: 'border-slate-100',
     },
   }
   const cfg = statusConfig[status]
@@ -301,47 +327,41 @@ function SkillRow({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 p-3 rounded-xl transition-all',
-        status === 'learned' ? 'bg-emerald-50/50' : '',
-        status === 'available' ? 'hover:bg-slate-50 cursor-pointer' : '',
+        'flex flex-col gap-2 p-3 rounded-2xl border-2 transition-all',
+        cfg.ring,
+        status === 'available' ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5' : '',
         status === 'locked' ? 'opacity-60' : '',
       )}
       onClick={onSelect}
     >
-      <div
-        className={cn(
-          'w-9 h-9 rounded-xl flex items-center justify-center shrink-0',
-          cfg.bg,
-          cfg.color,
-        )}
-      >
-        {cfg.icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              'font-semibold text-sm',
-              status === 'locked' ? 'text-slate-400' : 'text-slate-800',
-            )}
-          >
+      <div className="flex items-start gap-2.5">
+        <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center shrink-0', cfg.bg, cfg.color)}>
+          {cfg.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className={cn('font-semibold text-sm leading-tight', status === 'locked' ? 'text-slate-400' : 'text-slate-800')}>
             {skill.name}
-          </span>
-        </div>
-        <div className="text-xs text-slate-400 truncate">
-          {skill.trainingMonths === 0 ? 'Instantané' : `${skill.trainingMonths} mois`}
-          {skill.cost > 0 ? ` · ${formatEuro(skill.cost)}` : ' · Gratuit'}
-          {skill.minNetWorth ? ` · ${(skill.minNetWorth / 1000).toFixed(0)}k€ requis` : ''}
+          </div>
+          <div className="text-xs text-slate-400 mt-0.5">
+            {skill.realDurationMs === 0 ? 'Instantané' : formatDuration(skill.realDurationMs)}
+            {skill.cost > 0 ? ` · ${formatEuro(skill.cost)}` : ' · Gratuit'}
+          </div>
         </div>
       </div>
-      <div className="text-xs shrink-0">
+      {skill.minNetWorth ? (
+        <div className="text-[11px] text-slate-400">
+          Patrimoine requis : {(skill.minNetWorth / 1000).toFixed(0)}k€
+        </div>
+      ) : null}
+      <div className="text-xs">
         {status === 'available' && (
           <span className="bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-semibold">
-            Démarrer
+            Démarrer →
           </span>
         )}
-        {status === 'learned' && <span className="text-emerald-600 font-semibold">✓</span>}
-        {status === 'training' && <span className="text-brand-600 font-semibold">...</span>}
+        {status === 'learned' && <span className="text-emerald-600 font-semibold">✓ Maîtrisée</span>}
+        {status === 'training' && <span className="text-brand-600 font-semibold">En cours...</span>}
+        {status === 'locked' && <span className="text-slate-400">Verrouillée</span>}
       </div>
     </div>
   )

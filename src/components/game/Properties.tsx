@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Building2, MapPin, TrendingUp, TrendingDown, Users } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Building2, MapPin, TrendingUp, TrendingDown, Users, Zap, AlertCircle } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { getCatalogItem } from '../../data/investments'
+import { BUSINESS_DECISION_BY_ID } from '../../data/businessDecisions'
 import type { Investment } from '../../types'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
@@ -12,6 +13,7 @@ import {
   formatEuro,
   formatEuroCompact,
   formatPercent,
+  formatDuration,
   cn,
 } from '../../utils/formatting'
 
@@ -75,6 +77,7 @@ export function Properties() {
   const game = useGameStore((s) => s.game)!
   const setScreen = useGameStore((s) => s.setScreen)
   const [tenantTarget, setTenantTarget] = useState<Investment | null>(null)
+  const [decisionTarget, setDecisionTarget] = useState<Investment | null>(null)
 
   const properties = game.investments.filter((i) => i.propertyDetails)
   const businesses = game.investments.filter((i) => i.businessDetails)
@@ -125,7 +128,7 @@ export function Properties() {
           </h2>
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {businesses.map((b) => (
-              <BusinessCard key={b.instanceId} inv={b} />
+              <BusinessCard key={b.instanceId} inv={b} onDecide={() => setDecisionTarget(b)} />
             ))}
           </div>
         </div>
@@ -135,6 +138,13 @@ export function Properties() {
         <TenantSelectionModal
           inv={tenantTarget}
           onClose={() => setTenantTarget(null)}
+        />
+      )}
+
+      {decisionTarget && (
+        <BusinessDecisionModal
+          inv={decisionTarget}
+          onClose={() => setDecisionTarget(null)}
         />
       )}
     </div>
@@ -329,27 +339,42 @@ function TenantSelectionModal({ inv, onClose }: { inv: Investment; onClose: () =
 // BusinessCard
 // ============================================================================
 
-function BusinessCard({ inv }: { inv: Investment }) {
+function BusinessCard({ inv, onDecide }: { inv: Investment; onDecide: () => void }) {
   const item = getCatalogItem(inv.catalogId)
   const biz = inv.businessDetails!
   const needsAttention = biz.attentionMonthsLeft <= 1
+  const hasPendingDecision = !!biz.pendingDecisionId
+  const pendingDecision = biz.pendingDecisionId ? BUSINESS_DECISION_BY_ID[biz.pendingDecisionId] : null
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000)
+    return () => clearInterval(id)
+  }, [])
+
+  const nextDecisionIn = !hasPendingDecision && biz.decisionAvailableAtReal
+    ? biz.decisionAvailableAtReal - now
+    : 0
 
   return (
     <Card className="overflow-hidden">
       <div className={cn('h-24 bg-gradient-to-br relative flex items-center justify-center', item.gradient)}>
         <Icon name={item.icon} size={40} className="text-white/40" />
-        <div className="absolute top-2 right-2">
-          {needsAttention ? (
+        <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+          {hasPendingDecision ? (
+            <Badge tone="warning">Décision en attente</Badge>
+          ) : needsAttention ? (
             <Badge tone="warning">Besoin d'attention</Badge>
           ) : (
             <Badge tone="success">Actif</Badge>
           )}
+          <Badge tone="brand">Stade {biz.growthStage ?? 0}</Badge>
         </div>
       </div>
       <div className="p-4">
         <div className="font-display font-bold text-slate-800">{inv.name}</div>
         <div className="text-xs text-slate-400 mb-3">{biz.businessType}</div>
-        <div className="grid grid-cols-2 gap-2 text-sm">
+        <div className="grid grid-cols-2 gap-2 text-sm mb-3">
           <Metric label="CA mensuel" value={formatEuro(biz.monthlyRevenue)} />
           <Metric label="Charges" value={formatEuro(biz.monthlyCosts)} />
           <Metric
@@ -359,8 +384,89 @@ function BusinessCard({ inv }: { inv: Investment }) {
           />
           <Metric label="Valeur" value={formatEuroCompact(inv.currentValue)} />
         </div>
+
+        <div className="border-t border-slate-100 pt-3">
+          {hasPendingDecision && pendingDecision ? (
+            <Button variant="primary" size="sm" fullWidth onClick={onDecide}>
+              <AlertCircle size={13} /> {pendingDecision.emoji} {pendingDecision.title}
+            </Button>
+          ) : (
+            <div className="text-xs text-slate-400 flex items-center justify-center gap-1.5 py-1.5">
+              <Zap size={12} />
+              {nextDecisionIn > 0
+                ? `Prochaine décision dans ~${formatDuration(nextDecisionIn)}`
+                : 'Décision à venir bientôt...'}
+            </div>
+          )}
+        </div>
       </div>
     </Card>
+  )
+}
+
+// ============================================================================
+// BusinessDecisionModal
+// ============================================================================
+
+function BusinessDecisionModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
+  const resolveBusinessDecision = useGameStore((s) => s.resolveBusinessDecision)
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+  const biz = inv.businessDetails!
+  const decision = biz.pendingDecisionId ? BUSINESS_DECISION_BY_ID[biz.pendingDecisionId] : null
+
+  if (!decision) {
+    onClose()
+    return null
+  }
+
+  function handleChoose(optionId: string) {
+    const res = resolveBusinessDecision(inv.instanceId, optionId)
+    setResult(res)
+    if (res.success) {
+      setTimeout(() => onClose(), 1800)
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`${decision.emoji} ${decision.title}`} size="md">
+      {result?.success ? (
+        <div className="py-6 text-center animate-pop-in">
+          <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+            <Zap size={32} />
+          </div>
+          <p className="font-display font-bold text-emerald-600 text-lg">{result.message}</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">{decision.prompt}</p>
+          <div className="space-y-2.5">
+            {decision.options.map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => handleChoose(opt.id)}
+                className="w-full text-left rounded-2xl border-2 border-slate-100 hover:border-brand-300 hover:shadow-sm transition-all p-3.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-sm text-slate-800">{opt.label}</span>
+                  {opt.cost > 0 && (
+                    <span className="text-xs font-bold text-amber-600 shrink-0">{formatEuro(opt.cost)}</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">{opt.description}</p>
+                {opt.riskOfFailure ? (
+                  <p className="text-xs text-red-400 mt-1">
+                    ⚠️ {Math.round(opt.riskOfFailure * 100)}% de risque d'échec
+                  </p>
+                ) : null}
+              </button>
+            ))}
+          </div>
+          {result && !result.success && (
+            <div className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{result.message}</div>
+          )}
+        </div>
+      )}
+    </Modal>
   )
 }
 
