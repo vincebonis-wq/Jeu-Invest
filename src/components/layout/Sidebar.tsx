@@ -2,6 +2,7 @@ import {
   Bell,
   Building2,
   GraduationCap,
+  HelpCircle,
   LayoutDashboard,
   TrendingUp,
 } from 'lucide-react'
@@ -31,6 +32,7 @@ export function Sidebar() {
   const cash = useGameStore((s) => s.game?.cashBalance ?? 0)
   const unread = useGameStore(selectUnreadCount)
   const activeTraining = useGameStore((s) => s.game?.player.activeTraining)
+  const reopenOnboarding = useGameStore((s) => s.reopenOnboarding)
 
   return (
     <>
@@ -67,6 +69,14 @@ export function Sidebar() {
             />
           ))}
         </nav>
+
+        <button
+          onClick={reopenOnboarding}
+          className="mt-auto flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all"
+        >
+          <HelpCircle size={20} />
+          <span>Revoir le guide</span>
+        </button>
       </aside>
 
       {/* Mobile : barre de navigation en bas */}

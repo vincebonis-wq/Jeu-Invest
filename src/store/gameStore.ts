@@ -82,6 +82,7 @@ interface GameStore {
   markAllEventsRead: () => void
   dismissToast: (id: string) => void
   dismissOnboarding: () => void
+  reopenOnboarding: () => void
 
   // Tutoriel guidé & missions express
   triggerAutoBuy: (catalogId: InvestmentCategory) => void
@@ -695,6 +696,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   dismissOnboarding: () => {
     set((s) => s.game ? { game: { ...s.game, hasSeenOnboarding: true } } : s)
+    get().saveGame()
+  },
+
+  reopenOnboarding: () => {
+    set((s) => s.game ? { game: { ...s.game, hasSeenOnboarding: false }, screen: 'dashboard' } : s)
     get().saveGame()
   },
 
