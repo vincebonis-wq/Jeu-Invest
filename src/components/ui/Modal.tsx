@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '../../utils/formatting'
@@ -37,15 +38,15 @@ export function Modal({
 
   if (!open) return null
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pb-24 lg:pb-4">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pb-20 lg:pb-4">
       <div
         className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
         onClick={closable ? onClose : undefined}
       />
       <div
         className={cn(
-          'relative w-full bg-white rounded-3xl shadow-2xl animate-pop-in max-h-[90vh] overflow-y-auto',
+          'relative w-full bg-white rounded-3xl shadow-2xl animate-pop-in max-h-[85dvh] overflow-y-auto',
           SIZES[size],
         )}
       >
@@ -66,6 +67,7 @@ export function Modal({
         )}
         <div className="p-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
