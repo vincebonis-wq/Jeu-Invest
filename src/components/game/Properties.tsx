@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Building2, MapPin, TrendingUp, TrendingDown, Users, Zap, AlertCircle } from 'lucide-react'
+import { Building2, MapPin, TrendingUp, TrendingDown, Users, Zap, AlertCircle, Tag, X } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { getCatalogItem } from '../../data/investments'
 import { BUSINESS_DECISION_BY_ID } from '../../data/businessDecisions'
-import type { Investment } from '../../types'
+import type { Investment, SaleOffer } from '../../types'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
@@ -78,6 +78,8 @@ export function Properties() {
   const setScreen = useGameStore((s) => s.setScreen)
   const [tenantTarget, setTenantTarget] = useState<Investment | null>(null)
   const [decisionTarget, setDecisionTarget] = useState<Investment | null>(null)
+  const [earlyRepayTarget, setEarlyRepayTarget] = useState<string | null>(null) // mortgageId
+  const [saleTarget, setSaleTarget] = useState<Investment | null>(null)
 
   const properties = game.investments.filter((i) => i.propertyDetails)
   const businesses = game.investments.filter((i) => i.businessDetails)
@@ -102,6 +104,8 @@ export function Properties() {
     )
   }
 
+  const earlyRepayMortgage = useGameStore((s) => s.earlyRepayMortgage)
+
   return (
     <div className="space-y-5 animate-fade-in">
       {properties.length > 0 && (
@@ -115,6 +119,8 @@ export function Properties() {
                 key={p.instanceId}
                 inv={p}
                 onManageTenant={() => setTenantTarget(p)}
+                onEarlyRepay={p.mortgageId ? () => setEarlyRepayTarget(p.mortgageId!) : undefined}
+                onSale={() => setSaleTarget(p)}
               />
             ))}
           </div>
@@ -147,7 +153,244 @@ export function Properties() {
           onClose={() => setDecisionTarget(null)}
         />
       )}
+
+      {earlyRepayTarget && (() => {
+        const mortgage = game.mortgages.find((m) => m.id === earlyRepayTarget)
+        if (!mortgage) return null
+        const penalty = Math.round(mortgage.outstandingBalance * 0.02)
+        const total = mortgage.outstandingBalance + penalty
+        return (
+          <EarlyRepayModal
+            mortgageId={earlyRepayTarget}
+            balance={mortgage.outstandingBalance}
+            penalty={penalty}
+            total={total}
+            canAfford={game.cashBalance >= total}
+            onClose={() => setEarlyRepayTarget(null)}
+            onConfirm={() => {
+              earlyRepayMortgage(earlyRepayTarget)
+              setEarlyRepayTarget(null)
+            }}
+          />
+        )
+      })()}
+
+      {saleTarget && (
+        <SaleModal
+          inv={saleTarget}
+          onClose={() => setSaleTarget(null)}
+        />
+      )}
     </div>
+  )
+}
+
+// ============================================================================
+// EarlyRepayModal
+// ============================================================================
+
+function EarlyRepayModal({
+  balance,
+  penalty,
+  total,
+  canAfford,
+  onClose,
+  onConfirm,
+}: {
+  mortgageId: string
+  balance: number
+  penalty: number
+  total: number
+  canAfford: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Modal open onClose={onClose} title="Remboursement anticipé" size="sm">
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">
+          Vous souhaitez rembourser ce crédit par anticipation. Des pénalités légales s'appliquent (2% du capital restant dû).
+        </p>
+        <div className="rounded-2xl bg-slate-50 p-4 space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Capital restant dû</span>
+            <span className="font-semibold text-slate-800">{formatEuro(balance)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Pénalité (2%)</span>
+            <span className="font-semibold text-amber-600">{formatEuro(penalty)}</span>
+          </div>
+          <div className="flex justify-between border-t border-slate-200 pt-2">
+            <span className="text-slate-500 font-semibold">Total à payer</span>
+            <span className="font-display font-bold text-slate-800">{formatEuro(total)}</span>
+          </div>
+        </div>
+        {!canAfford && (
+          <div className="text-sm text-red-600 bg-red-50 rounded-xl p-3">
+            Cash insuffisant pour effectuer ce remboursement.
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Button variant="secondary" fullWidth onClick={onClose}>Annuler</Button>
+          <Button variant="primary" fullWidth onClick={onConfirm} disabled={!canAfford}>
+            Confirmer
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ============================================================================
+// SaleModal — mise en vente + gestion offres
+// ============================================================================
+
+function SaleModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
+  const listPropertyForSale = useGameStore((s) => s.listPropertyForSale)
+  const cancelSaleListing = useGameStore((s) => s.cancelSaleListing)
+  const respondToSaleOffer = useGameStore((s) => s.respondToSaleOffer)
+  const [listingPrice, setListingPrice] = useState(inv.saleListingPrice ?? Math.round(inv.currentValue))
+  const [offerResult, setOfferResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  const currentValue = inv.currentValue
+  const minPrice = Math.round(currentValue * 0.85)
+  const maxPrice = Math.round(currentValue * 1.15)
+
+  const pendingOffers = inv.pendingOffers ?? []
+  const isListed = !!inv.saleListingPrice
+
+  function handleList() {
+    listPropertyForSale(inv.instanceId, listingPrice)
+    onClose()
+  }
+
+  function handleCancel() {
+    cancelSaleListing(inv.instanceId)
+    onClose()
+  }
+
+  function handleOffer(offer: SaleOffer, accept: boolean) {
+    const res = respondToSaleOffer(inv.instanceId, offer.id, accept)
+    setOfferResult(res)
+    if (res.success && accept) {
+      setTimeout(onClose, 1800)
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={isListed ? 'Bien en vente' : 'Mettre en vente'} size="md">
+      <div className="space-y-4">
+        <div className="rounded-xl bg-slate-50 p-3">
+          <div className="font-bold text-sm text-slate-700">{inv.name}</div>
+          <div className="text-xs text-slate-400">Valeur actuelle : {formatEuro(currentValue)}</div>
+        </div>
+
+        {isListed ? (
+          <>
+            <div className="rounded-2xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+              <div className="font-bold mb-0.5">Bien en vente</div>
+              <div>Prix affiché : <strong>{formatEuro(inv.saleListingPrice!)}</strong></div>
+            </div>
+
+            {pendingOffers.length > 0 ? (
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-slate-600">Offres reçues :</div>
+                {pendingOffers.map((offer) => {
+                  const mortgage = inv.mortgageId
+                    ? /* We need game for this but can show note */ null
+                    : null
+                  void mortgage
+                  return (
+                    <div key={offer.id} className="rounded-2xl border border-slate-100 p-3.5">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-display font-bold text-slate-800 text-base">
+                          {formatEuro(offer.offeredPrice)}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {offer.offeredPrice > inv.saleListingPrice!
+                            ? `+${Math.round((offer.offeredPrice / inv.saleListingPrice! - 1) * 100)}% du prix`
+                            : `${Math.round((offer.offeredPrice / inv.saleListingPrice! - 1) * 100)}% du prix`}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          fullWidth
+                          onClick={() => handleOffer(offer, false)}
+                        >
+                          <X size={13} /> Refuser
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          fullWidth
+                          onClick={() => handleOffer(offer, true)}
+                        >
+                          <TrendingUp size={13} /> Accepter
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="text-sm text-slate-500 text-center py-2">
+                En attente d'offres... (prochaine dans quelques heures)
+              </div>
+            )}
+
+            {offerResult && (
+              <div className={cn(
+                'text-sm rounded-xl p-3',
+                offerResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
+              )}>
+                {offerResult.message}
+              </div>
+            )}
+
+            <Button variant="secondary" fullWidth onClick={handleCancel}>
+              Annuler la mise en vente
+            </Button>
+          </>
+        ) : (
+          <>
+            <div>
+              <label className="flex justify-between text-sm font-semibold text-slate-600 mb-1.5">
+                <span>Prix de vente</span>
+                <span className="text-brand-600">{formatEuro(listingPrice)}</span>
+              </label>
+              <input
+                type="range"
+                min={minPrice}
+                max={maxPrice}
+                step={500}
+                value={listingPrice}
+                onChange={(e) => setListingPrice(Number(e.target.value))}
+                className="w-full accent-brand-600"
+              />
+              <div className="flex justify-between text-xs text-slate-400 mt-1">
+                <span>−15% ({formatEuro(minPrice)})</span>
+                <span className="text-center">valeur: {formatEuroCompact(currentValue)}</span>
+                <span>+15% ({formatEuro(maxPrice)})</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 space-y-1">
+              <p>Une fois mis en vente, des acheteurs potentiels feront des offres toutes les ~4 heures.</p>
+              <p>Vous pourrez accepter ou refuser chaque offre.</p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="secondary" fullWidth onClick={onClose}>Annuler</Button>
+              <Button variant="gold" fullWidth onClick={handleList}>
+                <Tag size={14} /> Mettre en vente
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   )
 }
 
@@ -155,24 +398,41 @@ export function Properties() {
 // PropertyCard
 // ============================================================================
 
-function PropertyCard({ inv, onManageTenant }: { inv: Investment; onManageTenant: () => void }) {
+function PropertyCard({
+  inv,
+  onManageTenant,
+  onEarlyRepay,
+  onSale,
+}: {
+  inv: Investment
+  onManageTenant: () => void
+  onEarlyRepay?: () => void
+  onSale: () => void
+}) {
   const item = getCatalogItem(inv.catalogId)
   const prop = inv.propertyDetails!
   const gain = inv.currentValue - inv.totalInvested
   const positive = gain >= 0
 
   const currentProfile = TENANT_PROFILES.find((p) => p.id === prop.tenantProfile) ?? TENANT_PROFILES[0]
+  const isForSale = !!inv.saleListingPrice
+  const offerCount = (inv.pendingOffers ?? []).length
 
   return (
     <Card className="overflow-hidden">
       {/* "Photo" stylisée */}
       <div className={cn('h-24 bg-gradient-to-br relative flex items-center justify-center', item.gradient)}>
         <Icon name={item.icon} size={40} className="text-white/40" />
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
           {prop.isVacant ? (
             <Badge tone="danger">Vacant · {prop.vacancyMonthsLeft} mois</Badge>
           ) : (
             <Badge tone="success">Loué</Badge>
+          )}
+          {isForSale && (
+            <Badge tone="warning">
+              {offerCount > 0 ? `${offerCount} offre${offerCount > 1 ? 's' : ''}` : 'En vente'}
+            </Badge>
           )}
         </div>
       </div>
@@ -200,11 +460,11 @@ function PropertyCard({ inv, onManageTenant }: { inv: Investment; onManageTenant
         </div>
 
         {/* Section locataire */}
-        <div className="border-t border-slate-100 pt-3">
-          <div className="flex items-center justify-between mb-2">
+        <div className="border-t border-slate-100 pt-3 space-y-2">
+          <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
               <Users size={12} />
-              <span className="font-semibold">Locataire actuel :</span>
+              <span className="font-semibold">Locataire :</span>
               <span>{currentProfile.emoji} {currentProfile.label}</span>
             </div>
           </div>
@@ -216,11 +476,43 @@ function PropertyCard({ inv, onManageTenant }: { inv: Investment; onManageTenant
           >
             <Users size={13} /> Changer de locataire
           </Button>
+
+          {/* Bouton remboursement anticipé */}
+          {onEarlyRepay && (
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              onClick={onEarlyRepay}
+            >
+              Rembourser par anticipation
+            </Button>
+          )}
+
+          {/* Bouton mise en vente */}
+          <Button
+            variant={isForSale ? 'primary' : 'secondary'}
+            size="sm"
+            fullWidth
+            onClick={onSale}
+          >
+            <Tag size={13} />
+            {isForSale
+              ? offerCount > 0
+                ? `Voir offres (${offerCount})`
+                : 'Gérer la mise en vente'
+              : 'Mettre en vente'}
+          </Button>
         </div>
 
-        {inv.mortgageId && (
+        {inv.mortgageId && !onEarlyRepay && (
           <div className="mt-2">
             <Badge tone="brand">Financé à crédit</Badge>
+          </div>
+        )}
+        {inv.mortgageId && onEarlyRepay && (
+          <div className="mt-2">
+            <Badge tone="brand">Crédit en cours</Badge>
           </div>
         )}
       </div>
@@ -268,7 +560,6 @@ function TenantSelectionModal({ inv, onClose }: { inv: Investment; onClose: () =
                     : 'border-slate-100 hover:border-brand-200 hover:shadow-sm',
                 )}
               >
-                {/* Header coloré */}
                 <div className={cn('h-16 bg-gradient-to-r flex items-center px-4 gap-3', profile.color)}>
                   <span className="text-3xl">{profile.emoji}</span>
                   <div>
@@ -287,11 +578,9 @@ function TenantSelectionModal({ inv, onClose }: { inv: Investment; onClose: () =
                   )}
                 </div>
 
-                {/* Body */}
                 <div className="p-3.5">
                   <p className="text-xs text-slate-500 mb-2.5">{profile.description}</p>
 
-                  {/* Loyer estimé */}
                   <div className={cn('rounded-xl p-2.5 mb-2.5 border', profile.bgColor)}>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-slate-600">Loyer estimé avec ce profil</span>
@@ -306,7 +595,6 @@ function TenantSelectionModal({ inv, onClose }: { inv: Investment; onClose: () =
                     </div>
                   </div>
 
-                  {/* Avantages / inconvénients */}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       {profile.pros.slice(0, 2).map((p, i) => (

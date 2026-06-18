@@ -49,6 +49,7 @@ const ALLOCATION_LABELS: Record<keyof AssetBreakdown, { label: string; color: st
   bourse_etf: { label: 'Bourse', color: '#6366f1' },
   crowdfunding_immo: { label: 'Crowdfunding', color: '#f97316' },
   scpi: { label: 'SCPI', color: '#14b8a6' },
+  produit_structure: { label: 'Structuré', color: '#7c3aed' },
   business: { label: 'Business', color: '#a855f7' },
   parking: { label: 'Parking', color: '#64748b' },
   lmnp: { label: 'LMNP', color: '#ec4899' },

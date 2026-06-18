@@ -60,6 +60,7 @@ export function calcAssetBreakdown(state: GameState): AssetBreakdown {
     bourse_etf: 0,
     crowdfunding_immo: 0,
     scpi: 0,
+    produit_structure: 0,
     business: 0,
     parking: 0,
     lmnp: 0,

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   GameEvent,
   GameState,
+  ImmoSearch,
   InvestmentCategory,
   JobProfile,
   MortgageQuote,
@@ -18,6 +19,7 @@ import {
   createInvestment,
   createMortgage,
   getMortgageQuote,
+  monthlyPaymentFor,
 } from '../engine/investments'
 import { JOB_BY_ID } from '../data/jobs'
 import { SKILL_BY_ID, AUTO_SKILLS } from '../data/skills'
@@ -28,6 +30,7 @@ import {
   calcNetWorth,
   totalMortgagePayments,
 } from '../utils/calculations'
+import { IMMO_SEARCH_DURATIONS } from '../engine/immoEngine'
 
 // ============================================================================
 // Store principal : état du jeu + UI + boucle de temps + sauvegarde.
@@ -95,6 +98,18 @@ interface GameStore {
 
   // Décisions business
   resolveBusinessDecision: (instanceId: string, optionId: string) => { success: boolean; message: string }
+
+  // Recherche immobilière
+  startImmoSearch: (catalogId: 'parking' | 'lmnp' | 'immo_classique') => { success: boolean; message: string }
+  selectPropertyAndBuy: (searchId: string, candidateId: string, downPaymentPct: number, termMonths: number) => BuyResult
+
+  // Remboursement anticipé
+  earlyRepayMortgage: (mortgageId: string) => BuyResult
+
+  // Revente
+  listPropertyForSale: (instanceId: string, listingPrice: number) => void
+  cancelSaleListing: (instanceId: string) => void
+  respondToSaleOffer: (instanceId: string, offerId: string, accept: boolean) => BuyResult
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -176,6 +191,7 @@ function createInitialState(
     eventCooldowns: {},
     totalTaxPaid: 0,
     gameVersion: GAME_VERSION,
+    immoSearches: [],
   }
 }
 
@@ -306,6 +322,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
             }
           : inv,
       )
+
+      // Backward compat : nouveaux champs optionnels
+      if (!saved.immoSearches) saved.immoSearches = []
+      saved.investments = saved.investments.map((inv) => ({
+        ...inv,
+        saleListingPrice: inv.saleListingPrice ?? undefined,
+        pendingOffers: inv.pendingOffers ?? undefined,
+        nextOfferAtReal: inv.nextOfferAtReal ?? undefined,
+      }))
 
       // Progression offline : même moteur que le live.
       const elapsedMs = Date.now() - saved.lastRealTimestamp
@@ -825,6 +850,255 @@ export const useGameStore = create<GameStore>((set, get) => ({
       },
     }))
     get().saveGame()
+  },
+
+  startImmoSearch: (catalogId) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+
+    const item = getCatalogItem(catalogId)
+    const netWorth = calcNetWorth(game)
+    if (netWorth < item.unlockThreshold) {
+      return { success: false, message: `Patrimoine insuffisant. Requis : ${item.unlockThreshold.toLocaleString('fr-FR')} €` }
+    }
+    if (item.skillRequired) {
+      const learned = game.player.learnedSkillIds || []
+      if (!learned.includes(item.skillRequired)) {
+        const skillName = SKILL_BY_ID[item.skillRequired]?.name ?? item.skillRequired
+        return { success: false, message: `Compétence requise : "${skillName}".` }
+      }
+    }
+
+    // Vérifier qu'il n'y a pas déjà une recherche active pour ce type
+    const existing = (game.immoSearches ?? []).find((s) => s.catalogId === catalogId && !s.candidates)
+    if (existing) {
+      return { success: false, message: 'Une recherche est déjà en cours pour ce type de bien.' }
+    }
+
+    const now = Date.now()
+    const durations = IMMO_SEARCH_DURATIONS[catalogId]
+    const search: ImmoSearch = {
+      id: `search_${now}_${catalogId}`,
+      catalogId,
+      startedAtReal: now,
+      financingReadyAtReal: now + durations.financing,
+      propertyReadyAtReal: now + durations.property,
+    }
+
+    set((s) => ({
+      game: {
+        ...s.game!,
+        immoSearches: [...(s.game!.immoSearches ?? []), search],
+      },
+    }))
+    get().saveGame()
+    return { success: true, message: `Recherche lancée pour ${item.name}. Résultats dans quelques heures.` }
+  },
+
+  selectPropertyAndBuy: (searchId, candidateId, downPaymentPct, termMonths) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+
+    const search = (game.immoSearches ?? []).find((s) => s.id === searchId)
+    if (!search) return { success: false, message: 'Recherche introuvable.' }
+    const candidate = search.candidates?.find((c) => c.id === candidateId)
+    if (!candidate) return { success: false, message: 'Bien introuvable.' }
+
+    const price = candidate.price
+    const downPayment = Math.round(price * downPaymentPct)
+    const principal = price - downPayment
+
+    if (game.cashBalance < downPayment) {
+      return { success: false, message: `Cash insuffisant. Il te faut ${downPayment.toLocaleString('fr-FR')} € d'apport.` }
+    }
+
+    const learned = game.player.learnedSkillIds || []
+    let rateReduction = 0
+    for (const skillId of learned) {
+      const s = SKILL_BY_ID[skillId]
+      if (s?.mortgageRateReduction) rateReduction += s.mortgageRateReduction
+    }
+    const annualRate = Math.max(0.01, game.economy.interestRateBase + 0.005 - rateReduction)
+    const monthlyPayment = monthlyPaymentFor(principal, annualRate, termMonths)
+
+    // Vérifier taux d'endettement
+    const monthlyIncome = game.player.salary + calcMonthlyPassiveIncome(game)
+    const existingPayments = totalMortgagePayments(game)
+    const dti = (existingPayments + monthlyPayment) / Math.max(1, monthlyIncome)
+    if (dti > 0.40) {
+      return { success: false, message: `Taux d'endettement trop élevé (${Math.round(dti * 100)}%). Augmente l'apport ou réduis la durée.` }
+    }
+
+    // Créer l'investissement
+    const catalogId = search.catalogId
+    const inv = createInvestment(catalogId, downPayment, game.gameDateISO, null, price)
+    // Override details with candidate data
+    if (inv.propertyDetails) {
+      inv.propertyDetails.address = candidate.address
+      inv.propertyDetails.city = candidate.city
+      inv.propertyDetails.squareMeters = candidate.squareMeters
+      inv.propertyDetails.monthlyRent = candidate.monthlyRent
+      inv.propertyDetails.baseMonthlyRent = candidate.monthlyRent
+      inv.propertyDetails.maintenanceCostYearly = Math.round(candidate.monthlyCharges * 12)
+    }
+
+    let mortgage = null
+    let mortgageObj = null
+    if (principal > 0) {
+      const quote: MortgageQuote = {
+        approved: true,
+        reason: '',
+        principal,
+        downPayment,
+        monthlyPayment,
+        annualRate,
+        termMonths,
+        maxLoan: principal,
+      }
+      mortgageObj = createMortgage(inv.instanceId, quote)
+      inv.mortgageId = mortgageObj.id
+      mortgage = mortgageObj
+    }
+
+    const furnitureCost = catalogId === 'lmnp' ? Math.max(4000, Math.round(price * 0.06)) : 0
+    const totalCash = downPayment + furnitureCost
+
+    set((s) => ({
+      game: {
+        ...s.game!,
+        cashBalance: s.game!.cashBalance - totalCash,
+        investments: [...s.game!.investments, inv],
+        mortgages: mortgage ? [...s.game!.mortgages, mortgage] : s.game!.mortgages,
+        immoSearches: (s.game!.immoSearches ?? []).filter((sr) => sr.id !== searchId),
+      },
+    }))
+    get().saveGame()
+    return { success: true, message: `${candidate.address}, ${candidate.city} acquis pour ${price.toLocaleString('fr-FR')} € !` }
+  },
+
+  earlyRepayMortgage: (mortgageId) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+
+    const mortgage = game.mortgages.find((m) => m.id === mortgageId)
+    if (!mortgage) return { success: false, message: 'Crédit introuvable.' }
+
+    const penalty = Math.round(mortgage.outstandingBalance * 0.02)
+    const total = mortgage.outstandingBalance + penalty
+
+    if (game.cashBalance < total) {
+      return {
+        success: false,
+        message: `Cash insuffisant. Il te faut ${total.toLocaleString('fr-FR')} € (solde ${mortgage.outstandingBalance.toLocaleString('fr-FR')} € + pénalité ${penalty.toLocaleString('fr-FR')} €).`,
+      }
+    }
+
+    set((s) => ({
+      game: {
+        ...s.game!,
+        cashBalance: s.game!.cashBalance - total,
+        mortgages: s.game!.mortgages.filter((m) => m.id !== mortgageId),
+        investments: s.game!.investments.map((inv) =>
+          inv.mortgageId === mortgageId ? { ...inv, mortgageId: null } : inv,
+        ),
+      },
+    }))
+    get().saveGame()
+    return {
+      success: true,
+      message: `Crédit remboursé par anticipation. Pénalité : ${penalty.toLocaleString('fr-FR')} €. Total décaissé : ${total.toLocaleString('fr-FR')} €.`,
+    }
+  },
+
+  listPropertyForSale: (instanceId, listingPrice) => {
+    const now = Date.now()
+    set((s) => ({
+      game: {
+        ...s.game!,
+        investments: s.game!.investments.map((inv) =>
+          inv.instanceId === instanceId
+            ? {
+                ...inv,
+                saleListingPrice: listingPrice,
+                pendingOffers: [],
+                nextOfferAtReal: now + 4 * 3_600_000, // première offre dans 4h
+              }
+            : inv,
+        ),
+      },
+    }))
+    get().saveGame()
+  },
+
+  cancelSaleListing: (instanceId) => {
+    set((s) => ({
+      game: {
+        ...s.game!,
+        investments: s.game!.investments.map((inv) =>
+          inv.instanceId === instanceId
+            ? {
+                ...inv,
+                saleListingPrice: undefined,
+                pendingOffers: undefined,
+                nextOfferAtReal: undefined,
+              }
+            : inv,
+        ),
+      },
+    }))
+    get().saveGame()
+  },
+
+  respondToSaleOffer: (instanceId, offerId, accept) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+
+    const inv = game.investments.find((i) => i.instanceId === instanceId)
+    if (!inv) return { success: false, message: 'Investissement introuvable.' }
+
+    const offer = (inv.pendingOffers ?? []).find((o) => o.id === offerId)
+    if (!offer) return { success: false, message: 'Offre introuvable.' }
+
+    if (accept) {
+      const mortgage = inv.mortgageId
+        ? game.mortgages.find((m) => m.id === inv.mortgageId)
+        : null
+      const mortgageBalance = mortgage ? mortgage.outstandingBalance : 0
+      const proceeds = offer.offeredPrice - mortgageBalance
+
+      set((s) => ({
+        game: {
+          ...s.game!,
+          cashBalance: s.game!.cashBalance + proceeds,
+          investments: s.game!.investments.filter((i) => i.instanceId !== instanceId),
+          mortgages: s.game!.mortgages.filter((m) => m.id !== inv.mortgageId),
+        },
+      }))
+      get().saveGame()
+      return {
+        success: true,
+        message: `Bien vendu pour ${offer.offeredPrice.toLocaleString('fr-FR')} € ! Net perçu : ${Math.round(proceeds).toLocaleString('fr-FR')} €.`,
+      }
+    } else {
+      // Refus : supprimer l'offre, programmer la prochaine dans 4h
+      const now = Date.now()
+      set((s) => ({
+        game: {
+          ...s.game!,
+          investments: s.game!.investments.map((i) =>
+            i.instanceId === instanceId
+              ? {
+                  ...i,
+                  pendingOffers: (i.pendingOffers ?? []).filter((o) => o.id !== offerId),
+                  nextOfferAtReal: now + 4 * 3_600_000,
+                }
+              : i,
+          ),
+        },
+      }))
+      get().saveGame()
+      return { success: true, message: 'Offre refusée. Prochaine offre dans environ 4 heures.' }
+    }
   },
 }))
 
