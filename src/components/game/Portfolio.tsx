@@ -35,7 +35,7 @@ export function Portfolio() {
 
   if (game.investments.length === 0) {
     return (
-      <div className="animate-fade-in">
+      <div className="animate-screen-in">
         <Card className="p-10 text-center">
           <div className="w-16 h-16 rounded-2xl bg-brand-50 text-brand-500 flex items-center justify-center mx-auto mb-4">
             <Wallet size={32} />
@@ -63,10 +63,10 @@ export function Portfolio() {
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-4 animate-screen-in">
       {/* Résumé */}
       <Card className="p-5">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 stagger">
           <SummaryStat label="Valeur totale" value={formatEuro(totalValue)} />
           <SummaryStat label="Capital investi" value={formatEuro(totalInvested)} />
           <SummaryStat

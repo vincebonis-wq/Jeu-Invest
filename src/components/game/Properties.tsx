@@ -86,7 +86,7 @@ export function Properties() {
 
   if (properties.length === 0 && businesses.length === 0) {
     return (
-      <div className="animate-fade-in">
+      <div className="animate-screen-in">
         <Card className="p-10 text-center">
           <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto mb-4">
             <Building2 size={32} />
@@ -107,13 +107,13 @@ export function Properties() {
   const earlyRepayMortgage = useGameStore((s) => s.earlyRepayMortgage)
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-screen-in">
       {properties.length > 0 && (
         <div>
           <h2 className="font-display font-bold text-slate-700 mb-3 flex items-center gap-2">
             <Building2 size={18} /> Biens immobiliers
           </h2>
-          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 stagger">
             {properties.map((p) => (
               <PropertyCard
                 key={p.instanceId}
@@ -132,7 +132,7 @@ export function Properties() {
           <h2 className="font-display font-bold text-slate-700 mb-3 flex items-center gap-2">
             <Icon name="Rocket" size={18} /> Business
           </h2>
-          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 stagger">
             {businesses.map((b) => (
               <BusinessCard key={b.instanceId} inv={b} onDecide={() => setDecisionTarget(b)} />
             ))}

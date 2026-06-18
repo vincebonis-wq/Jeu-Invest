@@ -47,7 +47,7 @@ export function Job() {
   const lockedJobs = JOBS.filter((j) => getJobStatus(j) === 'locked')
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-4 animate-screen-in">
       {/* Poste actuel */}
       <Card className="p-5 ring-2 ring-brand-300 bg-brand-50/20">
         <div className="flex items-center gap-4">

@@ -5,6 +5,7 @@ interface ProgressBarProps {
   className?: string
   barClassName?: string
   height?: string
+  shimmer?: boolean
 }
 
 export function ProgressBar({
@@ -12,6 +13,7 @@ export function ProgressBar({
   className,
   barClassName,
   height = 'h-2.5',
+  shimmer = false,
 }: ProgressBarProps) {
   const clamped = Math.max(0, Math.min(100, value))
   return (
@@ -19,6 +21,7 @@ export function ProgressBar({
       <div
         className={cn(
           'h-full rounded-full transition-all duration-700 ease-out',
+          shimmer && 'progress-shimmer',
           barClassName ?? 'bg-gradient-to-r from-brand-400 to-brand-600',
         )}
         style={{ width: `${clamped}%` }}

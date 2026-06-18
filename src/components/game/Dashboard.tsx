@@ -15,6 +15,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   TrendingUp,
+  Zap,
 } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import {
@@ -97,31 +98,68 @@ export function Dashboard() {
   )
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-4 animate-screen-in">
       {/* Guide d'onboarding */}
       <OnboardingGuide />
 
-      {/* Top stats bar — tout en un seul coup d'œil */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 text-white p-4">
-          <div className="text-xs text-white/70 font-medium mb-1">Patrimoine net</div>
-          <NumberTicker value={netWorth} format={formatEuro} className="font-display font-extrabold text-xl" />
-        </div>
-        <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-4">
-          <div className="text-xs text-white/70 font-medium mb-1">Cash disponible</div>
-          <div className="font-display font-extrabold text-xl">{formatEuro(game.cashBalance)}</div>
-          <div className="text-xs text-white/60 mt-0.5">
-            {Math.floor(game.cashBalance / Math.max(1, game.monthlyExpenses.total))} mois charges
+      {/* Hero stats — 3 cartes avec delta mensuel */}
+      {(() => {
+        const lastSnap = game.stats.length >= 2 ? game.stats[game.stats.length - 2] : null
+        const nwDelta = lastSnap ? netWorth - lastSnap.netWorth : 0
+        const cashDelta = lastSnap ? game.cashBalance - (lastSnap.cash ?? 0) : 0
+        const passiveDelta = lastSnap ? passiveIncome - (lastSnap.passiveIncome ?? 0) : 0
+        const isPaused = game.isPaused
+
+        function Delta({ val, unit = '€' }: { val: number; unit?: string }) {
+          if (Math.abs(val) < 1) return null
+          const up = val > 0
+          return (
+            <span className={cn('flex items-center gap-0.5 text-xs font-bold', up ? 'text-emerald-300' : 'text-red-300')}>
+              {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+              {formatEuroCompact(Math.abs(val))}{unit === '/mois' ? '/mois' : ''}
+            </span>
+          )
+        }
+
+        return (
+          <div className="grid grid-cols-3 gap-3 stagger">
+            {/* Patrimoine net */}
+            <div className="rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 text-white p-4 relative overflow-hidden">
+              <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                <span className={cn('w-2 h-2 rounded-full bg-white', isPaused ? 'opacity-30' : 'animate-live-pulse')} />
+                {!isPaused && <Zap size={12} className="text-white/60" />}
+              </div>
+              <div className="text-xs text-white/70 font-medium mb-1.5">Patrimoine net</div>
+              <NumberTicker value={netWorth} format={formatEuroCompact} className="font-display font-extrabold text-2xl block" />
+              <Delta val={nwDelta} />
+            </div>
+
+            {/* Cash */}
+            <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-4">
+              <div className="text-xs text-white/70 font-medium mb-1.5">Cash disponible</div>
+              <NumberTicker value={game.cashBalance} format={formatEuroCompact} className="font-display font-extrabold text-2xl block" />
+              <div className="flex items-center justify-between mt-0.5">
+                <span className="text-xs text-white/60">
+                  {Math.floor(game.cashBalance / Math.max(1, game.monthlyExpenses.total))} mois de charges
+                </span>
+                <Delta val={cashDelta} />
+              </div>
+            </div>
+
+            {/* Revenus passifs */}
+            <div className="rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white p-4">
+              <div className="text-xs text-white/70 font-medium mb-1.5">Revenus passifs</div>
+              <NumberTicker value={passiveIncome} format={(n) => `${formatEuroCompact(n)}/mois`} className="font-display font-extrabold text-2xl block" />
+              <div className="flex items-center justify-between mt-0.5">
+                <span className="text-xs text-white/60">
+                  {passiveIncome > 0 ? `${Math.round((passiveIncome / game.player.salary) * 100)} % du salaire` : 'Salaire : ' + formatEuroCompact(game.player.salary)}
+                </span>
+                <Delta val={passiveDelta} unit="/mois" />
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white p-4">
-          <div className="text-xs text-white/70 font-medium mb-1">Revenus passifs</div>
-          <div className="font-display font-extrabold text-xl">{formatEuro(passiveIncome)}/mois</div>
-          <div className="text-xs text-white/60 mt-0.5">
-            vs {formatEuro(game.player.salary)}/mois salaire
-          </div>
-        </div>
-      </div>
+        )
+      })()}
 
       {/* Progression vers le prochain palier */}
       <Card className="p-5">
@@ -152,6 +190,7 @@ export function Dashboard() {
         </div>
         <ProgressBar
           value={progressPct}
+          shimmer
           barClassName="bg-gradient-to-r from-gold-400 to-gold-600"
         />
       </Card>

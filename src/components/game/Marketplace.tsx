@@ -9,7 +9,6 @@ import { calcNetWorth } from '../../utils/calculations'
 import { PHASE_LABEL } from '../../engine/economy'
 import { buildAmortizationSchedule } from '../../engine/immoEngine'
 import { monthlyPaymentFor } from '../../engine/investments'
-import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { Badge, RiskBadge } from '../ui/Badge'
@@ -123,7 +122,7 @@ export function Marketplace() {
   }, [pendingAutoBuy, clearAutoBuy])
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-4 animate-screen-in">
       {/* Onglets */}
       <div className="flex gap-2 bg-slate-100 rounded-2xl p-1">
         <button
@@ -180,7 +179,7 @@ export function Marketplace() {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 stagger">
         {INVESTMENT_CATALOG.map((item) => {
           const skillOk = !item.skillRequired || learned.includes(item.skillRequired)
           const wealthOk = netWorth >= item.unlockThreshold
@@ -298,7 +297,11 @@ function CatalogCard({
   }
 
   return (
-    <Card className={cn('overflow-hidden flex flex-col', !unlocked && 'opacity-90')}>
+    <div
+      data-glow
+      style={{ '--glow': item.color } as React.CSSProperties}
+      className={cn('card-base overflow-hidden flex flex-col', !unlocked && 'opacity-80')}
+    >
       <div className={cn('h-2 bg-gradient-to-r', item.gradient)} />
       <div className="p-4 flex flex-col flex-1">
         <div className="flex items-start justify-between gap-2 mb-2">
@@ -465,7 +468,7 @@ function CatalogCard({
           </div>
         )}
       </div>
-    </Card>
+    </div>
   )
 }
 

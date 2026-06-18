@@ -55,7 +55,7 @@ export function Stats() {
   const currentRank = milestoneRank(game.player.milestone)
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-4 animate-screen-in">
       {/* Tuiles clés */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiTile

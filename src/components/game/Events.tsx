@@ -80,7 +80,7 @@ export function Events() {
   })
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-4 animate-screen-in">
       <div className="flex items-center justify-between gap-2">
         <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
           {FILTERS.map((f) => (

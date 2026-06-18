@@ -85,7 +85,7 @@ export function Skills() {
   const totalCount = SKILLS.length
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-screen-in">
       {/* Onglets Compétences / Emploi */}
       <div className="flex gap-2 bg-slate-100 rounded-2xl p-1">
         <button
