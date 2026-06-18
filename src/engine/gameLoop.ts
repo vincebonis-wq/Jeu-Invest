@@ -1,4 +1,4 @@
-import type { GameEvent, GameState, Investment, Toast } from '../types'
+import type { GameEvent, GameState, Investment, SaleOffer, Toast } from '../types'
 import {
   MAX_INDEX_HISTORY,
   dailyStockDrift,
@@ -26,6 +26,7 @@ import {
 import { FLAT_TAX_RATE } from './fiscal'
 import { SKILL_BY_ID } from '../data/skills'
 import { pickBusinessDecision } from '../data/businessDecisions'
+import { generatePropertyCandidates } from './immoEngine'
 
 // ============================================================================
 // Orchestrateur du temps de jeu.
@@ -241,7 +242,7 @@ export function checkRealTimeProgress(input: GameState): AdvanceResult {
 
   // --- Décisions business disponibles ---
   let businessChanged = false
-  const investments = state.investments.map((inv) => {
+  let investments = state.investments.map((inv) => {
     if (!inv.businessDetails || inv.businessDetails.pendingDecisionId) return inv
     const availableAt = inv.businessDetails.decisionAvailableAtReal ?? 0
     if (now < availableAt) return inv
@@ -259,6 +260,63 @@ export function checkRealTimeProgress(input: GameState): AdvanceResult {
   })
   if (businessChanged) {
     state = { ...state, investments }
+  }
+
+  // --- Recherches immobilières : complétion et génération de candidats ---
+  const immoSearches = state.immoSearches ?? []
+  let immoChanged = false
+  const updatedSearches = immoSearches.map((search) => {
+    if (search.candidates) return search // déjà complété
+    if (now >= search.financingReadyAtReal && now >= search.propertyReadyAtReal) {
+      immoChanged = true
+      const candidates = generatePropertyCandidates(search.catalogId, state.economy)
+      toasts.push(toast('🏠 Recherche terminée', `${candidates.length} biens trouvés pour ${search.catalogId} !`, 'good'))
+      return { ...search, candidates }
+    }
+    return search
+  })
+  if (immoChanged) {
+    state = { ...state, immoSearches: updatedSearches }
+  }
+
+  // --- Offres NPC sur biens mis en vente ---
+  let saleChanged = false
+  const updatedInvestments = (immoChanged ? state.investments : investments).map((inv) => {
+    if (!inv.saleListingPrice) return inv
+
+    // Élaguer offres expirées
+    const activeOffers = (inv.pendingOffers ?? []).filter(
+      (o: SaleOffer) => o.expiresAtReal > now
+    )
+    let changed = activeOffers.length !== (inv.pendingOffers ?? []).length
+
+    // Spawner une nouvelle offre si le moment est venu
+    const nextOfferAt = inv.nextOfferAtReal ?? 0
+    if (now >= nextOfferAt && inv.saleListingPrice) {
+      const offerFactor = 0.85 + Math.random() * 0.30 // 85–115% du prix affiché
+      const offeredPrice = Math.round(inv.saleListingPrice * offerFactor)
+      const newOffer: SaleOffer = {
+        id: `offer_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        offeredPrice,
+        expiresAtReal: now + 4 * 3_600_000, // expire dans 4h
+      }
+      activeOffers.push(newOffer)
+      changed = true
+      toasts.push(toast('💼 Offre reçue', `Offre de ${offeredPrice.toLocaleString('fr-FR')} € pour ${inv.name}`, 'info'))
+    }
+
+    if (!changed) return inv
+    saleChanged = true
+    return {
+      ...inv,
+      pendingOffers: activeOffers,
+      // nextOfferAtReal stays until reset by respondToSaleOffer
+    }
+  })
+  if (saleChanged) {
+    state = { ...state, investments: updatedInvestments }
+  } else if (immoChanged) {
+    // immoChanged already updated investments above via state
   }
 
   return { state, toasts }

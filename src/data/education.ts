@@ -113,4 +113,15 @@ export const INVESTMENT_EDU: Record<InvestmentCategory, InvestmentEdu> = {
     example:
       "Un bien à 100 000 € financé à crédit : tes locataires remboursent l'emprunt, et le bien t'appartient au final.",
   },
+  produit_structure: {
+    tagline: 'Le compromis rendement/protection',
+    howItWorks:
+      "Un produit financier structuré par une banque : ton capital est partiellement protégé (barrière à −60%), et tu bénéficies d'un rendement annuel plafonné à 10 %. Durée fixe de 3 ans.",
+    whenToUse:
+      "Quand tu veux un rendement supérieur aux fonds euros (4 %) sans prendre le risque total de la bourse. Idéal avec un patrimoine de 30 000 € et plus.",
+    watchOut:
+      "En cas de chute des marchés de plus de 60 %, la protection saute et tu peux perdre en capital. Argent bloqué 3 ans sans possibilité de sortie anticipée.",
+    example:
+      "100 000 € investis : si les marchés progressent, tu touches 6 à 10 %/an. Si les marchés baissent mais restent au-dessus de −60 %, ton capital est protégé.",
+  },
 }

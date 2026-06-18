@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap, Wallet, Info } from 'lucide-react'
+import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap, Wallet, Info, Search, Shield } from 'lucide-react'
 import { INVESTMENT_CATALOG } from '../../data/investments'
 import { SKILL_BY_ID } from '../../data/skills'
 import { INVESTMENT_EDU } from '../../data/education'
-import type { InvestmentCatalogItem } from '../../types'
+import type { ImmoSearch, InvestmentCatalogItem, PropertyCandidate } from '../../types'
 import { useGameStore } from '../../store/gameStore'
 import { calcNetWorth } from '../../utils/calculations'
 import { PHASE_LABEL } from '../../engine/economy'
+import { buildAmortizationSchedule } from '../../engine/immoEngine'
+import { monthlyPaymentFor } from '../../engine/investments'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
@@ -22,7 +24,7 @@ import {
 } from '../../utils/formatting'
 
 // ============================================================================
-// Types pour la sélection de bien immobilier
+// Types pour la sélection de bien immobilier (legacy — pour triggerAutoBuy)
 // ============================================================================
 
 interface PropertyOffer {
@@ -30,13 +32,13 @@ interface PropertyOffer {
   label: string
   emoji: string
   city: string
-  priceFactor: number        // multiplier on base price
-  yieldBonus: number         // additive to base yield
-  maintenanceFactor: number  // multiplier on maintenance
+  priceFactor: number
+  yieldBonus: number
+  maintenanceFactor: number
   pros: string[]
   cons: string[]
   description: string
-  stars: number // 1-5 location quality
+  stars: number
 }
 
 function generatePropertyOffers(item: InvestmentCatalogItem, baseAmount: number, gameDateISO: string): PropertyOffer[] {
@@ -45,13 +47,9 @@ function generatePropertyOffers(item: InvestmentCatalogItem, baseAmount: number,
   const c1 = cities[seed % cities.length]
   const c2 = cities[(seed + 3) % cities.length]
   const c3 = cities[(seed + 6) % cities.length]
-
   const isParking = item.id === 'parking'
   const isLmnp = item.id === 'lmnp'
-
-  // Suppress unused warning — baseAmount is used in callers via priceFactor
   void baseAmount
-
   return [
     {
       id: 'budget',
@@ -109,9 +107,11 @@ export function Marketplace() {
   const [buyTarget, setBuyTarget] = useState<InvestmentCatalogItem | null>(null)
   const [eduTarget, setEduTarget] = useState<InvestmentCatalogItem | null>(null)
   const [activeTab, setActiveTab] = useState<'invest' | 'portfolio'>('invest')
+  const [comparisonSearch, setComparisonSearch] = useState<ImmoSearch | null>(null)
+  const [selectedCandidate, setSelectedCandidate] = useState<{ search: ImmoSearch; candidate: PropertyCandidate } | null>(null)
   const learned = game.player.learnedSkillIds || []
+  const immoSearches = game.immoSearches ?? []
 
-  // Ouverture automatique d'un placement (tutoriel guidé : Livret A).
   useEffect(() => {
     if (!pendingAutoBuy) return
     const item = INVESTMENT_CATALOG.find((i) => i.id === pendingAutoBuy)
@@ -159,10 +159,8 @@ export function Marketplace() {
         <Portfolio />
       ) : (
       <>
-      {/* Marché boursier en direct */}
       <StockMarketWidget />
 
-      {/* Bandeau marché */}
       <div
         className="rounded-2xl p-4 flex items-center gap-3"
         style={{ backgroundColor: `${phaseInfo.color}15` }}
@@ -187,6 +185,12 @@ export function Marketplace() {
           const skillOk = !item.skillRequired || learned.includes(item.skillRequired)
           const wealthOk = netWorth >= item.unlockThreshold
           const unlocked = skillOk && wealthOk
+          const isImmoType = item.id === 'parking' || item.id === 'lmnp' || item.id === 'immo_classique'
+          const activeSearch = isImmoType
+            ? immoSearches.find((s) => s.catalogId === (item.id as 'parking' | 'lmnp' | 'immo_classique'))
+            : undefined
+          const searchWithCandidates = activeSearch?.candidates ? activeSearch : undefined
+
           return (
             <CatalogCard
               key={item.id}
@@ -196,6 +200,10 @@ export function Marketplace() {
               missingWealth={!wealthOk}
               onBuy={() => setBuyTarget(item)}
               onInfo={() => setEduTarget(item)}
+              activeSearch={activeSearch && !activeSearch.candidates ? activeSearch : undefined}
+              searchWithCandidates={searchWithCandidates}
+              onShowCandidates={(search) => setComparisonSearch(search)}
+              isImmoType={isImmoType}
             />
           )
         })}
@@ -207,11 +215,36 @@ export function Marketplace() {
       {eduTarget && (
         <EduModal item={eduTarget} onClose={() => setEduTarget(null)} />
       )}
+      {comparisonSearch && (
+        <PropertyComparisonModal
+          search={comparisonSearch}
+          onClose={() => setComparisonSearch(null)}
+          onSelect={(candidate) => {
+            setSelectedCandidate({ search: comparisonSearch, candidate })
+            setComparisonSearch(null)
+          }}
+        />
+      )}
+      {selectedCandidate && (
+        <CreditSimulationModal
+          search={selectedCandidate.search}
+          candidate={selectedCandidate.candidate}
+          onClose={() => setSelectedCandidate(null)}
+          onBack={() => {
+            setComparisonSearch(selectedCandidate.search)
+            setSelectedCandidate(null)
+          }}
+        />
+      )}
       </>
       )}
     </div>
   )
 }
+
+// ============================================================================
+// CatalogCard
+// ============================================================================
 
 function CatalogCard({
   item,
@@ -220,6 +253,10 @@ function CatalogCard({
   missingWealth,
   onBuy,
   onInfo,
+  activeSearch,
+  searchWithCandidates,
+  onShowCandidates,
+  isImmoType,
 }: {
   item: InvestmentCatalogItem
   unlocked: boolean
@@ -227,10 +264,39 @@ function CatalogCard({
   missingWealth?: boolean
   onBuy: () => void
   onInfo: () => void
+  activeSearch?: ImmoSearch
+  searchWithCandidates?: ImmoSearch
+  onShowCandidates?: (search: ImmoSearch) => void
+  isImmoType?: boolean
 }) {
+  const [now, setNow] = useState(() => Date.now())
+  const startImmoSearch = useGameStore((s) => s.startImmoSearch)
+
+  useEffect(() => {
+    if (!activeSearch) return
+    const id = setInterval(() => setNow(Date.now()), 5000)
+    return () => clearInterval(id)
+  }, [activeSearch])
+
+  const financingProgress = activeSearch
+    ? Math.min(1, (now - activeSearch.startedAtReal) / (activeSearch.financingReadyAtReal - activeSearch.startedAtReal))
+    : 0
+  const propertyProgress = activeSearch
+    ? Math.min(1, (now - activeSearch.startedAtReal) / (activeSearch.propertyReadyAtReal - activeSearch.startedAtReal))
+    : 0
+  const financingDone = activeSearch ? now >= activeSearch.financingReadyAtReal : false
+  const propertyDone = activeSearch ? now >= activeSearch.propertyReadyAtReal : false
+
+  function formatTimeLeft(targetMs: number): string {
+    const ms = Math.max(0, targetMs - now)
+    const h = Math.floor(ms / 3_600_000)
+    const m = Math.floor((ms % 3_600_000) / 60_000)
+    if (h > 0) return `${h}h ${m}min`
+    return `${m}min`
+  }
+
   return (
     <Card className={cn('overflow-hidden flex flex-col', !unlocked && 'opacity-90')}>
-      {/* Bandeau coloré */}
       <div className={cn('h-2 bg-gradient-to-r', item.gradient)} />
       <div className="p-4 flex flex-col flex-1">
         <div className="flex items-start justify-between gap-2 mb-2">
@@ -290,12 +356,73 @@ function CatalogCard({
               Frais {(item.purchaseCostPct * 100).toFixed(0)}%
             </Badge>
           )}
+          {item.id === 'produit_structure' && (
+            <>
+              <Badge tone="brand">
+                <Shield size={11} />
+                Barrière 60%
+              </Badge>
+              <Badge tone="success">Plafond 10%/an</Badge>
+            </>
+          )}
         </div>
 
         {unlocked ? (
-          <Button fullWidth onClick={onBuy}>
-            Investir
-          </Button>
+          isImmoType ? (
+            searchWithCandidates && onShowCandidates ? (
+              <Button fullWidth variant="gold" onClick={() => onShowCandidates(searchWithCandidates)}>
+                <Search size={14} />
+                {searchWithCandidates.candidates?.length} biens trouvés
+              </Button>
+            ) : activeSearch ? (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-slate-500">Recherche en cours...</div>
+                <div className="space-y-1.5">
+                  <div>
+                    <div className="flex justify-between text-xs text-slate-500 mb-0.5">
+                      <span>Financement</span>
+                      <span>{financingDone ? '✓' : formatTimeLeft(activeSearch.financingReadyAtReal)}</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={cn('h-full rounded-full transition-all', financingDone ? 'bg-emerald-500' : 'bg-brand-500')}
+                        style={{ width: `${financingProgress * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs text-slate-500 mb-0.5">
+                      <span>Recherche de bien</span>
+                      <span>{propertyDone ? '✓' : formatTimeLeft(activeSearch.propertyReadyAtReal)}</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={cn('h-full rounded-full transition-all', propertyDone ? 'bg-emerald-500' : 'bg-violet-500')}
+                        style={{ width: `${propertyProgress * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <Button
+                fullWidth
+                variant="secondary"
+                onClick={() => {
+                  const result = startImmoSearch(item.id as 'parking' | 'lmnp' | 'immo_classique')
+                  if (!result.success) {
+                    onBuy()
+                  }
+                }}
+              >
+                <Search size={14} /> Lancer une recherche
+              </Button>
+            )
+          ) : (
+            <Button fullWidth onClick={onBuy}>
+              Investir
+            </Button>
+          )
         ) : (
           <div className="text-center py-2.5 px-3 rounded-xl bg-slate-50 text-xs font-semibold text-slate-400 space-y-1">
             {missingSkill && (
@@ -324,7 +451,283 @@ function CatalogCard({
 }
 
 // ============================================================================
-// EduModal — fiche pédagogique d'un placement
+// PropertyComparisonModal
+// ============================================================================
+
+function PropertyComparisonModal({
+  search,
+  onClose,
+  onSelect,
+}: {
+  search: ImmoSearch
+  onClose: () => void
+  onSelect: (candidate: PropertyCandidate) => void
+}) {
+  const candidates = search.candidates ?? []
+  const typeLabel = search.catalogId === 'parking' ? 'Parking' : search.catalogId === 'lmnp' ? 'LMNP' : 'Locatif Classique'
+
+  const conditionColor = (c: PropertyCandidate['condition']) => {
+    if (c === 'neuf') return 'text-emerald-600 bg-emerald-50'
+    if (c === 'bon') return 'text-blue-600 bg-blue-50'
+    return 'text-amber-600 bg-amber-50'
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Biens disponibles — ${typeLabel}`} size="lg">
+      <div className="space-y-3">
+        <p className="text-sm text-slate-500">
+          {candidates.length} biens trouvés lors de votre recherche. Sélectionnez celui qui vous convient.
+        </p>
+        <div className="grid gap-3">
+          {candidates.map((candidate) => (
+            <button
+              key={candidate.id}
+              onClick={() => onSelect(candidate)}
+              className="w-full text-left rounded-2xl border-2 border-slate-100 hover:border-brand-300 hover:shadow-md transition-all p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="font-display font-bold text-slate-800 mb-0.5">
+                    {candidate.address}, {candidate.city}
+                  </div>
+                  <div className="text-xs text-slate-400 mb-2">
+                    {candidate.squareMeters} m² · {candidate.propertyType}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <div className="text-xs text-slate-400">Prix</div>
+                      <div className="font-bold text-slate-800">{formatEuro(candidate.price)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-400">Loyer brut</div>
+                      <div className="font-bold text-slate-800">{formatEuro(candidate.monthlyRent)}/mois</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-400">Rendement brut</div>
+                      <div className="font-bold text-emerald-600">{formatPercent(candidate.grossYieldPct)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-400">Rendement net</div>
+                      <div className="font-bold text-emerald-700">{formatPercent(candidate.netYieldPct)}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="shrink-0 space-y-1.5">
+                  <span className={cn('block text-xs font-semibold px-2 py-0.5 rounded-full', conditionColor(candidate.condition))}>
+                    {candidate.condition}
+                  </span>
+                  <span className="block text-xs text-slate-400 text-right">
+                    Charges: {formatEuro(candidate.monthlyCharges)}/mois
+                  </span>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+        <Button variant="secondary" fullWidth onClick={onClose}>Annuler</Button>
+      </div>
+    </Modal>
+  )
+}
+
+// ============================================================================
+// CreditSimulationModal
+// ============================================================================
+
+const DOWN_PAYMENT_OPTIONS = [0.10, 0.20, 0.30, 0.50]
+const TERM_OPTIONS = [10 * 12, 15 * 12, 20 * 12, 25 * 12]
+
+function CreditSimulationModal({
+  search,
+  candidate,
+  onClose,
+  onBack,
+}: {
+  search: ImmoSearch
+  candidate: PropertyCandidate
+  onClose: () => void
+  onBack: () => void
+}) {
+  const game = useGameStore((s) => s.game)!
+  const selectPropertyAndBuy = useGameStore((s) => s.selectPropertyAndBuy)
+  const [downPct, setDownPct] = useState(0.20)
+  const [termMonths, setTermMonths] = useState(20 * 12)
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  const learned = game.player.learnedSkillIds || []
+  let rateReduction = 0
+  for (const skillId of learned) {
+    const sk = SKILL_BY_ID[skillId]
+    if (sk?.mortgageRateReduction) rateReduction += sk.mortgageRateReduction
+  }
+  const annualRate = Math.max(0.01, game.economy.interestRateBase + 0.005 - rateReduction)
+
+  const price = candidate.price
+  const downPayment = Math.round(price * downPct)
+  const principal = price - downPayment
+  const payment = useMemo(
+    () => monthlyPaymentFor(principal, annualRate, termMonths),
+    [principal, annualRate, termMonths]
+  )
+  const totalInterest = payment * termMonths - principal
+
+  const monthlyIncome = game.player.salary + game.investments.reduce((s, i) => s + i.monthlyIncome, 0)
+  const existingPayments = game.mortgages.reduce((s, m) => s + m.monthlyPayment, 0)
+  const debtRatio = (existingPayments + payment) / Math.max(1, monthlyIncome)
+
+  const amortRows = useMemo(
+    () => buildAmortizationSchedule(principal, annualRate, termMonths, 6),
+    [principal, annualRate, termMonths]
+  )
+
+  function handleConfirm() {
+    const res = selectPropertyAndBuy(search.id, candidate.id, downPct, termMonths)
+    setResult(res)
+    if (res.success) setTimeout(onClose, 1600)
+  }
+
+  const debtColor = debtRatio > 0.35 ? 'text-red-600' : debtRatio > 0.25 ? 'text-amber-600' : 'text-emerald-600'
+
+  return (
+    <Modal open onClose={onClose} title="Simulation de crédit" size="lg">
+      {result?.success ? (
+        <div className="py-8 text-center animate-pop-in">
+          <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
+            <Check size={32} />
+          </div>
+          <p className="font-display font-bold text-slate-800">{result.message}</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <button onClick={onBack} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1">
+            &larr; Changer de bien
+          </button>
+
+          <div className="rounded-xl bg-slate-50 p-3">
+            <div className="font-bold text-sm text-slate-700">{candidate.address}, {candidate.city}</div>
+            <div className="text-xs text-slate-400">{candidate.squareMeters} m² · {candidate.propertyType} · {candidate.condition}</div>
+            <div className="text-sm font-bold text-slate-800 mt-1">{formatEuro(price)}</div>
+          </div>
+
+          {/* Apport */}
+          <div>
+            <div className="text-sm font-semibold text-slate-600 mb-2">Apport personnel</div>
+            <div className="flex gap-2">
+              {DOWN_PAYMENT_OPTIONS.map((pct) => (
+                <button
+                  key={pct}
+                  onClick={() => setDownPct(pct)}
+                  className={cn(
+                    'flex-1 py-2 rounded-xl text-sm font-bold border-2 transition-all',
+                    downPct === pct
+                      ? 'border-brand-500 bg-brand-50 text-brand-700'
+                      : 'border-slate-100 text-slate-500 hover:border-slate-300',
+                  )}
+                >
+                  {Math.round(pct * 100)}%
+                </button>
+              ))}
+            </div>
+            <div className="text-xs text-slate-400 mt-1 text-center">
+              Apport : {formatEuro(downPayment)} · Emprunt : {formatEuro(principal)}
+            </div>
+          </div>
+
+          {/* Durée */}
+          <div>
+            <div className="text-sm font-semibold text-slate-600 mb-2">Durée du crédit</div>
+            <div className="flex gap-2">
+              {TERM_OPTIONS.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTermMonths(t)}
+                  className={cn(
+                    'flex-1 py-2 rounded-xl text-sm font-bold border-2 transition-all',
+                    termMonths === t
+                      ? 'border-brand-500 bg-brand-50 text-brand-700'
+                      : 'border-slate-100 text-slate-500 hover:border-slate-300',
+                  )}
+                >
+                  {t / 12} ans
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Résumé crédit */}
+          <div className="rounded-2xl bg-slate-50 p-4 space-y-1.5 text-sm">
+            <Row label="Taux annuel" value={formatPercent(annualRate)} />
+            <Row label="Mensualité" value={formatEuro(Math.round(payment))} bold />
+            <Row label="Coût total intérêts" value={formatEuro(Math.round(totalInterest))} />
+            <div className="flex justify-between pt-1.5 border-t border-slate-200">
+              <span className="text-slate-500">Taux d'endettement</span>
+              <span className={cn('font-bold', debtColor)}>
+                {Math.round(debtRatio * 100)}%
+              </span>
+            </div>
+            {debtRatio > 0.35 && (
+              <div className="text-xs text-red-600 bg-red-50 rounded-lg p-2 mt-1">
+                Attention : taux d'endettement élevé ({Math.round(debtRatio * 100)}%), risque de refus bancaire.
+              </div>
+            )}
+          </div>
+
+          {/* Preview amortissement */}
+          <div>
+            <div className="text-sm font-semibold text-slate-600 mb-2">Premiers mois d'amortissement</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-slate-400 border-b border-slate-100">
+                    <th className="text-left py-1 pr-2">Mois</th>
+                    <th className="text-right py-1 pr-2">Mensualité</th>
+                    <th className="text-right py-1 pr-2">Intérêts</th>
+                    <th className="text-right py-1 pr-2">Capital</th>
+                    <th className="text-right py-1">Solde</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {amortRows.map((row) => (
+                    <tr key={row.month} className="border-b border-slate-50">
+                      <td className="py-1 pr-2 text-slate-500">{row.month}</td>
+                      <td className="py-1 pr-2 text-right font-mono text-slate-700">{formatEuro(row.payment)}</td>
+                      <td className="py-1 pr-2 text-right font-mono text-red-500">{formatEuro(row.interest)}</td>
+                      <td className="py-1 pr-2 text-right font-mono text-emerald-600">{formatEuro(row.principal)}</td>
+                      <td className="py-1 text-right font-mono text-slate-600">{formatEuro(row.balance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {game.cashBalance < downPayment && (
+            <div className="text-sm text-red-600 bg-red-50 rounded-xl p-3">
+              Cash insuffisant. Disponible : {formatEuro(game.cashBalance)} · Requis : {formatEuro(downPayment)}
+            </div>
+          )}
+
+          {result && !result.success && (
+            <div className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{result.message}</div>
+          )}
+
+          <Button
+            fullWidth
+            size="lg"
+            variant="gold"
+            onClick={handleConfirm}
+            disabled={game.cashBalance < downPayment}
+          >
+            Confirmer l'achat
+          </Button>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+// ============================================================================
+// EduModal
 // ============================================================================
 
 function EduModal({
@@ -335,11 +738,22 @@ function EduModal({
   onClose: () => void
 }) {
   const edu = INVESTMENT_EDU[item.id]
+  if (!edu) {
+    return (
+      <Modal open onClose={onClose} title={item.name} size="md">
+        <div className="space-y-4">
+          <div className={cn('rounded-2xl p-4 bg-gradient-to-br text-white', item.gradient)}>
+            <p className="text-sm text-white/90">{item.description}</p>
+          </div>
+          <Button fullWidth variant="secondary" onClick={onClose}>Fermer</Button>
+        </div>
+      </Modal>
+    )
+  }
 
   return (
     <Modal open onClose={onClose} title={item.name} size="md">
       <div className="space-y-4">
-        {/* En-tête coloré */}
         <div className={cn('rounded-2xl p-4 bg-gradient-to-br text-white', item.gradient)}>
           <div className="flex items-center gap-2.5">
             <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
@@ -352,7 +766,6 @@ function EduModal({
           </div>
         </div>
 
-        {/* Repères chiffrés */}
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-xl bg-slate-50 p-2.5">
             <div className="text-[11px] text-slate-400 uppercase tracking-wide">Rendement</div>
@@ -414,7 +827,7 @@ function EduSection({
 }
 
 // ============================================================================
-// PropertyOfferCard
+// PropertyOfferCard (legacy — BuyModal)
 // ============================================================================
 
 function PropertyOfferCard({
@@ -432,7 +845,6 @@ function PropertyOfferCard({
       onClick={onSelect}
       className="w-full text-left rounded-2xl border-2 border-slate-100 hover:border-brand-300 transition-all overflow-hidden hover:shadow-md"
     >
-      {/* Visual header */}
       <div
         className={cn(
           'h-20 flex items-center justify-center relative',
@@ -451,10 +863,9 @@ function PropertyOfferCard({
           {'★'.repeat(offer.stars)}{'☆'.repeat(5 - offer.stars)}
         </div>
         <div className="absolute bottom-2 right-2 text-white/80 text-xs font-semibold">
-          📍 {offer.city}
+          {offer.city}
         </div>
       </div>
-      {/* Content */}
       <div className="p-3">
         <div className="font-display font-bold text-slate-800 text-base mb-1">
           {formatEuro(price)}
@@ -474,7 +885,7 @@ function PropertyOfferCard({
 }
 
 // ============================================================================
-// BuyModal
+// BuyModal (legacy — pour non-immo et triggerAutoBuy)
 // ============================================================================
 
 function BuyModal({
@@ -515,7 +926,6 @@ function BuyModal({
     }
   }
 
-  // Pour l'immo avec crédit, le slider représente le PRIX du bien.
   const sliderMax = useMortgage && item.canUseMortgage
     ? Math.max(item.minAmount, Math.round(cash * 5))
     : Math.max(item.minAmount, cash + furnitureCost)
@@ -530,7 +940,6 @@ function BuyModal({
           <p className="font-display font-bold text-slate-800">{result.message}</p>
         </div>
       ) : offerStep === 'select' ? (
-        /* ---- Étape 1 : Sélection du bien ---- */
         <div className="space-y-3">
           <div className={cn('rounded-2xl p-3 bg-gradient-to-br text-white', item.gradient)}>
             <div className="flex items-center gap-2 mb-0.5">
@@ -554,9 +963,7 @@ function BuyModal({
           ))}
         </div>
       ) : (
-        /* ---- Étape 2 : Confirmation d'achat ---- */
         <div className="space-y-4">
-          {/* Bouton retour (immobilier uniquement) */}
           {item.isRealEstate && (
             <button
               onClick={() => setOfferStep('select')}
@@ -566,7 +973,6 @@ function BuyModal({
             </button>
           )}
 
-          {/* Mini-carte du bien sélectionné */}
           {selectedOffer && (
             <div className="rounded-xl bg-slate-50 p-3 flex items-center gap-3">
               <span className="text-2xl">{selectedOffer.emoji}</span>
@@ -589,7 +995,6 @@ function BuyModal({
             </div>
           )}
 
-          {/* Montant */}
           <div>
             <label className="flex justify-between text-sm font-semibold text-slate-600 mb-1.5">
               <span>{useMortgage && item.canUseMortgage ? 'Prix du bien' : 'Montant à investir'}</span>
@@ -617,7 +1022,6 @@ function BuyModal({
             />
           </div>
 
-          {/* Option crédit */}
           {item.canUseMortgage && (
             <button
               onClick={() => setUseMortgage(!useMortgage)}
@@ -645,7 +1049,6 @@ function BuyModal({
             </button>
           )}
 
-          {/* Devis crédit */}
           {quote && (
             <div
               className={cn(
@@ -669,7 +1072,6 @@ function BuyModal({
             </div>
           )}
 
-          {/* Récap comptant */}
           {!useMortgage && (
             <div className="rounded-2xl p-4 bg-slate-50 text-sm space-y-1.5">
               <Row label="Investissement" value={formatEuro(amount)} />

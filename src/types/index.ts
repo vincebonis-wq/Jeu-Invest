@@ -71,6 +71,7 @@ export type InvestmentCategory =
   | 'bourse_etf'
   | 'crowdfunding_immo'
   | 'scpi'
+  | 'produit_structure'
   | 'business'
   | 'parking'
   | 'lmnp'
@@ -163,6 +164,39 @@ export interface BusinessDecision {
   options: BusinessDecisionOption[]
 }
 
+// ----------------------------------------------------------------------------
+// Immobilier — recherche, candidats, offres de revente
+// ----------------------------------------------------------------------------
+
+export interface PropertyCandidate {
+  id: string
+  address: string
+  city: string
+  squareMeters: number
+  price: number
+  monthlyRent: number
+  monthlyCharges: number
+  grossYieldPct: number
+  netYieldPct: number
+  propertyType: 'studio' | 'T2' | 'T3' | 'T4' | 'maison' | 'parking' | 'box'
+  condition: 'neuf' | 'bon' | 'à rénover'
+}
+
+export interface ImmoSearch {
+  id: string
+  catalogId: 'parking' | 'lmnp' | 'immo_classique'
+  startedAtReal: number
+  financingReadyAtReal: number
+  propertyReadyAtReal: number
+  candidates?: PropertyCandidate[]
+}
+
+export interface SaleOffer {
+  id: string
+  offeredPrice: number
+  expiresAtReal: number
+}
+
 export interface Investment {
   instanceId: string
   catalogId: InvestmentCategory
@@ -180,6 +214,9 @@ export interface Investment {
   propertyDetails?: PropertyDetails
   businessDetails?: BusinessDetails
   valueHistory: number[] // derniers points de valeur (pour sparkline), cappé
+  saleListingPrice?: number   // prix de mise en vente (si bien mis en vente)
+  pendingOffers?: SaleOffer[] // offres NPC en attente
+  nextOfferAtReal?: number    // epoch ms réel de la prochaine offre NPC
 }
 
 export interface Mortgage {
@@ -308,6 +345,7 @@ export interface AssetBreakdown {
   bourse_etf: number
   crowdfunding_immo: number
   scpi: number
+  produit_structure: number
   business: number
   parking: number
   lmnp: number
@@ -350,6 +388,7 @@ export interface GameState {
   hasSeenOnboarding?: boolean  // optional for backward compat
   tutorialDismissed?: boolean  // 1er pas guidé (Livret A) terminé/passé
   gigCooldowns?: Record<string, number> // gigId -> epoch ms réel de disponibilité
+  immoSearches?: ImmoSearch[]  // recherches immobilières en cours
 }
 
 export type SpeedMultiplier = 1 | 5 | 10 | 50
