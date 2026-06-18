@@ -15,7 +15,6 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   TrendingUp,
-  Zap,
 } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import {
@@ -102,60 +101,56 @@ export function Dashboard() {
       {/* Guide d'onboarding */}
       <OnboardingGuide />
 
-      {/* Hero stats — 3 cartes avec delta mensuel */}
+      {/* Hero stats */}
       {(() => {
         const lastSnap = game.stats.length >= 2 ? game.stats[game.stats.length - 2] : null
-        const nwDelta = lastSnap ? netWorth - lastSnap.netWorth : 0
-        const cashDelta = lastSnap ? game.cashBalance - (lastSnap.cash ?? 0) : 0
-        const passiveDelta = lastSnap ? passiveIncome - (lastSnap.passiveIncome ?? 0) : 0
+        const nwDelta = lastSnap ? Math.round(netWorth - lastSnap.netWorth) : 0
+        const cashDelta = lastSnap ? Math.round(game.cashBalance - lastSnap.cash) : 0
+        const passiveDelta = lastSnap ? Math.round(passiveIncome - (lastSnap.passiveIncome ?? 0)) : 0
         const isPaused = game.isPaused
+        const moisCharges = Math.floor(game.cashBalance / Math.max(1, game.monthlyExpenses.total))
 
-        function Delta({ val, unit = '€' }: { val: number; unit?: string }) {
+        function Delta({ val }: { val: number }) {
           if (Math.abs(val) < 1) return null
           const up = val > 0
           return (
-            <span className={cn('flex items-center gap-0.5 text-xs font-bold', up ? 'text-emerald-300' : 'text-red-300')}>
-              {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-              {formatEuroCompact(Math.abs(val))}{unit === '/mois' ? '/mois' : ''}
+            <span className={cn('inline-flex items-center gap-0.5 text-[11px] font-bold mt-1', up ? 'text-white/90' : 'text-white/60')}>
+              {up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+              {formatEuroCompact(Math.abs(val))}
             </span>
           )
         }
 
         return (
-          <div className="grid grid-cols-3 gap-3 stagger">
-            {/* Patrimoine net */}
-            <div className="rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 text-white p-4 relative overflow-hidden">
-              <div className="absolute top-3 right-3 flex items-center gap-1.5">
-                <span className={cn('w-2 h-2 rounded-full bg-white', isPaused ? 'opacity-30' : 'animate-live-pulse')} />
-                {!isPaused && <Zap size={12} className="text-white/60" />}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 stagger">
+            {/* Patrimoine net — pleine largeur sur mobile */}
+            <div className="col-span-2 sm:col-span-1 rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 text-white p-4 relative overflow-hidden">
+              <div className="absolute top-3 right-3 flex items-center gap-1">
+                <span className={cn('w-2 h-2 rounded-full bg-white', isPaused ? 'opacity-25' : 'animate-live-pulse')} />
               </div>
-              <div className="text-xs text-white/70 font-medium mb-1.5">Patrimoine net</div>
-              <NumberTicker value={netWorth} format={formatEuroCompact} className="font-display font-extrabold text-2xl block" />
+              <div className="text-xs text-white/70 font-medium mb-1">Patrimoine net</div>
+              <NumberTicker value={netWorth} format={formatEuroCompact} className="font-display font-extrabold text-2xl sm:text-xl lg:text-2xl" />
               <Delta val={nwDelta} />
             </div>
 
             {/* Cash */}
             <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-4">
-              <div className="text-xs text-white/70 font-medium mb-1.5">Cash disponible</div>
-              <NumberTicker value={game.cashBalance} format={formatEuroCompact} className="font-display font-extrabold text-2xl block" />
-              <div className="flex items-center justify-between mt-0.5">
-                <span className="text-xs text-white/60">
-                  {Math.floor(game.cashBalance / Math.max(1, game.monthlyExpenses.total))} mois de charges
-                </span>
-                <Delta val={cashDelta} />
+              <div className="text-xs text-white/70 font-medium mb-1">Cash</div>
+              <NumberTicker value={game.cashBalance} format={formatEuroCompact} className="font-display font-extrabold text-xl" />
+              <div className="text-[11px] text-white/60 mt-0.5">
+                {moisCharges} mois de charges
               </div>
+              <Delta val={cashDelta} />
             </div>
 
             {/* Revenus passifs */}
             <div className="rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white p-4">
-              <div className="text-xs text-white/70 font-medium mb-1.5">Revenus passifs</div>
-              <NumberTicker value={passiveIncome} format={(n) => `${formatEuroCompact(n)}/mois`} className="font-display font-extrabold text-2xl block" />
-              <div className="flex items-center justify-between mt-0.5">
-                <span className="text-xs text-white/60">
-                  {passiveIncome > 0 ? `${Math.round((passiveIncome / game.player.salary) * 100)} % du salaire` : 'Salaire : ' + formatEuroCompact(game.player.salary)}
-                </span>
-                <Delta val={passiveDelta} unit="/mois" />
+              <div className="text-xs text-white/70 font-medium mb-1">Rev. passifs</div>
+              <NumberTicker value={passiveIncome} format={formatEuroCompact} className="font-display font-extrabold text-xl" />
+              <div className="text-[11px] text-white/60 mt-0.5">
+                {passiveIncome > 0 ? `${Math.round((passiveIncome / game.player.salary) * 100)} % salaire` : `Salaire ${formatEuroCompact(game.player.salary)}`}
               </div>
+              <Delta val={passiveDelta} />
             </div>
           </div>
         )
@@ -606,16 +601,20 @@ function CopiloteCard({
 
   return (
     <Card className="p-5">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <CardHeader title="Copilote" subtitle="Analyse de ta situation en temps réel" icon={<span>🧭</span>} />
-        <div
-          className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-xl shrink-0 mt-0.5"
-          style={{ backgroundColor: `${phaseInfo.color}18`, color: phaseInfo.color }}
-        >
-          {phaseInfo.emoji} {phaseInfo.label}
-          {game.player.learnedSkillIds.includes('lecture_marche') && (
-            <span className="opacity-60">· {phaseMonthsElapsed} mois</span>
-          )}
+      <div className="flex flex-col gap-2 mb-3">
+        <div className="flex items-center justify-between gap-2">
+          <CardHeader title="Copilote" subtitle="Analyse en temps réel" icon={<span>🧭</span>} />
+          <div
+            className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg shrink-0 whitespace-nowrap"
+            style={{ backgroundColor: `${phaseInfo.color}18`, color: phaseInfo.color }}
+          >
+            {phaseInfo.emoji}
+            <span className="hidden sm:inline"> {phaseInfo.label}</span>
+            <span className="sm:hidden"> {phaseInfo.label.split(' ')[1] ?? phaseInfo.label}</span>
+            {game.player.learnedSkillIds.includes('lecture_marche') && (
+              <span className="opacity-60 hidden sm:inline">· {phaseMonthsElapsed} m</span>
+            )}
+          </div>
         </div>
       </div>
       {recs.length === 0 ? (
