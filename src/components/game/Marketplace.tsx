@@ -271,6 +271,8 @@ function CatalogCard({
 }) {
   const [now, setNow] = useState(() => Date.now())
   const startImmoSearch = useGameStore((s) => s.startImmoSearch)
+  const marketPhase = useGameStore((s) => s.game?.economy.marketPhase ?? 'neutral')
+  const knowsMarket = useGameStore((s) => s.game?.player.learnedSkillIds.includes('lecture_marche') ?? false)
 
   useEffect(() => {
     if (!activeSearch) return
@@ -328,9 +330,26 @@ function CatalogCard({
           </div>
         </div>
 
-        <p className="text-xs text-slate-500 leading-relaxed mb-3 flex-1">
+        <p className="text-xs text-slate-500 leading-relaxed mb-2 flex-1">
           {item.description}
         </p>
+
+        {/* Signal de timing marché — uniquement pour les actifs sensibles aux cycles */}
+        {item.reactsToMarket && unlocked && (() => {
+          const signals: Record<string, { bg: string; text: string; label: string; detail?: string }> = {
+            bull:    { bg: 'bg-emerald-50 text-emerald-700', text: 'text-emerald-600', label: '📈 Marché haussier — bon timing', detail: knowsMarket ? 'Rendement boosté par la phase (+60% de l\'effet de marché)' : undefined },
+            neutral: { bg: 'bg-slate-50 text-slate-600', text: 'text-slate-500', label: '➡️ Marché stable — conditions normales', detail: undefined },
+            bear:    { bg: 'bg-orange-50 text-orange-700', text: 'text-orange-600', label: '📉 Phase baissière — prudence', detail: knowsMarket ? 'Rendement fortement réduit en ce moment' : undefined },
+            crash:   { bg: 'bg-red-50 text-red-700', text: 'text-red-600', label: '💥 Krach — risque élevé / opportunité DCA', detail: knowsMarket ? 'Rendement négatif possible à court terme, mais acheter bas = gain à long terme' : undefined },
+          }
+          const s = signals[marketPhase]
+          return (
+            <div className={cn('rounded-lg px-3 py-1.5 mb-2 text-xs', s.bg)}>
+              <div className="font-semibold">{s.label}</div>
+              {s.detail && <div className="mt-0.5 opacity-80">{s.detail}</div>}
+            </div>
+          )
+        })()}
 
         <div className="flex flex-wrap gap-1.5 mb-3">
           <Badge tone="success">

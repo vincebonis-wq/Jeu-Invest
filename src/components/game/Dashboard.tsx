@@ -19,12 +19,15 @@ import {
 import { useGameStore } from '../../store/gameStore'
 import {
   calcAssetBreakdown,
+  calcDebtRatio,
   calcMonthlyCashflow,
   calcMonthlyPassiveIncome,
   calcNetWorth,
   totalMortgagePayments,
   MILESTONE_INFO,
 } from '../../utils/calculations'
+import { PHASE_LABEL } from '../../engine/economy'
+import type { Screen } from '../../types'
 import { SKILLS, SKILL_BY_ID } from '../../data/skills'
 import { Card, CardHeader } from '../ui/Card'
 import { ProgressBar } from '../ui/ProgressBar'
@@ -153,8 +156,8 @@ export function Dashboard() {
         />
       </Card>
 
-      {/* Conseils contextuels */}
-      <TipsCard game={game} netWorth={netWorth} passiveIncome={passiveIncome} cashflow={cashflow} />
+      {/* Copilote patrimonial */}
+      <CopiloteCard game={game} netWorth={netWorth} passiveIncome={passiveIncome} cashflow={cashflow} setScreen={setScreen} />
 
       {/* Missions express — petit revenu d'appoint */}
       <GigsCard />
@@ -371,109 +374,244 @@ function EmptyChart({ text }: { text: string }) {
   )
 }
 
-function TipsCard({
+interface Rec {
+  level: 'urgent' | 'action' | 'info'
+  icon: string
+  text: string
+  ctaLabel?: string
+  ctaScreen?: Screen
+}
+
+function CopiloteCard({
   game,
   netWorth,
   passiveIncome,
   cashflow,
+  setScreen,
 }: {
   game: GameState
   netWorth: number
   passiveIncome: number
   cashflow: number
+  setScreen: (s: Screen) => void
 }) {
-  const tips = useMemo(() => {
-    const result: string[] = []
-    const { marketPhase } = game.economy
+  const { marketPhase, phaseMonthsElapsed } = game.economy
+  const phaseInfo = PHASE_LABEL[marketPhase]
+
+  const recs = useMemo((): Rec[] => {
+    const result: Rec[] = []
+    const learned = game.player.learnedSkillIds || []
     const hasETF = game.investments.some((i) => i.catalogId === 'bourse_etf')
     const hasLivret = game.investments.some((i) => i.catalogId === 'livret')
-    const avInv = game.investments.find((i) => i.catalogId === 'assurance_vie')
-    const learned = game.player.learnedSkillIds || []
-
     const knowsInvesting = learned.includes('investissement_101')
     const knowsRental = learned.includes('gestion_locative')
+    const knowsMarket = learned.includes('lecture_marche')
+    const debtRatio = calcDebtRatio(game)
 
-    if (game.cashBalance < 500) {
-      result.push("⚠️ Tes liquidités sont très faibles. Ne pas investir davantage tant que tu n'as pas 3 mois de charges en réserve.")
+    // ── URGENT ──────────────────────────────────────────────────────────────
+    if (cashflow < -300) {
+      result.push({
+        level: 'urgent', icon: '🚨',
+        text: `Cashflow ${formatEuroSigned(Math.round(cashflow))}/mois — tes sorties dépassent tes rentrées. Vends un actif ou réduis les charges.`,
+        ctaLabel: 'Portefeuille →', ctaScreen: 'portfolio',
+      })
     }
-    if (game.investments.length === 0 && game.cashBalance >= 10) {
-      result.push("💡 Commence par le Livret A — sans risque, pas de minimum. Même 100 € travaillent à 1,5 %/an.")
+    if (game.cashBalance < game.monthlyExpenses.total * 2 && game.investments.length > 0) {
+      result.push({
+        level: 'urgent', icon: '⚠️',
+        text: `Moins de 2 mois de charges en cash (${formatEuroCompact(game.cashBalance)}). Garde une réserve avant d'investir davantage.`,
+      })
     }
-    // L'ETF n'est suggéré que si la compétence "Investissement 101" est acquise.
-    if (hasLivret && !hasETF && knowsInvesting && netWorth >= 1000) {
-      result.push("📈 Tu peux ouvrir un ETF ! Rendement historique ~8 %/an vs 1,5 % pour le Livret A. Idéal sur 5 ans+.")
+    if (debtRatio > 0.35) {
+      result.push({
+        level: 'urgent', icon: '🏦',
+        text: `Taux d'endettement ${Math.round(debtRatio * 100)} % (limite bancaire : 35 %). Risque de refus pour un nouveau crédit.`,
+        ctaLabel: 'Mes biens →', ctaScreen: 'properties',
+      })
     }
-    // Sinon, on oriente vers la formation qui débloque la bourse.
-    if (hasLivret && !knowsInvesting && !game.player.activeTraining) {
-      result.push("🎓 Pour investir en bourse ou en assurance vie, forme-toi d'abord avec \"Investissement 101\" dans l'onglet Carrière.")
+
+    // ── ACTION ──────────────────────────────────────────────────────────────
+    // Cash idle élevé
+    const idleRatio = netWorth > 0 ? game.cashBalance / netWorth : 0
+    if (idleRatio > 0.40 && game.cashBalance > 2000 && game.investments.length > 0) {
+      result.push({
+        level: 'action', icon: '💤',
+        text: `${Math.round(idleRatio * 100)} % de ton patrimoine dort en cash (${formatEuroCompact(game.cashBalance)}). L'inflation le grignote à ~2 %/an.`,
+        ctaLabel: 'Investir →', ctaScreen: 'marketplace',
+      })
     }
-    if (marketPhase === 'crash' && hasETF) {
-      result.push("🔥 Krach en cours — ne vends pas tes ETF en panique. Les krachs durent en moyenne 12 mois, puis le marché repart.")
+    // Opportunité de krach
+    if (marketPhase === 'crash' && knowsInvesting && game.cashBalance > 2000) {
+      result.push({
+        level: 'action', icon: '💎',
+        text: 'Krach en cours — les ETF sont en soldes. Renforcer progressivement (DCA) est la stratégie des investisseurs qui s\'enrichissent sur les crises.',
+        ctaLabel: 'Marketplace →', ctaScreen: 'marketplace',
+      })
     }
-    if (marketPhase === 'crash' && knowsInvesting && game.cashBalance > 3000 && netWorth >= 1000) {
-      result.push("💎 Opportunité rare : investir en bourse pendant un krach, c'est acheter en soldes. Le risque de court terme cache un gain de long terme.")
+    // Marché bear : hold
+    if (marketPhase === 'bear' && hasETF) {
+      result.push({
+        level: 'action', icon: '🔥',
+        text: 'Marché baissier — ne vends pas tes ETF en panique. Historiquement, les marchés se redressent. Tiens la position.',
+      })
     }
+    // Bull + ETF dispo
+    if (marketPhase === 'bull' && knowsInvesting && game.cashBalance > 1000 && !hasETF) {
+      result.push({
+        level: 'action', icon: '📈',
+        text: `Marché haussier${knowsMarket ? ` depuis ${phaseMonthsElapsed} mois` : ''} — bon moment pour ouvrir une position ETF à rendement élevé.`,
+        ctaLabel: 'Investir →', ctaScreen: 'marketplace',
+      })
+    }
+    // Assurance vie > 7 ans
+    const avInv = game.investments.find((i) => i.catalogId === 'assurance_vie')
     if (avInv) {
-      const purchaseDate = new Date(avInv.purchaseDateISO)
-      const current = new Date(game.gameDateISO)
-      const yearsHeld = (current.getTime() - purchaseDate.getTime()) / (365.25 * 86400000)
+      const yearsHeld = (new Date(game.gameDateISO).getTime() - new Date(avInv.purchaseDateISO).getTime()) / (365.25 * 86400000)
       if (yearsHeld >= 7 && yearsHeld < 8) {
-        const monthsLeft = Math.ceil((8 - yearsHeld) * 12)
-        result.push(`⏰ Ton Assurance Vie approche des 8 ans (encore ${monthsLeft} mois). Attends pour payer ~50 % d'impôts en moins !`)
+        result.push({
+          level: 'action', icon: '⏰',
+          text: `Assurance Vie à ${Math.floor(yearsHeld)} ans (il en faut 8). Attends encore ${Math.ceil((8 - yearsHeld) * 12)} mois : abattement fiscal de 4 600 € à la clé.`,
+        })
       }
     }
-    if (cashflow < -300) {
-      result.push("🚨 Cashflow négatif ! Tes sorties dépassent tes rentrées. Risque d'épuiser tes liquidités — vends un actif ou réduis les charges.")
+    // Levier immobilier
+    if (debtRatio < 0.05 && netWorth >= 25000 && knowsRental) {
+      result.push({
+        level: 'action', icon: '🏗️',
+        text: 'Taux d\'endettement quasi nul — tu peux emprunter pour acheter de l\'immobilier et démultiplier ton rendement avec l\'effet de levier.',
+        ctaLabel: 'Chercher →', ctaScreen: 'marketplace',
+      })
     }
-    if (knowsRental && netWorth >= 50000 && !game.investments.some((i) => i.catalogId === 'parking')) {
-      result.push("🏠 À 50 000 € de patrimoine, un parking avec crédit devient possible. Rendement 7 %/an + effet de levier bancaire.")
+
+    // ── INFO ────────────────────────────────────────────────────────────────
+    // Premier pas
+    if (game.investments.length === 0 && game.cashBalance >= 10) {
+      result.push({
+        level: 'info', icon: '💡',
+        text: 'Commence par le Livret A — sans risque, pas de minimum. Même 100 € génèrent 1,5 %/an.',
+        ctaLabel: 'Investir →', ctaScreen: 'marketplace',
+      })
     }
+    // Déblocage ETF
+    if (hasLivret && !hasETF && knowsInvesting && netWorth >= 1000) {
+      result.push({
+        level: 'info', icon: '📈',
+        text: 'Tu peux maintenant investir en ETF (débloqué). Rendement historique ~8 %/an vs 1,5 % pour le Livret A.',
+        ctaLabel: 'Voir →', ctaScreen: 'marketplace',
+      })
+    }
+    // Formation suggérée
+    if (hasLivret && !knowsInvesting && !game.player.activeTraining) {
+      result.push({
+        level: 'info', icon: '🎓',
+        text: 'Pour accéder à la bourse et à l\'assurance vie, forme-toi d\'abord avec "Investissement 101".',
+        ctaLabel: 'Carrière →', ctaScreen: 'skills',
+      })
+    }
+    // Livret A saturé
+    const livretVal = game.investments.filter((i) => i.catalogId === 'livret').reduce((s, i) => s + i.currentValue, 0)
+    if (livretVal >= 22000) {
+      result.push({
+        level: 'info', icon: '🏦',
+        text: `Livret A presque saturé (${formatEuroCompact(livretVal)} / 22 950 € max). Redirige les versements vers l'assurance vie ou un ETF.`,
+        ctaLabel: 'Marketplace →', ctaScreen: 'marketplace',
+      })
+    }
+    // Revenus passifs vs salaire
     if (passiveIncome > 0 && passiveIncome < game.player.salary) {
       const ratio = Math.round((passiveIncome / game.player.salary) * 100)
-      result.push(`📊 Tes revenus passifs couvrent ${ratio} % de ton salaire. Objectif : 100 % pour devenir rentier.`)
+      result.push({
+        level: 'info', icon: '📊',
+        text: `Revenus passifs : ${formatEuroCompact(passiveIncome)}/mois (${ratio} % de ton salaire). Objectif : 100 % pour devenir rentier.`,
+      })
     }
-
-    // Conseils sur les compétences
+    // Signal marché si compétence acquise
+    if (knowsMarket && (marketPhase === 'neutral' || marketPhase === 'bear')) {
+      const msg = marketPhase === 'neutral'
+        ? 'Phase neutre depuis ' + phaseMonthsElapsed + ' mois — idéal pour investir progressivement (DCA). SCPI et crowdfunding peu sensibles aux cycles.'
+        : `Phase baissière depuis ${phaseMonthsElapsed} mois. Probabilité de transition vers "neutre" : 20 %/mois. Actifs défensifs conseillés (Livret, SCPI).`
+      result.push({ level: 'info', icon: '🎯', text: msg })
+    }
+    // Formations
     if (game.player.activeTraining) {
-      const skillId = game.player.activeTraining.skillId
-      const skill = SKILL_BY_ID[skillId]
-      if (skill && skill.realDurationMs > 0) {
+      const skill = SKILL_BY_ID[game.player.activeTraining.skillId]
+      if (skill) {
         const elapsed = Date.now() - game.player.activeTraining.startedAtReal
-        const progress = Math.round(Math.min(100, (elapsed / skill.realDurationMs) * 100))
-        if (progress >= 80) {
-          result.push(`🎓 Ta formation "${skill.name}" se termine bientôt (${progress}%) !`)
-        }
+        const pct = Math.round(Math.min(100, (elapsed / skill.realDurationMs) * 100))
+        const remaining = Math.max(0, skill.realDurationMs - elapsed)
+        result.push({
+          level: 'info', icon: '🎓',
+          text: `"${skill.name}" en cours — ${pct} % (encore ${formatDuration(remaining)}). Effet : ${skill.benefits[0]}.`,
+          ctaLabel: 'Carrière →', ctaScreen: 'skills',
+        })
       }
     } else {
-      const availableSkills = SKILLS.filter((s) => {
+      const next = SKILLS.find((s) => {
         if (learned.includes(s.id)) return false
         const prereqsMet = s.prerequisiteIds.every((p) => learned.includes(p))
         const wealthMet = !s.minNetWorth || netWorth >= s.minNetWorth
         return prereqsMet && wealthMet
       })
-      if (availableSkills.length > 0) {
-        const next = availableSkills[0]
-        result.push(
-          `📚 Compétence disponible : "${next.name}" (${formatDuration(next.realDurationMs)}${next.cost > 0 ? `, ${formatEuro(next.cost)}` : ''}) — ${next.benefits[0]}`,
-        )
+      if (next) {
+        result.push({
+          level: 'info', icon: '📚',
+          text: `Formation disponible : "${next.name}" (${formatDuration(next.realDurationMs)}) → ${next.benefits[0]}`,
+          ctaLabel: 'Commencer →', ctaScreen: 'skills',
+        })
       }
     }
 
-    return result.slice(0, 3)
-  }, [game, netWorth, passiveIncome, cashflow])
-
-  if (tips.length === 0) return null
+    const order = { urgent: 0, action: 1, info: 2 }
+    return result.sort((a, b) => order[a.level] - order[b.level]).slice(0, 3)
+  }, [game, netWorth, passiveIncome, cashflow, marketPhase, phaseMonthsElapsed])
 
   return (
     <Card className="p-5">
-      <CardHeader title="Conseils" subtitle="Basés sur ta situation actuelle" icon={<span>🧠</span>} />
-      <div className="space-y-2 mt-3">
-        {tips.map((tip, i) => (
-          <div key={i} className="text-sm text-slate-600 bg-slate-50 rounded-xl px-4 py-2.5 leading-relaxed">
-            {tip}
-          </div>
-        ))}
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <CardHeader title="Copilote" subtitle="Analyse de ta situation en temps réel" icon={<span>🧭</span>} />
+        <div
+          className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-xl shrink-0 mt-0.5"
+          style={{ backgroundColor: `${phaseInfo.color}18`, color: phaseInfo.color }}
+        >
+          {phaseInfo.emoji} {phaseInfo.label}
+          {game.player.learnedSkillIds.includes('lecture_marche') && (
+            <span className="opacity-60">· {phaseMonthsElapsed} mois</span>
+          )}
+        </div>
       </div>
+      {recs.length === 0 ? (
+        <p className="text-sm text-slate-400 px-1">Tout semble en ordre. Continue à investir régulièrement !</p>
+      ) : (
+        <div className="space-y-2">
+          {recs.map((rec, i) => (
+            <div
+              key={i}
+              className={cn(
+                'flex items-start gap-3 rounded-xl px-4 py-3 text-sm',
+                rec.level === 'urgent' ? 'bg-red-50 border border-red-100' :
+                rec.level === 'action' ? 'bg-amber-50 border border-amber-100' :
+                'bg-slate-50',
+              )}
+            >
+              <span className="text-base shrink-0 mt-0.5">{rec.icon}</span>
+              <p className={cn(
+                'flex-1 leading-relaxed',
+                rec.level === 'urgent' ? 'text-red-700' :
+                rec.level === 'action' ? 'text-amber-800' :
+                'text-slate-600',
+              )}>{rec.text}</p>
+              {rec.ctaLabel && rec.ctaScreen && (
+                <button
+                  onClick={() => setScreen(rec.ctaScreen as Screen)}
+                  className="shrink-0 text-xs font-semibold text-brand-600 hover:text-brand-700 whitespace-nowrap self-center"
+                >
+                  {rec.ctaLabel}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </Card>
   )
 }

@@ -81,7 +81,8 @@ export const SKILLS: GameSkill[] = [
     trainingMonths: 1,
     realDurationMs: 6 * HOUR,
     cost: 150,
-    benefits: ['Meilleure anticipation des phases de marché', 'Base pour l\'analyse de risque'],
+    benefits: ['+0,5 % de rendement annuel ETF', 'Débloque les signaux de timing marché dans la Marketplace', 'Base pour l\'analyse de risque'],
+    returnBonus: [{ category: 'bourse_etf', bonus: 0.005 }],
   },
 
   // ============================== TIER 2 ==============================
@@ -139,7 +140,8 @@ export const SKILLS: GameSkill[] = [
     trainingMonths: 3,
     realDurationMs: 30 * HOUR,
     cost: 700,
-    benefits: ['Meilleure résistance aux krachs', 'Base pour la crypto et le capital-risque'],
+    benefits: ['+1 % de rendement annuel ETF', '+0,5 % sur SCPI', 'Débloque les niveaux de protection dans le portefeuille'],
+    returnBonus: [{ category: 'bourse_etf', bonus: 0.01 }, { category: 'scpi', bonus: 0.005 }],
     minNetWorth: 10000,
   },
   {
