@@ -21,8 +21,8 @@ export function GameClock() {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {/* Date + âge */}
-      <div className="text-right">
+      {/* Date + âge — masqué sur mobile, trop large en header 1 ligne */}
+      <div className="hidden sm:block text-right">
         <div className="font-display font-bold text-slate-800 leading-tight">
           {formatGameDate(gameDateISO)}
         </div>

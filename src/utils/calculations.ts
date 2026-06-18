@@ -173,6 +173,26 @@ export function milestoneRank(level: MilestoneLevel): number {
   return MILESTONE_ORDER.indexOf(level)
 }
 
+/**
+ * Taux d'endettement = mensualités crédit / (salaire + revenus passifs).
+ * La réglementation française plafonne à 35 %.
+ */
+export function calcDebtRatio(state: GameState): number {
+  const income = state.player.salary + calcMonthlyPassiveIncome(state)
+  if (income <= 0) return 0
+  return totalMortgagePayments(state) / income
+}
+
+/** LTV moyen sur l'ensemble du parc immobilier financé à crédit. */
+export function calcLTV(state: GameState): number {
+  const immoWithMortgage = state.investments.filter((i) => i.mortgageId)
+  if (immoWithMortgage.length === 0) return 0
+  const totalValue = immoWithMortgage.reduce((s, i) => s + i.currentValue, 0)
+  const totalOwed = totalDebt(state)
+  if (totalValue <= 0) return 0
+  return totalOwed / totalValue
+}
+
 /** Une catégorie est-elle débloquée selon le patrimoine ? */
 export function isCategoryUnlocked(
   category: InvestmentCategory,

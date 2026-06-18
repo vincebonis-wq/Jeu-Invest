@@ -5,7 +5,7 @@ import { MILESTONE_INFO } from '../../utils/calculations'
 import { NumberTicker } from '../ui/NumberTicker'
 import { Icon } from '../ui/Icon'
 import { GameClock } from './GameClock'
-import { formatEuroCompact } from '../../utils/formatting'
+import { formatEuroCompact, formatMonthYear } from '../../utils/formatting'
 
 export function Header() {
   const game = useGameStore((s) => s.game)
@@ -44,6 +44,9 @@ export function Header() {
               format={(n) => formatEuroCompact(n)}
               className="font-display font-extrabold text-lg sm:text-xl lg:text-2xl text-slate-800"
             />
+            <div className="sm:hidden text-[10px] text-slate-400 font-medium leading-none mt-0.5">
+              {formatMonthYear(game.gameDateISO)} · {game.player.age} ans
+            </div>
           </div>
         </div>
 
