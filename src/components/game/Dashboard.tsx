@@ -49,14 +49,18 @@ const ALLOCATION_LABELS: Record<keyof AssetBreakdown, { label: string; color: st
   cash: { label: 'Liquidités', color: '#10b981' },
   livret: { label: 'Livret A', color: '#38bdf8' },
   assurance_vie: { label: 'Assurance Vie', color: '#22c55e' },
+  obligations_etat: { label: 'Obligations', color: '#3b82f6' },
   bourse_etf: { label: 'Bourse', color: '#6366f1' },
+  or_metaux: { label: 'Or / Métaux', color: '#eab308' },
   crowdfunding_immo: { label: 'Crowdfunding', color: '#f97316' },
   scpi: { label: 'SCPI', color: '#14b8a6' },
   produit_structure: { label: 'Structuré', color: '#7c3aed' },
   business: { label: 'Business', color: '#a855f7' },
   parking: { label: 'Parking', color: '#64748b' },
   lmnp: { label: 'LMNP', color: '#ec4899' },
+  crypto: { label: 'Crypto', color: '#f97316' },
   immo_classique: { label: 'Locatif', color: '#eab308' },
+  club_deal_immo: { label: 'Club Deal', color: '#6366f1' },
 }
 
 export function Dashboard() {

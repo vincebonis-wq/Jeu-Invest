@@ -351,10 +351,10 @@ function InvestmentDetailModal({
   const annualYieldEur = Math.round(inv.currentValue * inv.annualReturnRate)
 
   return (
-    <Modal open onClose={onClose} title="" size="lg">
+    <Modal open onClose={onClose} size="lg">
       <div className="space-y-5">
         {/* Header coloré */}
-        <div className={cn('rounded-2xl p-4 bg-gradient-to-br text-white -mt-1', item.gradient)}>
+        <div className={cn('rounded-2xl p-4 bg-gradient-to-br text-white', item.gradient)}>
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
               <Icon name={item.icon} size={24} />

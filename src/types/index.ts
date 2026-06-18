@@ -57,8 +57,9 @@ export interface GameSkill {
 
 export interface ActiveTraining {
   skillId: string
-  startDateISO: string   // date de jeu au moment du lancement (flaveur)
-  startedAtReal: number  // epoch ms réel — sert au calcul de progression
+  startDateISO: string    // date de jeu au moment du lancement (flaveur)
+  startedAtReal: number   // conservé pour compatibilité historique
+  monthsCompleted: number // mois de jeu écoulés depuis le début de la formation
 }
 
 // ----------------------------------------------------------------------------
@@ -68,14 +69,18 @@ export interface ActiveTraining {
 export type InvestmentCategory =
   | 'livret'
   | 'assurance_vie'
+  | 'obligations_etat'
   | 'bourse_etf'
+  | 'or_metaux'
   | 'crowdfunding_immo'
   | 'scpi'
   | 'produit_structure'
   | 'business'
   | 'parking'
   | 'lmnp'
+  | 'crypto'
   | 'immo_classique'
+  | 'club_deal_immo'
 
 export type TaxRegime =
   | 'exonere' // Livret A
@@ -342,14 +347,18 @@ export interface AssetBreakdown {
   cash: number
   livret: number
   assurance_vie: number
+  obligations_etat: number
   bourse_etf: number
+  or_metaux: number
   crowdfunding_immo: number
   scpi: number
   produit_structure: number
   business: number
   parking: number
   lmnp: number
+  crypto: number
   immo_classique: number
+  club_deal_immo: number
 }
 
 export interface StatsSnapshot {

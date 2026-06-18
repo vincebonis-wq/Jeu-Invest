@@ -50,7 +50,7 @@ export function Modal({
           SIZES[size],
         )}
       >
-        {(title || closable) && (
+        {title ? (
           <div className="flex items-center justify-between p-5 border-b border-slate-100 sticky top-0 bg-white rounded-t-3xl z-10">
             <h2 className="font-display font-bold text-lg text-slate-800">
               {title}
@@ -64,7 +64,14 @@ export function Modal({
               </button>
             )}
           </div>
-        )}
+        ) : closable ? (
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 z-20 p-1.5 rounded-lg bg-white/80 hover:bg-white text-slate-600 hover:text-slate-800 transition-colors shadow-sm backdrop-blur-sm"
+          >
+            <X size={18} />
+          </button>
+        ) : null}
         <div className="p-5">{children}</div>
       </div>
     </div>,

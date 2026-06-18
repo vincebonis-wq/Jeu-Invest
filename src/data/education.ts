@@ -124,4 +124,48 @@ export const INVESTMENT_EDU: Record<InvestmentCategory, InvestmentEdu> = {
     example:
       "100 000 € investis : si les marchés progressent, tu touches 6 à 10 %/an. Si les marchés baissent mais restent au-dessus de −60 %, ton capital est protégé.",
   },
+  obligations_etat: {
+    tagline: 'Prêter à l\'État à taux garanti',
+    howItWorks:
+      "Tu prêtes de l'argent à l'État français ou européen pour 2 ans. En échange, il te verse un coupon semestriel (~3,5 %/an). Capital récupéré à l'échéance.",
+    whenToUse:
+      "Pour sécuriser une partie de ton patrimoine avec un rendement fixe connu à l'avance, supérieur au Livret A, sans risque de défaut sur les obligations souveraines françaises.",
+    watchOut:
+      "Si les taux d'intérêt remontent, la valeur des obligations baisse sur le marché secondaire. Ici, le jeu les conserve jusqu'à maturité, donc pas de risque de ce type.",
+    example:
+      "5 000 € en obligations à 3,5 % → +175 €/an de coupon, versé régulièrement. Aucune surprise côté impôt : PFU 30 %.",
+  },
+  or_metaux: {
+    tagline: 'La valeur refuge des grandes crises',
+    howItWorks:
+      "L'or et les métaux précieux (argent, platine) servent d'assurance contre l'inflation et les crises. La valeur monte en période d'incertitude — lentement mais sûrement.",
+    whenToUse:
+      "Pour diversifier et protéger ton patrimoine. Idéal d'y allouer 5 à 10 % quand les marchés sont incertains ou que l'inflation accélère.",
+    watchOut:
+      "L'or ne génère aucun revenu (pas de dividende, pas de loyer). C'est une réserve de valeur, pas un moteur de croissance. Ne le surpondère pas.",
+    example:
+      "En 2022 (+inflation, +guerre), l'or a grimpé de +15 % pendant que les actions chutaient. C'est son rôle : amortir les chocs.",
+  },
+  crypto: {
+    tagline: 'Risque maximum, potentiel maximum',
+    howItWorks:
+      "Bitcoin, Ethereum et autres actifs numériques. Technologie décentralisée, cycles de marché violents : ×5 ou ÷5 en quelques mois. La volatilité est la règle, pas l'exception.",
+    whenToUse:
+      "Uniquement avec de l'argent que tu acceptes de potentiellement perdre à 100 %. Jamais plus de 5-10 % de ton patrimoine. Adopte la stratégie d'accumulation progressive (DCA).",
+    watchOut:
+      "Les chutes de 70-80 % sont normales en crypto. Psychologiquement difficile à tenir. Beaucoup vendent au plus bas par panique. Seule la conviction long terme tient.",
+    example:
+      "1 000 € en BTC il y a 4 ans → peut valoir 5 000 € ou 300 € aujourd'hui selon le cycle. C'est le jeu.",
+  },
+  club_deal_immo: {
+    tagline: 'Co-investir sur des actifs de prestige',
+    howItWorks:
+      "Plusieurs investisseurs se regroupent (le 'club') pour acquérir des actifs immobiliers d'envergure : hôtels, bureaux, centres commerciaux. Les loyers sont distribués au prorata.",
+    whenToUse:
+      "Quand tu as 50 000 €+ à placer sur 5 ans et que tu cherches un rendement élevé sans gérer directement le bien. Réservé aux profils patrimoniaux expérimentés.",
+    watchOut:
+      "Argent bloqué 5 ans. Ticket d'entrée élevé. En cas de vacance des actifs ou de retournement du marché des bureaux, les revenus peuvent baisser.",
+    example:
+      "50 000 € dans un club deal à 11 %/an → ~5 500 €/an de revenus pendant 5 ans, sans aucune gestion locative.",
+  },
 }

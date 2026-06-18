@@ -55,8 +55,8 @@ export const SKILLS: GameSkill[] = [
     trainingMonths: 2,
     realDurationMs: 8 * HOUR,
     cost: 200,
-    benefits: ['Débloque Bourse / ETF', 'Débloque Assurance Vie', 'Base solide en finance'],
-    unlocks: ['bourse_etf', 'assurance_vie'],
+    benefits: ['Débloque Bourse / ETF', 'Débloque Assurance Vie', 'Débloque Obligations d\'État', 'Base solide en finance'],
+    unlocks: ['bourse_etf', 'assurance_vie', 'obligations_etat'],
   },
   {
     id: 'communication_pro',
@@ -81,8 +81,9 @@ export const SKILLS: GameSkill[] = [
     trainingMonths: 1,
     realDurationMs: 6 * HOUR,
     cost: 150,
-    benefits: ['+0,5 % de rendement annuel ETF', 'Débloque les signaux de timing marché dans la Marketplace', 'Base pour l\'analyse de risque'],
+    benefits: ['+0,5 % de rendement annuel ETF', 'Débloque Or & Métaux précieux', 'Débloque les signaux de timing marché dans la Marketplace'],
     returnBonus: [{ category: 'bourse_etf', bonus: 0.005 }],
+    unlocks: ['or_metaux'],
   },
 
   // ============================== TIER 2 ==============================
@@ -184,8 +185,8 @@ export const SKILLS: GameSkill[] = [
     trainingMonths: 10,
     realDurationMs: 4 * DAY,
     cost: 3000,
-    benefits: ['Débloque Locatif classique', 'Taux crédit −0.5%'],
-    unlocks: ['immo_classique'],
+    benefits: ['Débloque Locatif classique', 'Débloque Club Deal Immobilier', 'Taux crédit −0.5%'],
+    unlocks: ['immo_classique', 'club_deal_immo'],
     mortgageRateReduction: 0.005,
     minNetWorth: 50000,
   },
@@ -271,8 +272,9 @@ export const SKILLS: GameSkill[] = [
     trainingMonths: 9,
     realDurationMs: 9 * DAY,
     cost: 3000,
-    benefits: ['+1% sur les rendements ETF', 'Meilleure tolérance à la volatilité'],
+    benefits: ['Débloque Crypto-actifs (BTC/ETH)', '+1% sur les rendements ETF'],
     returnBonus: [{ category: 'bourse_etf', bonus: 0.01 }],
+    unlocks: ['crypto'],
     minNetWorth: 60000,
   },
   {

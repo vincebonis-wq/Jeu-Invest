@@ -57,14 +57,18 @@ export function calcAssetBreakdown(state: GameState): AssetBreakdown {
     cash: Math.max(0, state.cashBalance),
     livret: 0,
     assurance_vie: 0,
+    obligations_etat: 0,
     bourse_etf: 0,
+    or_metaux: 0,
     crowdfunding_immo: 0,
     scpi: 0,
     produit_structure: 0,
     business: 0,
     parking: 0,
     lmnp: 0,
+    crypto: 0,
     immo_classique: 0,
+    club_deal_immo: 0,
   }
   for (const inv of state.investments) {
     breakdown[inv.catalogId] += inv.currentValue

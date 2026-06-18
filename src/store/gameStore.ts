@@ -309,6 +309,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (saved.player.activeTraining && !saved.player.activeTraining.startedAtReal) {
         saved.player.activeTraining = { ...saved.player.activeTraining, startedAtReal: Date.now() }
       }
+      if (saved.player.activeTraining && saved.player.activeTraining.monthsCompleted === undefined) {
+        saved.player.activeTraining = { ...saved.player.activeTraining, monthsCompleted: 0 }
+      }
       saved.investments = saved.investments.map((inv) =>
         inv.businessDetails && inv.businessDetails.growthStage === undefined
           ? {
@@ -500,6 +503,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             skillId,
             startDateISO: s.game!.gameDateISO,
             startedAtReal: Date.now(),
+            monthsCompleted: 0,
           },
         },
       },

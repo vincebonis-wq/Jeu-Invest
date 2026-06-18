@@ -209,7 +209,8 @@ export function checkRealTimeProgress(input: GameState): AdvanceResult {
   if (state.player.activeTraining) {
     const training = state.player.activeTraining
     const skill = SKILL_BY_ID[training.skillId]
-    if (skill && now - training.startedAtReal >= skill.realDurationMs) {
+    const monthsDone = training.monthsCompleted ?? 0
+    if (skill && monthsDone >= skill.trainingMonths) {
       const newSkills = [...(state.player.learnedSkillIds || []), skill.id]
       let player = { ...state.player, learnedSkillIds: newSkills, activeTraining: undefined }
       const monthlyExpenses = { ...state.monthlyExpenses }
@@ -437,9 +438,16 @@ function processMonth(ctx: MonthContext) {
     player = { ...player, jobChangeCooldownMonths: player.jobChangeCooldownMonths - 1 }
   }
 
-  // 8c. La complétion de formation est gérée en TEMPS RÉEL par le store
-  // (voir checkTrainingCompletion dans gameStore.ts), pas ici, pour empêcher
-  // de l'accélérer via la vitesse de jeu.
+  // 8c. Progression de la formation (liée au temps de jeu, accélérée par la vitesse).
+  if (player.activeTraining) {
+    player = {
+      ...player,
+      activeTraining: {
+        ...player.activeTraining,
+        monthsCompleted: (player.activeTraining.monthsCompleted ?? 0) + 1,
+      },
+    }
+  }
 
   // 9. Événements aléatoires.
   const netWorthNow =
