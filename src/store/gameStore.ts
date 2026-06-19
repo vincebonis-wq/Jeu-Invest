@@ -1312,28 +1312,55 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!game) return
     const opp = (game.flashOpportunities ?? []).find((o) => o.id === flashId)
     if (!opp || opp.claimed || opp.expiresAtReal < Date.now()) return
+    if (game.cashBalance < opp.minAmount) return
+
     const catalog = getCatalogItem(opp.catalogId)
-    set((s) =>
-      s.game
-        ? {
-            game: {
-              ...s.game,
-              flashOpportunities: (s.game.flashOpportunities ?? []).map((o) =>
-                o.id === flashId ? { ...o, claimed: true } : o,
-              ),
-            },
-            toasts: [
-              ...s.toasts,
-              {
-                id: `flash_claimed_${flashId}`,
-                title: '⚡ Opportunité saisie !',
-                description: `+${Math.round(opp.bonusPct * 100)} % de rendement sur ${catalog.shortName} ce mois.`,
-                severity: 'good' as const,
-              },
-            ].slice(-5),
-          }
-        : s,
-    )
+    const existingInv = game.investments.find((i) => i.catalogId === opp.catalogId)
+    const bonusAmount = Math.round(opp.minAmount * opp.bonusPct)
+    const invested = opp.minAmount
+    const credited = invested + bonusAmount  // invested capital + immediate bonus yield
+
+    set((s) => {
+      if (!s.game) return s
+      let newInvestments: Investment[]
+
+      if (existingInv) {
+        // Depot dans l'investissement existant avec rendement flash appliqué immédiatement
+        newInvestments = s.game.investments.map((i) =>
+          i.instanceId === existingInv.instanceId
+            ? { ...i, currentValue: i.currentValue + credited, totalInvested: i.totalInvested + invested }
+            : i,
+        )
+      } else {
+        // Créer l'investissement avec la mise + le bonus en valeur initiale
+        const newInv: Investment = {
+          ...createInvestment(opp.catalogId, invested, s.game.gameDateISO, null),
+          currentValue: credited,
+          level: 1,
+        }
+        newInvestments = [...s.game.investments, newInv]
+      }
+
+      return {
+        game: {
+          ...s.game,
+          cashBalance: s.game.cashBalance - invested,
+          investments: newInvestments,
+          flashOpportunities: (s.game.flashOpportunities ?? []).map((o) =>
+            o.id === flashId ? { ...o, claimed: true } : o,
+          ),
+        },
+        toasts: [
+          ...s.toasts,
+          {
+            id: `flash_claimed_${flashId}`,
+            title: '⚡ Opportunité saisie !',
+            description: `${invested.toLocaleString('fr-FR')} € investis sur ${catalog.shortName} + ${bonusAmount.toLocaleString('fr-FR')} € de bonus offert !`,
+            severity: 'good' as const,
+          },
+        ].slice(-5),
+      }
+    })
     get().saveGame()
   },
 

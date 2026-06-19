@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap, Wallet, Info, Search, Shield } from 'lucide-react'
 import { INVESTMENT_CATALOG, getCatalogItem } from '../../data/investments'
+import { getLevelReturnBonus } from '../../data/upgradeTiers'
 import { SKILL_BY_ID } from '../../data/skills'
 import { INVESTMENT_EDU } from '../../data/education'
 import type { ImmoSearch, InvestmentCatalogItem, PropertyCandidate } from '../../types'
@@ -104,6 +105,7 @@ export function Marketplace() {
   const clearAutoBuy = useGameStore((s) => s.clearAutoBuy)
   const [buyTarget, setBuyTarget] = useState<InvestmentCatalogItem | null>(null)
   const [eduTarget, setEduTarget] = useState<InvestmentCatalogItem | null>(null)
+  const [depositTarget, setDepositTarget] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'invest' | 'portfolio'>('invest')
   const [comparisonSearch, setComparisonSearch] = useState<ImmoSearch | null>(null)
   const [selectedCandidate, setSelectedCandidate] = useState<{ search: ImmoSearch; candidate: PropertyCandidate } | null>(null)
@@ -198,6 +200,7 @@ export function Marketplace() {
               missingWealth={!wealthOk}
               onBuy={() => setBuyTarget(item)}
               onInfo={() => setEduTarget(item)}
+              onDeposit={(instanceId) => setDepositTarget(instanceId)}
               activeSearch={activeSearch && !activeSearch.candidates ? activeSearch : undefined}
               searchWithCandidates={searchWithCandidates}
               onShowCandidates={(search) => setComparisonSearch(search)}
@@ -212,6 +215,9 @@ export function Marketplace() {
       )}
       {eduTarget && (
         <EduModal item={eduTarget} onClose={() => setEduTarget(null)} />
+      )}
+      {depositTarget && (
+        <DepositModal instanceId={depositTarget} onClose={() => setDepositTarget(null)} />
       )}
       {comparisonSearch && (
         <PropertyComparisonModal
@@ -251,6 +257,7 @@ function CatalogCard({
   missingWealth,
   onBuy,
   onInfo,
+  onDeposit,
   activeSearch,
   searchWithCandidates,
   onShowCandidates,
@@ -262,13 +269,13 @@ function CatalogCard({
   missingWealth?: boolean
   onBuy: () => void
   onInfo: () => void
+  onDeposit: (instanceId: string) => void
   activeSearch?: ImmoSearch
   searchWithCandidates?: ImmoSearch
   onShowCandidates?: (search: ImmoSearch) => void
   isImmoType?: boolean
 }) {
   const [now, setNow] = useState(() => Date.now())
-  const [depositTarget, setDepositTarget] = useState<string | null>(null)
   const startImmoSearch = useGameStore((s) => s.startImmoSearch)
   const setScreen = useGameStore((s) => s.setScreen)
   const marketPhase = useGameStore((s) => s.game?.economy.marketPhase ?? 'neutral')
@@ -453,26 +460,25 @@ function CatalogCard({
         {unlocked ? (
           isFullyOwned ? (
             <div className="space-y-2">
+              {/* Level benefit label */}
+              {ownedLevel !== null && ownedLevel > 1 && (
+                <div className="text-[11px] text-center text-emerald-600 font-semibold">
+                  Niv. {ownedLevel} — +{Math.round(getLevelReturnBonus(ownedLevel) * 100)}% rendement actif
+                </div>
+              )}
               {/* Deposit button (not for real estate) */}
               {!isRealEstateType && ownedInv && (
-                <Button fullWidth variant="secondary" onClick={(e) => { e.stopPropagation(); setDepositTarget(ownedInv.instanceId) }}>
+                <Button fullWidth variant="secondary" onClick={() => onDeposit(ownedInv.instanceId)}>
                   💰 Ajouter des fonds
                 </Button>
               )}
               {/* Upgrade button */}
               {(ownedLevel ?? 1) < 5 ? (
                 <Button fullWidth variant="ghost" onClick={() => setScreen('portfolio')}>
-                  ⬆️ Améliorer → Niv. {(ownedLevel ?? 1) + 1}
+                  ⬆️ Améliorer → Niv. {(ownedLevel ?? 1) + 1} (+{Math.round(getLevelReturnBonus((ownedLevel ?? 1) + 1) * 100)}%)
                 </Button>
               ) : (
-                <div className="text-center py-2 text-xs font-bold text-violet-600">⚜️ Niveau Maître atteint</div>
-              )}
-              {/* Deposit modal */}
-              {depositTarget && (
-                <DepositModal
-                  instanceId={depositTarget}
-                  onClose={() => setDepositTarget(null)}
-                />
+                <div className="text-center py-2 text-xs font-bold text-violet-600">⚜️ Niveau Maître — +6% rendement</div>
               )}
             </div>
           ) : isImmoType ? (
