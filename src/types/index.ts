@@ -466,9 +466,97 @@ export interface GameState {
   hasReachedFreedom?: boolean       // a déjà franchi le point de bascule
   pendingFreedom?: boolean          // célébration de bascule à afficher
   lastInflationCost?: number        // cash grignoté par l'inflation au dernier mois
+  streak?: DailyStreak              // série de connexions quotidiennes
+  badges?: EarnedBadge[]            // badges débloqués (persisté)
+  pendingBadges?: BadgeId[]         // badges gagnés mais pas encore affichés
+  pendingOfflineGains?: OfflineGains // gains offline à révéler au joueur
+  flashOpportunities?: FlashOpportunity[] // opportunités flash en cours
 }
 
 export type SpeedMultiplier = 1 | 5 | 10 | 50
+
+// ----------------------------------------------------------------------------
+// Streak quotidien — rétention par habitude
+// ----------------------------------------------------------------------------
+
+export interface DailyStreak {
+  currentStreak: number           // jours consécutifs
+  longestStreak: number
+  lastLoginISO: string            // date ISO (YYYY-MM-DD) du dernier login
+  shieldActive: boolean           // protection 1 jour manqué
+  streakBonusActiveUntilReal?: number // epoch ms — boost de rendement actif
+}
+
+// ----------------------------------------------------------------------------
+// Badges / trophées
+// ----------------------------------------------------------------------------
+
+export type BadgeId =
+  | 'first_investment'
+  | 'speed_investor'
+  | 'livret_full'
+  | 'first_etf'
+  | 'first_real_estate'
+  | 'first_business'
+  | 'diversified_4'
+  | 'survived_crash'
+  | 'crypto_survivor'
+  | 'passive_income_500'
+  | 'passive_income_salary'
+  | 'net_worth_10k'
+  | 'net_worth_50k'
+  | 'net_worth_100k'
+  | 'net_worth_500k'
+  | 'millionnaire'
+  | 'no_debt'
+  | 'streak_7'
+  | 'streak_30'
+  | 'buy_in_crash'
+
+export interface Badge {
+  id: BadgeId
+  name: string
+  emoji: string
+  description: string
+  category: 'milestone' | 'behavior' | 'market' | 'special'
+}
+
+export interface EarnedBadge {
+  id: BadgeId
+  earnedAtISO: string
+  earnedAtMonthIndex: number
+}
+
+// ----------------------------------------------------------------------------
+// Gains offline révélés au retour du joueur
+// ----------------------------------------------------------------------------
+
+export interface OfflineGains {
+  daysElapsed: number
+  netWorthGain: number
+  cashGain: number
+  passiveIncomeEarned: number
+  streakContinued: boolean
+  streakBroken: boolean
+  newStreakCount: number
+  newBadges: BadgeId[]
+  returnBonusPct: number    // 0 ou % si bonus de série actif
+}
+
+// ----------------------------------------------------------------------------
+// Opportunités flash — expirent en temps réel
+// ----------------------------------------------------------------------------
+
+export interface FlashOpportunity {
+  id: string
+  catalogId: InvestmentCategory
+  label: string
+  description: string
+  bonusPct: number            // bonus de rendement (ex: 0.02 = +2 %)
+  minAmount: number
+  expiresAtReal: number       // epoch ms
+  claimed: boolean
+}
 
 // ----------------------------------------------------------------------------
 // UI / navigation

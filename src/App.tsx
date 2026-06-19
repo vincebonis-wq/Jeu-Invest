@@ -15,6 +15,8 @@ import { Skills } from './components/game/Skills'
 import { FirstStepModal } from './components/game/FirstStepModal'
 import { QuarterlyReviewModal } from './components/game/QuarterlyReviewModal'
 import { FreedomModal } from './components/game/FreedomModal'
+import { ReturnModal } from './components/game/ReturnModal'
+import { BadgeNotification } from './components/game/BadgeNotification'
 import { Modal } from './components/ui/Modal'
 import { Button } from './components/ui/Button'
 import { formatEuroSigned } from './utils/formatting'
@@ -90,6 +92,8 @@ export default function App() {
       <FirstStepModal />
       <FreedomModal />
       <QuarterlyReviewModal />
+      <ReturnModal />
+      <BadgeNotification />
     </div>
   )
 }

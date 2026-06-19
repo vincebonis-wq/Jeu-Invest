@@ -15,11 +15,12 @@ import {
 import { RotateCcw, Receipt, Trophy } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { MILESTONE_INFO, milestoneRank } from '../../utils/calculations'
-import type { MilestoneLevel } from '../../types'
+import type { GameState, MilestoneLevel } from '../../types'
 import { Card, CardHeader } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { Icon } from '../ui/Icon'
+import { BADGES, BADGE_BY_ID } from '../../data/badges'
 import {
   formatEuro,
   formatEuroCompact,
@@ -32,6 +33,64 @@ const tooltipStyle = {
   border: '1px solid #e2e8f0',
   fontSize: 12,
   boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+}
+
+function BadgesPanel({ game }: { game: GameState }) {
+  const earned = new Set((game.badges ?? []).map((b) => b.id))
+  const categories = ['special', 'milestone', 'behavior', 'market'] as const
+  const catLabels = { special: '⭐ Spéciaux', milestone: '🏆 Paliers', behavior: '🧠 Comportement', market: '📊 Marchés' }
+
+  return (
+    <Card className="p-5">
+      <CardHeader title="Trophées" subtitle={`${earned.size} / ${BADGES.length} débloqués`} icon={<Trophy size={18} />} />
+      <div className="space-y-4 mt-3">
+        {categories.map((cat) => {
+          const inCat = BADGES.filter((b) => b.category === cat)
+          return (
+            <div key={cat}>
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">{catLabels[cat]}</div>
+              <div className="grid grid-cols-2 gap-2">
+                {inCat.map((badge) => {
+                  const isEarned = earned.has(badge.id)
+                  const earnedBadge = (game.badges ?? []).find((b) => b.id === badge.id)
+                  return (
+                    <div
+                      key={badge.id}
+                      className={cn(
+                        'flex items-start gap-2.5 p-3 rounded-2xl border transition-all',
+                        isEarned
+                          ? badge.category === 'special'
+                            ? 'bg-gradient-to-br from-violet-50 to-purple-50 border-violet-200'
+                            : 'bg-slate-50 border-slate-200'
+                          : 'bg-white border-dashed border-slate-200 opacity-40',
+                      )}
+                    >
+                      <span className={cn('text-2xl shrink-0 leading-none', !isEarned && 'grayscale')}>
+                        {badge.emoji}
+                      </span>
+                      <div className="min-w-0">
+                        <div className={cn('text-xs font-bold truncate', isEarned ? 'text-slate-800' : 'text-slate-400')}>
+                          {badge.name}
+                        </div>
+                        <div className="text-[11px] text-slate-400 leading-tight mt-0.5 line-clamp-2">
+                          {isEarned ? badge.description : '???'}
+                        </div>
+                        {earnedBadge && (
+                          <div className="text-[10px] text-slate-300 mt-1">
+                            Mois {earnedBadge.earnedAtMonthIndex}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
 }
 
 export function Stats() {
@@ -177,6 +236,9 @@ export function Stats() {
           })}
         </div>
       </Card>
+
+      {/* Trophées */}
+      <BadgesPanel game={game} />
 
       {/* Réglages */}
       <Card className="p-5">

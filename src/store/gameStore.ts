@@ -1,5 +1,8 @@
 import { create } from 'zustand'
 import type {
+  BadgeId,
+  DailyStreak,
+  EarnedBadge,
   GameEvent,
   GameState,
   ImmoSearch,
@@ -7,6 +10,7 @@ import type {
   JobProfile,
   LifeGoalId,
   MortgageQuote,
+  OfflineGains,
   Screen,
   SpeedMultiplier,
   StrategicStance,
@@ -14,6 +18,7 @@ import type {
 } from '../types'
 import { getCatalogItem } from '../data/investments'
 import { advanceDays, checkRealTimeProgress, createInitialBehavior } from '../engine/gameLoop'
+import { checkBadges, awardBadges } from '../engine/badges'
 import {
   capitalGainsTax,
 } from '../engine/fiscal'
@@ -33,6 +38,7 @@ import {
   totalMortgagePayments,
 } from '../utils/calculations'
 import { IMMO_SEARCH_DURATIONS } from '../engine/immoEngine'
+import { pickRandomFlash, generateFlashOpportunity } from '../data/flashOpportunities'
 
 // ============================================================================
 // Store principal : état du jeu + UI + boucle de temps + sauvegarde.
@@ -116,6 +122,11 @@ interface GameStore {
   // Bilan trimestriel & point de bascule
   resolveQuarterlyReview: (stance: StrategicStance) => void
   dismissFreedom: () => void
+
+  // Rétention — gains offline, badges, flash, streak
+  collectOfflineGains: () => void
+  dismissBadge: (id: BadgeId) => void
+  claimFlashOpportunity: (id: string) => void
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -123,6 +134,8 @@ let intervalId: ReturnType<typeof setInterval> | null = null
 let accumulator = 0
 let lastTick = 0
 let saveAccumulator = 0
+let lastFlashGeneratedAt = 0
+const FLASH_INTERVAL_MS = 12 * 60_000 // 12 min réelles entre chaque opportunité flash
 
 /** Met à jour le suivi comportemental après un achat (selon la phase de marché). */
 function recordBuy(game: GameState): GameState['behavior'] {
@@ -235,6 +248,15 @@ function createInitialState(
     hasReachedFreedom: false,
     pendingFreedom: false,
     lastInflationCost: 0,
+    streak: {
+      currentStreak: 1,
+      longestStreak: 1,
+      lastLoginISO: new Date().toISOString().split('T')[0],
+      shieldActive: false,
+    },
+    badges: [],
+    pendingBadges: [],
+    flashOpportunities: [],
   }
 }
 
@@ -270,7 +292,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Progression en temps RÉEL (formations, décisions business) : tourne
       // TOUJOURS, même en pause ou à vitesse ×1 — impossible à accélérer.
       const realCheck = checkRealTimeProgress(game)
-      let pendingToasts: Toast[] = realCheck.toasts
+      let pendingToasts: Toast[] = [...realCheck.toasts]
       if (realCheck.toasts.length > 0) {
         game = realCheck.state
       }
@@ -300,7 +322,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
       accumulator -= wholeDays
       if (wholeDays > MAX_CATCHUP_DAYS) wholeDays = MAX_CATCHUP_DAYS
 
-      const { state: newGame, toasts } = advanceDays(game, wholeDays)
+      const { state: rawGame, toasts } = advanceDays(game, wholeDays)
+
+      // Badges gagnés pendant le tick
+      const tickBadgeIds = checkBadges(rawGame)
+      let newGame = tickBadgeIds.length > 0 ? awardBadges(rawGame, tickBadgeIds) : rawGame
+
+      // Génération opportunités flash (12 min réelles entre chaque)
+      const nowMs = Date.now()
+      const hasActiveFlash = (newGame.flashOpportunities ?? []).some(
+        (o) => !o.claimed && o.expiresAtReal > nowMs,
+      )
+      if (!hasActiveFlash && nowMs - lastFlashGeneratedAt > FLASH_INTERVAL_MS && Math.random() < 0.5) {
+        const recentCatalogIds = (newGame.flashOpportunities ?? []).map((o) => o.catalogId)
+        const template = pickRandomFlash(recentCatalogIds)
+        const flash = generateFlashOpportunity(template)
+        lastFlashGeneratedAt = nowMs
+        newGame = {
+          ...newGame,
+          flashOpportunities: [
+            ...(newGame.flashOpportunities ?? []).filter((o) => o.expiresAtReal > nowMs),
+            flash,
+          ],
+        }
+        // Toast discret pour signaler l'opportunité
+        pendingToasts = [...pendingToasts, {
+          id: `flash_${flash.id}`,
+          title: `⚡ ${flash.label}`,
+          description: `Expire dans ${Math.round((flash.expiresAtReal - nowMs) / 60_000)} min — consulte le Dashboard !`,
+          severity: 'good' as const,
+        }]
+      }
+
       // Un bilan trimestriel ou un point de bascule impose une pause : on
       // force le joueur à s'arrêter et à réfléchir avant que le temps reprenne.
       const mustPause = !!newGame.pendingReview || !!newGame.pendingFreedom
@@ -390,7 +443,55 @@ export const useGameStore = create<GameStore>((set, get) => ({
         nextOfferAtReal: inv.nextOfferAtReal ?? undefined,
       }))
 
-      // Progression offline : même moteur que le live.
+      // Backward compat : champs de rétention manquants
+      if (!saved.badges) saved.badges = []
+      if (!saved.pendingBadges) saved.pendingBadges = []
+      if (!saved.flashOpportunities) saved.flashOpportunities = []
+      saved.pendingOfflineGains = undefined // jamais ré-afficher au rechargement si déjà affiché
+
+      // ── Streak quotidien ──────────────────────────────────────────────
+      const today = new Date().toISOString().split('T')[0]
+      const yesterday = new Date(Date.now() - 86_400_000).toISOString().split('T')[0]
+      const savedStreak: DailyStreak = saved.streak ?? {
+        currentStreak: 1, longestStreak: 1, lastLoginISO: yesterday, shieldActive: false,
+      }
+      let newStreak: DailyStreak
+      let streakContinued = false
+      let streakBroken = false
+      const lastLogin = savedStreak.lastLoginISO
+
+      if (lastLogin === today) {
+        newStreak = savedStreak // même jour, rien ne change
+      } else if (lastLogin === yesterday) {
+        const next = savedStreak.currentStreak + 1
+        newStreak = {
+          currentStreak: next,
+          longestStreak: Math.max(savedStreak.longestStreak, next),
+          lastLoginISO: today,
+          shieldActive: savedStreak.shieldActive,
+          streakBonusActiveUntilReal: next >= 7 ? Date.now() + 4 * 3_600_000 : undefined,
+        }
+        streakContinued = true
+      } else if (savedStreak.shieldActive) {
+        // Le shield absorbe 1 jour manqué
+        const next = savedStreak.currentStreak + 1
+        newStreak = {
+          currentStreak: next,
+          longestStreak: Math.max(savedStreak.longestStreak, next),
+          lastLoginISO: today,
+          shieldActive: false,
+          streakBonusActiveUntilReal: next >= 7 ? Date.now() + 4 * 3_600_000 : undefined,
+        }
+        streakContinued = true
+      } else {
+        newStreak = { currentStreak: 1, longestStreak: savedStreak.longestStreak, lastLoginISO: today, shieldActive: false }
+        streakBroken = true
+      }
+      saved.streak = newStreak
+
+      // ── Progression offline ───────────────────────────────────────────
+      const savedNetWorth = calcNetWorth(saved)
+      const savedPassiveIncome = calcMonthlyPassiveIncome(saved)
       const elapsedMs = Date.now() - saved.lastRealTimestamp
       const offlineDays = Math.min(
         OFFLINE_CAP_DAYS,
@@ -407,6 +508,42 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const realCheck = checkRealTimeProgress(game)
       game = realCheck.state
       offlineToasts = [...offlineToasts, ...realCheck.toasts].slice(-3)
+
+      // ── Badges gagnés pendant l'absence ──────────────────────────────
+      const newBadgeIds = checkBadges(game)
+      // Ajouter les badges streak
+      if (newStreak.currentStreak >= 7 && !(game.badges ?? []).some((b) => b.id === 'streak_7')) newBadgeIds.push('streak_7')
+      if (newStreak.currentStreak >= 30 && !(game.badges ?? []).some((b) => b.id === 'streak_30')) newBadgeIds.push('streak_30')
+      if (newBadgeIds.length > 0) {
+        const newEarned: EarnedBadge[] = newBadgeIds.map((id) => ({
+          id, earnedAtISO: game.gameDateISO, earnedAtMonthIndex: game.monthIndex ?? 0,
+        }))
+        game = {
+          ...game,
+          badges: [...(game.badges ?? []), ...newEarned],
+          pendingBadges: [...(game.pendingBadges ?? []), ...newBadgeIds],
+        }
+      }
+
+      // ── Offline gains à révéler ───────────────────────────────────────
+      const newNetWorth = calcNetWorth(game)
+      if (offlineDays >= 1) {
+        const elapsedMonths = offlineDays / 30
+        const passiveIncomeEarned = Math.round(savedPassiveIncome * elapsedMonths)
+        const offlineGains: OfflineGains = {
+          daysElapsed: offlineDays,
+          netWorthGain: Math.round(newNetWorth - savedNetWorth),
+          cashGain: Math.round(game.cashBalance - saved.cashBalance),
+          passiveIncomeEarned,
+          streakContinued,
+          streakBroken,
+          newStreakCount: newStreak.currentStreak,
+          newBadges: newBadgeIds,
+          returnBonusPct: (newStreak.currentStreak >= 7 && streakContinued) ? 0.05 : 0,
+        }
+        game = { ...game, pendingOfflineGains: offlineGains }
+      }
+
       set({ game, toasts: offlineToasts })
       get().startLoop()
       return true
@@ -641,14 +778,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
     const inv = createInvestment(catalogId, amount, game.gameDateISO, null)
-    set((s) => ({
-      game: {
-        ...s.game!,
-        cashBalance: s.game!.cashBalance - totalNeeded,
-        investments: [...s.game!.investments, inv],
-        behavior: recordBuy(s.game!),
-      },
-    }))
+    set((s) => {
+      if (!s.game) return s
+      const nextGame = {
+        ...s.game,
+        cashBalance: s.game.cashBalance - totalNeeded,
+        investments: [...s.game.investments, inv],
+        behavior: recordBuy(s.game),
+      }
+      const newBadgeIds = checkBadges(nextGame)
+      return { game: newBadgeIds.length > 0 ? awardBadges(nextGame, newBadgeIds) : nextGame }
+    })
     get().saveGame()
     return { success: true, message: `${item.name} acquis pour ${amount.toLocaleString('fr-FR')} € !` }
   },
@@ -1058,6 +1198,49 @@ export const useGameStore = create<GameStore>((set, get) => ({
   dismissFreedom: () => {
     set((s) =>
       s.game ? { game: { ...s.game, pendingFreedom: false, isPaused: false } } : s,
+    )
+    get().saveGame()
+  },
+
+  collectOfflineGains: () => {
+    set((s) => s.game ? { game: { ...s.game, pendingOfflineGains: undefined } } : s)
+    get().saveGame()
+  },
+
+  dismissBadge: (id) => {
+    set((s) =>
+      s.game
+        ? { game: { ...s.game, pendingBadges: (s.game.pendingBadges ?? []).filter((b) => b !== id) } }
+        : s,
+    )
+  },
+
+  claimFlashOpportunity: (flashId) => {
+    const game = get().game
+    if (!game) return
+    const opp = (game.flashOpportunities ?? []).find((o) => o.id === flashId)
+    if (!opp || opp.claimed || opp.expiresAtReal < Date.now()) return
+    const catalog = getCatalogItem(opp.catalogId)
+    set((s) =>
+      s.game
+        ? {
+            game: {
+              ...s.game,
+              flashOpportunities: (s.game.flashOpportunities ?? []).map((o) =>
+                o.id === flashId ? { ...o, claimed: true } : o,
+              ),
+            },
+            toasts: [
+              ...s.toasts,
+              {
+                id: `flash_claimed_${flashId}`,
+                title: '⚡ Opportunité saisie !',
+                description: `+${Math.round(opp.bonusPct * 100)} % de rendement sur ${catalog.shortName} ce mois.`,
+                severity: 'good' as const,
+              },
+            ].slice(-5),
+          }
+        : s,
     )
     get().saveGame()
   },

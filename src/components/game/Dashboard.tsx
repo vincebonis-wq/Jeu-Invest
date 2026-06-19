@@ -14,6 +14,7 @@ import {
 import {
   ArrowDownRight,
   ArrowUpRight,
+  Flame,
   TrendingUp,
 } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
@@ -36,6 +37,7 @@ import { NumberTicker } from '../ui/NumberTicker'
 import { OnboardingGuide } from '../ui/OnboardingGuide'
 import { GigsCard } from './GigsCard'
 import { LifeGoalCard, BehaviorMirrorCard } from './StrategyCards'
+import { FlashOpportunityCard } from './FlashOpportunityCard'
 import { Icon } from '../ui/Icon'
 import {
   formatEuro,
@@ -161,6 +163,27 @@ export function Dashboard() {
         )
       })()}
 
+      {/* Streak quotidien */}
+      {game.streak && game.streak.currentStreak >= 2 && (
+        <div className="flex items-center gap-2 px-1">
+          <div className={cn(
+            'flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full',
+            game.streak.currentStreak >= 30 ? 'bg-purple-100 text-purple-700' :
+            game.streak.currentStreak >= 7 ? 'bg-amber-100 text-amber-700' :
+            'bg-orange-50 text-orange-600',
+          )}>
+            <Flame size={13} />
+            <span>{game.streak.currentStreak} jours</span>
+          </div>
+          {game.streak.streakBonusActiveUntilReal && game.streak.streakBonusActiveUntilReal > Date.now() && (
+            <div className="text-xs text-emerald-600 font-semibold">+5% rendement actif 🎯</div>
+          )}
+          {game.streak.longestStreak > game.streak.currentStreak && (
+            <div className="text-xs text-slate-400">Record : {game.streak.longestStreak}j</div>
+          )}
+        </div>
+      )}
+
       {/* Progression vers le prochain palier */}
       <Card className="p-5">
         <div className="flex items-center justify-between mb-2">
@@ -197,6 +220,9 @@ export function Dashboard() {
 
       {/* Objectif de vie */}
       <LifeGoalCard game={game} />
+
+      {/* Opportunité flash — priorité max sur le dashboard */}
+      <FlashOpportunityCard />
 
       {/* Copilote patrimonial */}
       <CopiloteCard game={game} netWorth={netWorth} passiveIncome={passiveIncome} cashflow={cashflow} setScreen={setScreen} />
