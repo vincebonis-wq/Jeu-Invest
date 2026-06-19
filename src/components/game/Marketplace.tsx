@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap, Wallet, Info, Search, Shield } from 'lucide-react'
+import { TrendingUp, Check, Wallet } from 'lucide-react'
 import { INVESTMENT_CATALOG, getCatalogItem } from '../../data/investments'
-import { getLevelReturnBonus } from '../../data/upgradeTiers'
 import { SKILL_BY_ID } from '../../data/skills'
 import { INVESTMENT_EDU } from '../../data/education'
 import type { ImmoSearch, InvestmentCatalogItem, PropertyCandidate } from '../../types'
 import { useGameStore } from '../../store/gameStore'
-import { calcNetWorth } from '../../utils/calculations'
 import { PHASE_LABEL } from '../../engine/economy'
 import { buildAmortizationSchedule } from '../../engine/immoEngine'
 import { monthlyPaymentFor } from '../../engine/investments'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { Icon } from '../ui/Icon'
+import { MarketplaceMap } from './MarketplaceMap'
 import { Portfolio } from './Portfolio'
 import { StockMarketWidget } from './StockMarketWidget'
 import {
@@ -98,7 +97,6 @@ function generatePropertyOffers(item: InvestmentCatalogItem, baseAmount: number,
 
 export function Marketplace() {
   const game = useGameStore((s) => s.game)!
-  const netWorth = calcNetWorth(game)
   const phase = game.economy.marketPhase
   const phaseInfo = PHASE_LABEL[phase]
   const pendingAutoBuy = useGameStore((s) => s.pendingAutoBuy)
@@ -109,8 +107,6 @@ export function Marketplace() {
   const [activeTab, setActiveTab] = useState<'invest' | 'portfolio'>('invest')
   const [comparisonSearch, setComparisonSearch] = useState<ImmoSearch | null>(null)
   const [selectedCandidate, setSelectedCandidate] = useState<{ search: ImmoSearch; candidate: PropertyCandidate } | null>(null)
-  const learned = game.player.learnedSkillIds || []
-  const immoSearches = game.immoSearches ?? []
 
   useEffect(() => {
     if (!pendingAutoBuy) return
@@ -180,35 +176,12 @@ export function Marketplace() {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3 stagger">
-        {INVESTMENT_CATALOG.map((item) => {
-          const skillOk = !item.skillRequired || learned.includes(item.skillRequired)
-          const wealthOk = netWorth >= item.unlockThreshold
-          const unlocked = skillOk && wealthOk
-          const isImmoType = item.id === 'parking' || item.id === 'lmnp' || item.id === 'immo_classique'
-          const activeSearch = isImmoType
-            ? immoSearches.find((s) => s.catalogId === (item.id as 'parking' | 'lmnp' | 'immo_classique'))
-            : undefined
-          const searchWithCandidates = activeSearch?.candidates ? activeSearch : undefined
-
-          return (
-            <CatalogCard
-              key={item.id}
-              item={item}
-              unlocked={unlocked}
-              missingSkill={!skillOk ? item.skillRequired : undefined}
-              missingWealth={!wealthOk}
-              onBuy={() => setBuyTarget(item)}
-              onInfo={() => setEduTarget(item)}
-              onDeposit={(instanceId) => setDepositTarget(instanceId)}
-              activeSearch={activeSearch && !activeSearch.candidates ? activeSearch : undefined}
-              searchWithCandidates={searchWithCandidates}
-              onShowCandidates={(search) => setComparisonSearch(search)}
-              isImmoType={isImmoType}
-            />
-          )
-        })}
-      </div>
+      <MarketplaceMap
+        onBuy={(item) => setBuyTarget(item)}
+        onInfo={(item) => setEduTarget(item)}
+        onDeposit={(instanceId) => setDepositTarget(instanceId)}
+        onShowCandidates={(search) => setComparisonSearch(search)}
+      />
 
       {buyTarget && (
         <BuyModal item={buyTarget} onClose={() => setBuyTarget(null)} />
@@ -242,323 +215,6 @@ export function Marketplace() {
       )}
       </>
       )}
-    </div>
-  )
-}
-
-// ============================================================================
-// CatalogCard
-// ============================================================================
-
-function CatalogCard({
-  item,
-  unlocked,
-  missingSkill,
-  missingWealth,
-  onBuy,
-  onInfo,
-  onDeposit,
-  activeSearch,
-  searchWithCandidates,
-  onShowCandidates,
-  isImmoType,
-}: {
-  item: InvestmentCatalogItem
-  unlocked: boolean
-  missingSkill?: string
-  missingWealth?: boolean
-  onBuy: () => void
-  onInfo: () => void
-  onDeposit: (instanceId: string) => void
-  activeSearch?: ImmoSearch
-  searchWithCandidates?: ImmoSearch
-  onShowCandidates?: (search: ImmoSearch) => void
-  isImmoType?: boolean
-}) {
-  const [now, setNow] = useState(() => Date.now())
-  const startImmoSearch = useGameStore((s) => s.startImmoSearch)
-  const setScreen = useGameStore((s) => s.setScreen)
-  const marketPhase = useGameStore((s) => s.game?.economy.marketPhase ?? 'neutral')
-  const gameInvestments = useGameStore((s) => s.game?.investments ?? [])
-
-  const ownedInvs = gameInvestments.filter((i) => i.catalogId === item.id)
-  const isRealEstateType = ['parking', 'lmnp', 'immo_classique', 'club_deal_immo'].includes(item.id)
-  const maxInstances = isRealEstateType ? 3 : 1
-  const isFullyOwned = ownedInvs.length >= maxInstances
-  const ownedLevel = ownedInvs.length > 0 ? Math.min(...ownedInvs.map(i => i.level ?? 1)) : null
-  const ownedInv = ownedInvs[0] ?? null
-
-  useEffect(() => {
-    if (!activeSearch) return
-    const id = setInterval(() => setNow(Date.now()), 5000)
-    return () => clearInterval(id)
-  }, [activeSearch])
-
-  const financingProgress = activeSearch
-    ? Math.min(1, (now - activeSearch.startedAtReal) / (activeSearch.financingReadyAtReal - activeSearch.startedAtReal))
-    : 0
-  const propertyProgress = activeSearch
-    ? Math.min(1, (now - activeSearch.startedAtReal) / (activeSearch.propertyReadyAtReal - activeSearch.startedAtReal))
-    : 0
-  const financingDone = activeSearch ? now >= activeSearch.financingReadyAtReal : false
-  const propertyDone = activeSearch ? now >= activeSearch.propertyReadyAtReal : false
-
-  function formatTimeLeft(targetMs: number): string {
-    const ms = Math.max(0, targetMs - now)
-    const h = Math.floor(ms / 3_600_000)
-    const m = Math.floor((ms % 3_600_000) / 60_000)
-    if (h > 0) return `${h}h ${m}min`
-    return `${m}min`
-  }
-
-  // Market signal for header
-  const marketSignal = item.reactsToMarket && unlocked ? (() => {
-    if (marketPhase === 'bull') return { pill: 'bg-emerald-400/20 text-emerald-100', label: '📈 Haussier' }
-    if (marketPhase === 'crash') return { pill: 'bg-red-400/20 text-red-100', label: '💥 Krach' }
-    if (marketPhase === 'bear') return { pill: 'bg-orange-400/20 text-orange-100', label: '📉 Baissier' }
-    return null
-  })() : null
-
-  // Safe-haven signal for or/obligations
-  const isSafeHaven = (item.id === 'or_metaux' || item.id === 'obligations_etat') && (marketPhase === 'crash' || marketPhase === 'bear')
-
-  return (
-    <div
-      data-glow
-      style={{ '--glow': item.color } as React.CSSProperties}
-      className={cn(
-        'card-base overflow-hidden flex flex-col group transition-all duration-200',
-        unlocked ? 'hover:scale-[1.02] hover:shadow-xl cursor-pointer' : 'opacity-75',
-      )}
-    >
-      {/* ── Hero gradient header ── */}
-      <div className={cn('relative h-28 bg-gradient-to-br flex items-center justify-center', item.gradient)}>
-        {/* Background decorative circles */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full bg-white/10" />
-          <div className="absolute -bottom-6 -left-6 w-20 h-20 rounded-full bg-black/10" />
-        </div>
-
-        {/* Info button */}
-        <button
-          onClick={onInfo}
-          className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg flex items-center justify-center bg-black/20 text-white/70 hover:bg-black/30 hover:text-white transition-colors z-10"
-          title="En savoir plus"
-          aria-label="En savoir plus"
-        >
-          <Info size={14} />
-        </button>
-
-        {/* Return rate badge — top left */}
-        <div className="absolute top-2.5 left-2.5 bg-black/25 backdrop-blur-sm text-white rounded-lg px-2.5 py-1 z-10">
-          <div className="text-[10px] text-white/70 leading-none">Rendement</div>
-          <div className="font-display font-extrabold text-base leading-tight">
-            {item.returnVariance > 0 ? '~' : ''}{formatPercent(item.baseAnnualReturn)}
-            <span className="text-[10px] font-normal text-white/70">/an</span>
-          </div>
-        </div>
-
-        {/* Central icon */}
-        <div className={cn(
-          'relative z-10 w-14 h-14 rounded-2xl flex items-center justify-center',
-          'bg-white/20 backdrop-blur-sm border border-white/30',
-          'shadow-lg group-hover:scale-110 transition-transform duration-200',
-        )}>
-          <Icon name={item.icon} size={26} className="text-white drop-shadow-sm" />
-        </div>
-
-        {/* Risk stars — bottom right */}
-        <div className="absolute bottom-2 right-2.5 flex items-center gap-0.5 z-10">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <span key={i} className={cn('text-[11px]', i < item.riskLevel ? 'text-white' : 'text-white/25')}>★</span>
-          ))}
-        </div>
-
-        {/* Safe haven signal */}
-        {isSafeHaven && (
-          <div className="absolute bottom-2 left-2.5 bg-emerald-500/80 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full z-10">
-            🛡️ Valeur refuge
-          </div>
-        )}
-
-        {/* Market signal */}
-        {marketSignal && !isSafeHaven && (
-          <div className={cn('absolute bottom-2 left-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full z-10 backdrop-blur-sm', marketSignal.pill)}>
-            {marketSignal.label}
-          </div>
-        )}
-
-        {/* Locked overlay */}
-        {!unlocked && (
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center z-20">
-            <div className="flex flex-col items-center gap-1">
-              <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center">
-                <Lock size={18} className="text-white/80" />
-              </div>
-              {item.unlockThreshold > 0 && (
-                <span className="text-white/70 text-[10px] font-semibold">
-                  {formatEuroCompact(item.unlockThreshold)}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Fully-owned overlay */}
-        {isFullyOwned && unlocked && (
-          <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-20">
-            <div className="bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 flex items-center gap-1.5">
-              <span className="text-brand-600 font-bold text-xs">Niv. {ownedLevel}</span>
-              <div className="flex gap-0.5">
-                {[1,2,3,4,5].map((l) => (
-                  <div key={l} className={cn('w-1.5 h-1.5 rounded-full', l <= (ownedLevel ?? 1) ? 'bg-brand-500' : 'bg-slate-200')} />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── Body ── */}
-      <div className="p-4 flex flex-col flex-1">
-        {/* Name + min */}
-        <div className="mb-2.5">
-          <div className="font-display font-bold text-slate-800 leading-tight">{item.shortName}</div>
-          <div className="text-xs text-slate-400 mt-0.5">dès {formatEuroCompact(item.minAmount)}</div>
-        </div>
-
-        <p className="text-xs text-slate-500 leading-relaxed mb-3 flex-1">{item.description}</p>
-
-        {/* Tags row */}
-        <div className="flex flex-wrap gap-1 mb-3">
-          {item.lockPeriodMonths && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-50 text-orange-600">
-              <Clock size={9} /> {item.lockPeriodMonths} mois
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500">
-            <Droplets size={9} /> Liquid. {item.liquidityLevel}/5
-          </span>
-          {item.purchaseCostPct > 0 && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-600">
-              Frais {(item.purchaseCostPct * 100).toFixed(0)}%
-            </span>
-          )}
-          {item.id === 'produit_structure' && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand-50 text-brand-600">
-              <Shield size={9} /> Barrière 60%
-            </span>
-          )}
-          {item.id === 'or_metaux' && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-yellow-50 text-yellow-600">
-              🛡️ Anti-krach
-            </span>
-          )}
-        </div>
-
-        {/* CTA area */}
-        {unlocked ? (
-          isFullyOwned ? (
-            <div className="space-y-2">
-              {/* Level benefit label */}
-              {ownedLevel !== null && ownedLevel > 1 && (
-                <div className="text-[11px] text-center text-emerald-600 font-semibold">
-                  Niv. {ownedLevel} — +{Math.round(getLevelReturnBonus(ownedLevel) * 100)}% rendement actif
-                </div>
-              )}
-              {/* Deposit button (not for real estate) */}
-              {!isRealEstateType && ownedInv && (
-                <Button fullWidth variant="secondary" onClick={() => onDeposit(ownedInv.instanceId)}>
-                  💰 Ajouter des fonds
-                </Button>
-              )}
-              {/* Upgrade button */}
-              {(ownedLevel ?? 1) < 5 ? (
-                <Button fullWidth variant="ghost" onClick={() => setScreen('portfolio')}>
-                  ⬆️ Améliorer → Niv. {(ownedLevel ?? 1) + 1} (+{Math.round(getLevelReturnBonus((ownedLevel ?? 1) + 1) * 100)}%)
-                </Button>
-              ) : (
-                <div className="text-center py-2 text-xs font-bold text-violet-600">⚜️ Niveau Maître — +6% rendement</div>
-              )}
-            </div>
-          ) : isImmoType ? (
-            searchWithCandidates && onShowCandidates ? (
-              <Button fullWidth variant="gold" onClick={() => onShowCandidates(searchWithCandidates)}>
-                <Search size={14} />
-                {searchWithCandidates.candidates?.length} biens trouvés
-              </Button>
-            ) : activeSearch ? (
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-slate-500">Recherche en cours...</div>
-                <div className="space-y-1.5">
-                  <div>
-                    <div className="flex justify-between text-xs text-slate-500 mb-0.5">
-                      <span>Financement</span>
-                      <span>{financingDone ? '✓' : formatTimeLeft(activeSearch.financingReadyAtReal)}</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className={cn('h-full rounded-full transition-all', financingDone ? 'bg-emerald-500' : 'bg-brand-500')}
-                        style={{ width: `${financingProgress * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-xs text-slate-500 mb-0.5">
-                      <span>Recherche de bien</span>
-                      <span>{propertyDone ? '✓' : formatTimeLeft(activeSearch.propertyReadyAtReal)}</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className={cn('h-full rounded-full transition-all', propertyDone ? 'bg-emerald-500' : 'bg-violet-500')}
-                        style={{ width: `${propertyProgress * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <Button
-                fullWidth
-                variant="secondary"
-                onClick={() => {
-                  const result = startImmoSearch(item.id as 'parking' | 'lmnp' | 'immo_classique')
-                  if (!result.success) {
-                    onBuy()
-                  }
-                }}
-              >
-                <Search size={14} /> Lancer une recherche
-              </Button>
-            )
-          ) : (
-            <Button fullWidth onClick={onBuy}>
-              Investir
-            </Button>
-          )
-        ) : (
-          <div className="text-center py-2.5 px-3 rounded-xl bg-slate-50 text-xs font-semibold text-slate-400 space-y-1">
-            {missingSkill && (
-              <div className="flex items-center gap-1 justify-center text-amber-600">
-                <GraduationCap size={11} />
-                Requiert : {SKILL_BY_ID[missingSkill]?.name ?? missingSkill}
-              </div>
-            )}
-            {missingWealth && (
-              <div className="flex items-center gap-1 justify-center">
-                <Lock size={11} />
-                Débloqué à {formatEuroCompact(item.unlockThreshold)} de patrimoine
-              </div>
-            )}
-            {!missingSkill && !missingWealth && (
-              <div className="flex items-center gap-1 justify-center">
-                <Lock size={11} />
-                Non disponible
-              </div>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
