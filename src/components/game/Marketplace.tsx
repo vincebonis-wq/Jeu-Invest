@@ -270,8 +270,16 @@ function CatalogCard({
 }) {
   const [now, setNow] = useState(() => Date.now())
   const startImmoSearch = useGameStore((s) => s.startImmoSearch)
+  const setScreen = useGameStore((s) => s.setScreen)
   const marketPhase = useGameStore((s) => s.game?.economy.marketPhase ?? 'neutral')
   const knowsMarket = useGameStore((s) => s.game?.player.learnedSkillIds.includes('lecture_marche') ?? false)
+  const gameInvestments = useGameStore((s) => s.game?.investments ?? [])
+
+  const ownedInvs = gameInvestments.filter((i) => i.catalogId === item.id)
+  const isRealEstateType = ['parking', 'lmnp', 'immo_classique', 'club_deal_immo'].includes(item.id)
+  const maxInstances = isRealEstateType ? 3 : 1
+  const isFullyOwned = ownedInvs.length >= maxInstances
+  const ownedLevel = ownedInvs.length > 0 ? Math.min(...ownedInvs.map(i => i.level ?? 1)) : null
 
   useEffect(() => {
     if (!activeSearch) return
@@ -390,7 +398,32 @@ function CatalogCard({
         </div>
 
         {unlocked ? (
-          isImmoType ? (
+          isFullyOwned ? (
+            <div className="flex items-center justify-between mt-3">
+              <div className="flex items-center gap-1.5">
+                {[1,2,3,4,5].map((l) => (
+                  <div
+                    key={l}
+                    className={cn(
+                      'w-2 h-2 rounded-full',
+                      l <= (ownedLevel ?? 1) ? 'bg-brand-500' : 'bg-slate-200',
+                    )}
+                  />
+                ))}
+                <span className="text-xs font-semibold text-brand-600 ml-1">Niv. {ownedLevel}</span>
+              </div>
+              {(ownedLevel ?? 1) < 5 ? (
+                <button
+                  onClick={() => setScreen('portfolio')}
+                  className="text-xs font-bold text-brand-600 underline hover:text-brand-700"
+                >
+                  Améliorer →
+                </button>
+              ) : (
+                <span className="text-xs font-bold text-violet-600">★ Maître</span>
+              )}
+            </div>
+          ) : isImmoType ? (
             searchWithCandidates && onShowCandidates ? (
               <Button fullWidth variant="gold" onClick={() => onShowCandidates(searchWithCandidates)}>
                 <Search size={14} />

@@ -280,6 +280,8 @@ export interface Investment {
   propertyDetails?: PropertyDetails
   businessDetails?: BusinessDetails
   valueHistory: number[] // derniers points de valeur (pour sparkline), cappé
+  level: number                    // 1–5, default 1
+  upgradeReadyAtReal?: number      // epoch ms when current upgrade completes
   saleListingPrice?: number   // prix de mise en vente (si bien mis en vente)
   pendingOffers?: SaleOffer[] // offres NPC en attente
   nextOfferAtReal?: number    // epoch ms réel de la prochaine offre NPC

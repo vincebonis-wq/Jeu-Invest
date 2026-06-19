@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Area,
   AreaChart,
@@ -154,6 +154,21 @@ function InvestmentRow({ inv, onClick, onSell }: { inv: Investment; onClick: () 
           </div>
           <div className="text-xs text-slate-400">
             {item.shortName} · depuis {formatGameDate(inv.purchaseDateISO)}
+          </div>
+          {/* Level indicator */}
+          <div className="flex items-center gap-1 mt-1">
+            {[1,2,3,4,5].map((l) => (
+              <div
+                key={l}
+                className={cn(
+                  'w-2 h-2 rounded-full',
+                  l <= (inv.level ?? 1) ? 'bg-brand-500' : 'bg-slate-200',
+                )}
+              />
+            ))}
+            <span className="text-[11px] text-slate-400 ml-1">
+              {inv.upgradeReadyAtReal ? 'Mise à niveau...' : `Niv. ${inv.level ?? 1}`}
+            </span>
           </div>
         </div>
 
@@ -525,6 +540,25 @@ function InvestmentDetailModal({
           </div>
         )}
 
+        {/* Montée en niveau */}
+        <div>
+          <div className="flex items-center gap-1 mb-1">
+            {[1,2,3,4,5].map((l) => (
+              <div
+                key={l}
+                className={cn(
+                  'w-3 h-3 rounded-full',
+                  l <= (inv.level ?? 1) ? 'bg-brand-500' : 'bg-slate-200',
+                )}
+              />
+            ))}
+            <span className="text-xs text-slate-500 ml-2 font-semibold">
+              {inv.upgradeReadyAtReal ? 'Mise à niveau en cours...' : `Niveau ${inv.level ?? 1} / 5`}
+            </span>
+          </div>
+          <UpgradeButton inv={inv} />
+        </div>
+
         {/* Actions */}
         <div className="flex gap-3 pt-1">
           <Button variant="secondary" fullWidth onClick={onClose}>Fermer</Button>
@@ -758,6 +792,72 @@ function SellModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
         </div>
       )}
     </Modal>
+  )
+}
+
+// ============================================================================
+// UpgradeButton — bouton de montée en niveau avec countdown
+// ============================================================================
+
+function UpgradeButton({ inv }: { inv: Investment }) {
+  const upgradeInvestment = useGameStore((s) => s.upgradeInvestment)
+  const game = useGameStore((s) => s.game)!
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    if (!inv.upgradeReadyAtReal) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [inv.upgradeReadyAtReal])
+
+  const level = inv.level ?? 1
+  if (level >= 5) return null
+
+  const targetLevel = level + 1
+  const catalogItem = getCatalogItem(inv.catalogId)
+  const COST_MULTIPLIERS = [0, 0, 1.0, 2.5, 6.0, 15.0]
+  const TIER_LABELS_LOCAL = ['', '', '3 min', '20 min', '2h', '12h']
+  const cost = Math.round(catalogItem.minAmount * COST_MULTIPLIERS[targetLevel])
+  const tierLabel = TIER_LABELS_LOCAL[targetLevel]
+  const canAfford = game.cashBalance >= cost
+
+  if (inv.upgradeReadyAtReal) {
+    const secsLeft = Math.max(0, Math.round((inv.upgradeReadyAtReal - now) / 1000))
+    const minsLeft = Math.floor(secsLeft / 60)
+    const sLeft = secsLeft % 60
+    const timeStr = minsLeft > 60
+      ? `${Math.floor(minsLeft/60)}h${String(minsLeft%60).padStart(2,'0')}`
+      : minsLeft > 0
+      ? `${minsLeft}:${String(sLeft).padStart(2,'0')}`
+      : `${sLeft}s`
+    return (
+      <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-50 border border-brand-200">
+        <div className="text-brand-500 text-sm">⏳</div>
+        <div>
+          <div className="text-xs font-bold text-brand-700">Montée au palier {targetLevel}</div>
+          <div className="text-xs text-brand-500 tabular-nums">{timeStr} restant</div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => {
+        upgradeInvestment(inv.instanceId)
+      }}
+      disabled={!canAfford}
+      className={cn(
+        'mt-2 w-full py-2 px-3 rounded-xl text-xs font-bold transition-all',
+        canAfford
+          ? 'bg-gradient-to-r from-brand-500 to-indigo-600 text-white hover:from-brand-600 hover:to-indigo-700 active:scale-95'
+          : 'bg-slate-100 text-slate-400 cursor-not-allowed',
+      )}
+    >
+      {canAfford
+        ? `Palier ${targetLevel} — ${cost.toLocaleString('fr-FR')} € · ${tierLabel}`
+        : `Palier ${targetLevel} — ${cost.toLocaleString('fr-FR')} € requis`}
+    </button>
   )
 }
 

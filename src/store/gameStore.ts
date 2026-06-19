@@ -42,6 +42,7 @@ import {
 } from '../utils/calculations'
 import { IMMO_SEARCH_DURATIONS } from '../engine/immoEngine'
 import { pickRandomFlash, generateFlashOpportunity } from '../data/flashOpportunities'
+import { COST_MULTIPLIERS, TIER_SECS, TIER_LABELS } from '../data/upgradeTiers'
 
 // ============================================================================
 // Store principal : état du jeu + UI + boucle de temps + sauvegarde.
@@ -132,6 +133,7 @@ interface GameStore {
   claimFlashOpportunity: (id: string) => void
   prestige: () => void
   claimChallengeReward: (challengeId: string) => void
+  upgradeInvestment: (instanceId: string) => { success: boolean; message: string }
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -478,6 +480,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       saved.pendingFreedom = false // ne pas ré-afficher au chargement
       saved.investments = saved.investments.map((inv) => ({
         ...inv,
+        level: inv.level ?? 1,
         saleListingPrice: inv.saleListingPrice ?? undefined,
         pendingOffers: inv.pendingOffers ?? undefined,
         nextOfferAtReal: inv.nextOfferAtReal ?? undefined,
@@ -759,6 +762,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!game) return { success: false, message: 'Aucune partie en cours.' }
 
     const item = getCatalogItem(catalogId)
+
+    // Un seul investissement par type (sauf immo = 3 max)
+    const isRealEstate = ['parking', 'lmnp', 'immo_classique', 'club_deal_immo'].includes(catalogId)
+    const maxInstances = isRealEstate ? 3 : 1
+    const existingCount = game.investments.filter((i) => i.catalogId === catalogId).length
+    if (existingCount >= maxInstances) {
+      return {
+        success: false,
+        message: isRealEstate
+          ? `Tu possèdes déjà ${maxInstances} biens de ce type.`
+          : 'Tu possèdes déjà cet investissement. Monte-le en niveau depuis ton portefeuille.',
+      }
+    }
+
     const netWorth = calcNetWorth(game)
 
     if (netWorth < item.unlockThreshold) {
@@ -798,7 +815,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }
       }
       // Pass amount (full property price) so createInvestment knows the real value
-      const inv = createInvestment(catalogId, quote.downPayment, game.gameDateISO, null, amount)
+      const inv = { ...createInvestment(catalogId, quote.downPayment, game.gameDateISO, null, amount), level: 1 }
       const mortgage = createMortgage(inv.instanceId, quote)
       inv.mortgageId = mortgage.id
       const furnitureCost = inv.propertyDetails?.furnitureCost ?? 0
@@ -826,7 +843,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         message: `Cash insuffisant. Disponible : ${Math.round(game.cashBalance).toLocaleString('fr-FR')} €${furnitureCost ? ` (mobilier LMNP : +${furnitureCost} €)` : ''}.`,
       }
     }
-    const inv = createInvestment(catalogId, amount, game.gameDateISO, null)
+    const inv = { ...createInvestment(catalogId, amount, game.gameDateISO, null), level: 1 }
     set((s) => {
       if (!s.game) return s
       let nextGame: GameState = {
@@ -1207,7 +1224,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     // Créer l'investissement
     const catalogId = search.catalogId
-    const inv = createInvestment(catalogId, downPayment, game.gameDateISO, null, price)
+    const inv = { ...createInvestment(catalogId, downPayment, game.gameDateISO, null, price), level: 1 }
     // Override details with candidate data
     if (inv.propertyDetails) {
       inv.propertyDetails.address = candidate.address
@@ -1401,6 +1418,43 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return { game }
     })
     get().saveGame()
+  },
+
+  upgradeInvestment: (instanceId: string) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+
+    const inv = game.investments.find((i) => i.instanceId === instanceId)
+    if (!inv) return { success: false, message: 'Investissement introuvable.' }
+    if ((inv.level ?? 1) >= 5) return { success: false, message: 'Déjà au niveau maximum.' }
+    if (inv.upgradeReadyAtReal) return { success: false, message: 'Mise à niveau déjà en cours.' }
+
+    const targetLevel = (inv.level ?? 1) + 1
+    const catalogItem = getCatalogItem(inv.catalogId)
+    const cost = Math.round(catalogItem.minAmount * COST_MULTIPLIERS[targetLevel])
+
+    if (game.cashBalance < cost) {
+      return { success: false, message: `Il te faut ${cost.toLocaleString('fr-FR')} € pour monter au niveau ${targetLevel}.` }
+    }
+
+    const tierSecs = TIER_SECS[targetLevel]
+    const completesAt = Date.now() + tierSecs * 1000
+
+    set((s) => ({
+      game: {
+        ...s.game!,
+        cashBalance: s.game!.cashBalance - cost,
+        investments: s.game!.investments.map((i) =>
+          i.instanceId === instanceId
+            ? { ...i, upgradeReadyAtReal: completesAt }
+            : i,
+        ),
+      },
+    }))
+    get().saveGame()
+
+    const tierLabel = TIER_LABELS[targetLevel]
+    return { success: true, message: `Mise à niveau vers le palier ${targetLevel} lancée ! (${tierLabel})` }
   },
 
   earlyRepayMortgage: (mortgageId) => {

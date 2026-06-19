@@ -86,6 +86,7 @@ export function createInvestment(
     unlockDateISO,
     mortgageId: mortgage ? mortgage.id : null,
     valueHistory: [Math.round(rawCurrentValue)],
+    level: 1,
   }
 
   // Détails spécifiques immobilier — rent based on full asset value (before fees).

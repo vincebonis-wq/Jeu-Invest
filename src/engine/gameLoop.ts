@@ -1,4 +1,5 @@
 import type { GameEvent, GameState, Investment, SaleOffer, Toast } from '../types'
+import { getLevelReturnBonus } from '../data/upgradeTiers'
 import {
   MAX_INDEX_HISTORY,
   dailyStockDrift,
@@ -108,8 +109,9 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
     // Rendements quotidiens (croissance fluide du patrimoine).
     const prestigeReturnBonus = state.prestige?.heritageBonus.returnBonusPct ?? 0
     investments = investments.map((inv) => {
-      const boostedInv = prestigeReturnBonus > 0
-        ? { ...inv, annualReturnRate: inv.annualReturnRate * (1 + prestigeReturnBonus) }
+      const levelBonus = getLevelReturnBonus(inv.level ?? 1)
+      const boostedInv = (levelBonus > 0 || prestigeReturnBonus > 0)
+        ? { ...inv, annualReturnRate: inv.annualReturnRate * (1 + levelBonus + prestigeReturnBonus) }
         : inv
       return applyDailyYield(boostedInv, economy, state.strategicStance)
     })
@@ -344,6 +346,29 @@ export function checkRealTimeProgress(input: GameState): AdvanceResult {
   })
   if (immoChanged) {
     state = { ...state, immoSearches: updatedSearches }
+  }
+
+  // --- Montées en niveau d'investissement ---
+  {
+    const now = Date.now()
+    let upgradeChanged = false
+    const upgradedInvestments = (immoChanged ? state.investments : investments).map((inv) => {
+      if (inv.upgradeReadyAtReal && now >= inv.upgradeReadyAtReal) {
+        upgradeChanged = true
+        const newLevel = Math.min(5, (inv.level ?? 1) + 1)
+        toasts.push(toast(
+          `Palier ${newLevel} atteint !`,
+          `${inv.name} est maintenant au niveau ${newLevel}.`,
+          'good',
+        ))
+        return { ...inv, level: newLevel, upgradeReadyAtReal: undefined }
+      }
+      return inv
+    })
+    if (upgradeChanged) {
+      state = { ...state, investments: upgradedInvestments }
+      investments = upgradedInvestments
+    }
   }
 
   // --- Offres NPC sur biens mis en vente ---
