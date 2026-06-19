@@ -22,6 +22,10 @@ import { FirstInvestModal } from './components/game/FirstInvestModal'
 import { Modal } from './components/ui/Modal'
 import { Button } from './components/ui/Button'
 import { formatEuroSigned } from './utils/formatting'
+import { useUiMode } from './beta/uiModeStore'
+import { BetaModeSwitcher } from './beta/BetaModeSwitcher'
+import { BetaBaseView } from './beta/BetaBaseView'
+import { BetaCityView } from './beta/BetaCityView'
 
 const SCREENS = {
   dashboard: Dashboard,
@@ -49,7 +53,6 @@ const SCREEN_TITLES: Record<string, string> = {
 
 export default function App() {
   const game = useGameStore((s) => s.game)
-  const screen = useGameStore((s) => s.screen)
   const loadGame = useGameStore((s) => s.loadGame)
   const saveGame = useGameStore((s) => s.saveGame)
   const stopLoop = useGameStore((s) => s.stopLoop)
@@ -75,6 +78,37 @@ export default function App() {
     return <CharacterCreation />
   }
 
+  return (
+    <>
+      <MainView />
+
+      {/* Modales globales — rendues quel que soit le mode d'affichage */}
+      <Toaster />
+      <PendingActionModal />
+      <FirstStepModal />
+      <FreedomModal />
+      <QuarterlyReviewModal />
+      <ReturnModal />
+      <BadgeNotification />
+      <FirstInvestModal />
+
+      {/* Bascule entre l'app actuelle et les betas */}
+      <BetaModeSwitcher />
+    </>
+  )
+}
+
+/** Choisit la vue principale selon le mode d'affichage (classic / base / city). */
+function MainView() {
+  const mode = useUiMode((s) => s.mode)
+  if (mode === 'base') return <BetaBaseView />
+  if (mode === 'city') return <BetaCityView />
+  return <ClassicShell />
+}
+
+/** App actuelle : sidebar + header + écran courant. */
+function ClassicShell() {
+  const screen = useGameStore((s) => s.screen)
   const ScreenComponent = SCREENS[screen]
 
   return (
@@ -91,14 +125,6 @@ export default function App() {
           </div>
         </main>
       </div>
-      <Toaster />
-      <PendingActionModal />
-      <FirstStepModal />
-      <FreedomModal />
-      <QuarterlyReviewModal />
-      <ReturnModal />
-      <BadgeNotification />
-      <FirstInvestModal />
     </div>
   )
 }
