@@ -5,13 +5,15 @@ import type {
   ImmoSearch,
   InvestmentCategory,
   JobProfile,
+  LifeGoalId,
   MortgageQuote,
   Screen,
   SpeedMultiplier,
+  StrategicStance,
   Toast,
 } from '../types'
 import { getCatalogItem } from '../data/investments'
-import { advanceDays, checkRealTimeProgress } from '../engine/gameLoop'
+import { advanceDays, checkRealTimeProgress, createInitialBehavior } from '../engine/gameLoop'
 import {
   capitalGainsTax,
 } from '../engine/fiscal'
@@ -57,7 +59,7 @@ interface GameStore {
   pendingAutoBuy: InvestmentCategory | null
 
   // Cycle de vie
-  createCharacter: (job: JobProfile, name: string, age: number, savings: number, ownsResidence: boolean) => void
+  createCharacter: (job: JobProfile, name: string, age: number, savings: number, ownsResidence: boolean, lifeGoalId?: LifeGoalId) => void
   startLoop: () => void
   stopLoop: () => void
   newGame: () => void
@@ -110,6 +112,10 @@ interface GameStore {
   listPropertyForSale: (instanceId: string, listingPrice: number) => void
   cancelSaleListing: (instanceId: string) => void
   respondToSaleOffer: (instanceId: string, offerId: string, accept: boolean) => BuyResult
+
+  // Bilan trimestriel & point de bascule
+  resolveQuarterlyReview: (stance: StrategicStance) => void
+  dismissFreedom: () => void
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -118,12 +124,39 @@ let accumulator = 0
 let lastTick = 0
 let saveAccumulator = 0
 
+/** Met à jour le suivi comportemental après un achat (selon la phase de marché). */
+function recordBuy(game: GameState): GameState['behavior'] {
+  const b = game.behavior ?? createInitialBehavior()
+  const phase = game.economy.marketPhase
+  const mi = game.monthIndex ?? 0
+  return {
+    ...b,
+    totalBuys: b.totalBuys + 1,
+    lastBuyMonthIndex: mi,
+    buysInBull: b.buysInBull + (phase === 'bull' ? 1 : 0),
+    buysInBear: b.buysInBear + (phase === 'bear' ? 1 : 0),
+    buysInCrash: b.buysInCrash + (phase === 'crash' ? 1 : 0),
+    buysInNeutral: b.buysInNeutral + (phase === 'neutral' ? 1 : 0),
+  }
+}
+
+/** Met à jour le suivi comportemental après une vente. */
+function recordSell(game: GameState): GameState['behavior'] {
+  const b = game.behavior ?? createInitialBehavior()
+  return {
+    ...b,
+    totalSells: b.totalSells + 1,
+    lastSellMonthIndex: game.monthIndex ?? 0,
+  }
+}
+
 function createInitialState(
   job: JobProfile,
   name: string,
   age: number,
   savings: number,
   ownsResidence: boolean,
+  lifeGoalId?: LifeGoalId,
 ): GameState {
   // Date de départ : 1er janvier d'une année "ronde".
   const startDate = new Date(Date.UTC(2025, 0, 1))
@@ -141,6 +174,9 @@ function createInitialState(
       milestone: 'debutant',
       learnedSkillIds: [...AUTO_SKILLS],
       activeTraining: undefined,
+      lifeGoalId,
+      goalStartMonthIndex: 0,
+      dependents: 0,
     },
     gameDateISO: startDate.toISOString(),
     lastRealTimestamp: Date.now(),
@@ -192,6 +228,13 @@ function createInitialState(
     totalTaxPaid: 0,
     gameVersion: GAME_VERSION,
     immoSearches: [],
+    monthIndex: 0,
+    strategicStance: undefined,
+    pendingReview: undefined,
+    behavior: createInitialBehavior(),
+    hasReachedFreedom: false,
+    pendingFreedom: false,
+    lastInflationCost: 0,
   }
 }
 
@@ -203,8 +246,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   isRunning: false,
   pendingAutoBuy: null,
 
-  createCharacter: (job, name, age, savings, ownsResidence) => {
-    const game = createInitialState(job, name, age, savings, ownsResidence)
+  createCharacter: (job, name, age, savings, ownsResidence, lifeGoalId) => {
+    const game = createInitialState(job, name, age, savings, ownsResidence, lifeGoalId)
     set({ game, screen: 'dashboard' })
     get().saveGame()
     get().startLoop()
@@ -258,8 +301,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (wholeDays > MAX_CATCHUP_DAYS) wholeDays = MAX_CATCHUP_DAYS
 
       const { state: newGame, toasts } = advanceDays(game, wholeDays)
+      // Un bilan trimestriel ou un point de bascule impose une pause : on
+      // force le joueur à s'arrêter et à réfléchir avant que le temps reprenne.
+      const mustPause = !!newGame.pendingReview || !!newGame.pendingFreedom
       set((s) => ({
-        game: newGame,
+        game: mustPause ? { ...newGame, isPaused: true } : newGame,
         toasts: [...s.toasts, ...pendingToasts, ...toasts].slice(-5),
       }))
 
@@ -328,6 +374,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       // Backward compat : nouveaux champs optionnels
       if (!saved.immoSearches) saved.immoSearches = []
+      if (saved.monthIndex === undefined) {
+        // Estime le monthIndex depuis la date de jeu (départ jan 2025).
+        const d = new Date(saved.gameDateISO)
+        saved.monthIndex = Math.max(0, (d.getUTCFullYear() - 2025) * 12 + d.getUTCMonth())
+      }
+      if (!saved.behavior) saved.behavior = createInitialBehavior()
+      if (saved.hasReachedFreedom === undefined) saved.hasReachedFreedom = false
+      if (saved.player.dependents === undefined) saved.player.dependents = 0
+      saved.pendingFreedom = false // ne pas ré-afficher au chargement
       saved.investments = saved.investments.map((inv) => ({
         ...inv,
         saleListingPrice: inv.saleListingPrice ?? undefined,
@@ -568,6 +623,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           cashBalance: s.game!.cashBalance - quote.downPayment - furnitureCost,
           investments: [...s.game!.investments, inv],
           mortgages: [...s.game!.mortgages, mortgage],
+          behavior: recordBuy(s.game!),
         },
       }))
       get().saveGame()
@@ -590,6 +646,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         ...s.game!,
         cashBalance: s.game!.cashBalance - totalNeeded,
         investments: [...s.game!.investments, inv],
+        behavior: recordBuy(s.game!),
       },
     }))
     get().saveGame()
@@ -625,6 +682,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         cashBalance: s.game!.cashBalance + proceeds,
         investments: s.game!.investments.filter((i) => i.instanceId !== instanceId),
         mortgages: s.game!.mortgages.filter((m) => m.id !== inv.mortgageId),
+        behavior: recordSell(s.game!),
       },
       selectedInvestmentId: null,
     }))
@@ -974,10 +1032,34 @@ export const useGameStore = create<GameStore>((set, get) => ({
         investments: [...s.game!.investments, inv],
         mortgages: mortgage ? [...s.game!.mortgages, mortgage] : s.game!.mortgages,
         immoSearches: (s.game!.immoSearches ?? []).filter((sr) => sr.id !== searchId),
+        behavior: recordBuy(s.game!),
       },
     }))
     get().saveGame()
     return { success: true, message: `${candidate.address}, ${candidate.city} acquis pour ${price.toLocaleString('fr-FR')} € !` }
+  },
+
+  resolveQuarterlyReview: (stance) => {
+    set((s) =>
+      s.game
+        ? {
+            game: {
+              ...s.game,
+              strategicStance: stance,
+              pendingReview: undefined,
+              isPaused: false,
+            },
+          }
+        : s,
+    )
+    get().saveGame()
+  },
+
+  dismissFreedom: () => {
+    set((s) =>
+      s.game ? { game: { ...s.game, pendingFreedom: false, isPaused: false } } : s,
+    )
+    get().saveGame()
   },
 
   earlyRepayMortgage: (mortgageId) => {

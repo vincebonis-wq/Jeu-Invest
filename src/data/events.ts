@@ -250,6 +250,44 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     impactRange: [200, 2000],
     cooldownMonths: 18,
   },
+
+  // ----- ÉVÉNEMENTS DE VIE (arc narratif) -----
+  {
+    id: 'marriage',
+    category: 'personal',
+    severity: 'good',
+    title: 'Tu te maries ! 💍',
+    description:
+      'Une nouvelle étape de vie. Les cadeaux des invités gonflent ton compte, et la vie à deux permet de mutualiser certaines charges.',
+    monthlyProbability: 0.006,
+    conditions: [{ type: 'minNetWorth', value: 5000 }],
+    impactRange: [2000, 8000],
+    cooldownMonths: 999, // une seule fois
+  },
+  {
+    id: 'have_child',
+    category: 'personal',
+    severity: 'warning',
+    title: 'Un enfant arrive ! 👶',
+    description:
+      'Une immense joie... et de nouvelles responsabilités. Tes charges mensuelles augmentent durablement pour subvenir à ses besoins.',
+    monthlyProbability: 0.01,
+    conditions: [{ type: 'minNetWorth', value: 8000 }],
+    impactRange: [-1500, -500],
+    cooldownMonths: 30,
+  },
+  {
+    id: 'parent_help',
+    category: 'personal',
+    severity: 'bad',
+    title: 'Aider un parent 🤝',
+    description:
+      'Un de tes parents traverse une difficulté de santé. Tu choisis de l\'aider financièrement, comme il se doit.',
+    monthlyProbability: 0.008,
+    conditions: [{ type: 'minNetWorth', value: 30000 }],
+    impactRange: [-8000, -2000],
+    cooldownMonths: 36,
+  },
 ]
 
 export const TEMPLATE_BY_ID: Record<string, EventTemplate> =

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { ArrowRight, ArrowLeft, Check, Sparkles } from 'lucide-react'
 import { JOBS } from '../../data/jobs'
-import type { JobProfile } from '../../types'
+import { LIFE_GOALS } from '../../data/lifeGoals'
+import type { JobProfile, LifeGoalId } from '../../types'
 import { useGameStore } from '../../store/gameStore'
 import { Icon } from '../ui/Icon'
 import { Button } from '../ui/Button'
@@ -16,6 +17,7 @@ export function CharacterCreation() {
   const [age, setAge] = useState(28)
   const [savings, setSavings] = useState(0)
   const [ownsResidence, setOwnsResidence] = useState(false)
+  const [lifeGoalId, setLifeGoalId] = useState<LifeGoalId | null>(null)
 
   function selectJob(j: JobProfile) {
     setJob(j)
@@ -27,7 +29,7 @@ export function CharacterCreation() {
   function start() {
     if (!job) return
     const finalSavings = ownsResidence ? Math.max(0, savings - 15000) : savings
-    createCharacter(job, name, age, finalSavings, ownsResidence)
+    createCharacter(job, name, age, finalSavings, ownsResidence, lifeGoalId ?? undefined)
   }
 
   const monthlyExpensesPreview = job
@@ -57,7 +59,7 @@ export function CharacterCreation() {
 
         {/* Étapes */}
         <div className="flex items-center justify-center gap-2 mb-6">
-          {['Métier', 'Profil', 'Départ'].map((label, i) => (
+          {['Métier', 'Profil', 'Rêve', 'Départ'].map((label, i) => (
             <div key={label} className="flex items-center gap-2">
               <div
                 className={cn(
@@ -72,7 +74,7 @@ export function CharacterCreation() {
                 {i < step ? <Check size={14} /> : <span>{i + 1}</span>}
                 {label}
               </div>
-              {i < 2 && <div className="w-4 h-px bg-slate-300" />}
+              {i < 3 && <div className="w-4 h-px bg-slate-300" />}
             </div>
           ))}
         </div>
@@ -212,8 +214,64 @@ export function CharacterCreation() {
             </div>
           )}
 
-          {/* ÉTAPE 2 : RÉCAP */}
+          {/* ÉTAPE 2 : RÊVE DE VIE */}
           {step === 2 && job && (
+            <div className="space-y-5">
+              <div>
+                <h2 className="font-display font-bold text-lg text-slate-800">
+                  Quel est ton rêve ?
+                </h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Ton objectif de vie donne un sens à chaque décision. Une cible, une deadline.
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                {LIFE_GOALS.map((g) => {
+                  const active = lifeGoalId === g.id
+                  return (
+                    <button
+                      key={g.id}
+                      onClick={() => setLifeGoalId(g.id)}
+                      className={cn(
+                        'text-left p-4 rounded-2xl border-2 transition-all',
+                        active
+                          ? 'border-brand-400 bg-brand-50 shadow-card'
+                          : 'border-slate-100 hover:border-brand-200',
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-2xl">{g.emoji}</span>
+                        <div className="font-display font-bold text-slate-800">{g.title}</div>
+                      </div>
+                      <div className="text-xs font-semibold text-brand-600 mb-1">{g.tagline}</div>
+                      <p className="text-xs text-slate-500 leading-relaxed mb-2">{g.description}</p>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 font-semibold">
+                          🎯 {formatEuro(g.targetNetWorth)}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 font-semibold">
+                          ⏳ {Math.round(g.deadlineMonths / 12)} ans
+                        </span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button variant="secondary" onClick={() => setStep(1)}>
+                  <ArrowLeft size={16} /> Retour
+                </Button>
+                <Button fullWidth disabled={!lifeGoalId} onClick={() => setStep(3)}>
+                  Continuer <ArrowRight size={16} />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ÉTAPE 3 : RÉCAP */}
+          {step === 3 && job && (
             <div className="space-y-5">
               <h2 className="font-display font-bold text-lg text-slate-800">
                 Prêt à démarrer ?
@@ -246,7 +304,7 @@ export function CharacterCreation() {
               </div>
 
               <div className="flex gap-3">
-                <Button variant="secondary" onClick={() => setStep(1)}>
+                <Button variant="secondary" onClick={() => setStep(2)}>
                   <ArrowLeft size={16} /> Retour
                 </Button>
                 <Button variant="gold" fullWidth size="lg" onClick={start}>

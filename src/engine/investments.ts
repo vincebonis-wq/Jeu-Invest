@@ -4,6 +4,7 @@ import type {
   InvestmentCategory,
   Mortgage,
   MortgageQuote,
+  StrategicStance,
 } from '../types'
 import {
   BUSINESS_TYPES,
@@ -19,6 +20,8 @@ import {
 } from './economy'
 import { taxOnMonthlyIncome } from './fiscal'
 import { rollBusinessDecisionDelayMs } from '../data/businessDecisions'
+import { generateTenant } from '../data/tenants'
+import { stanceYieldMultiplier } from '../utils/strategy'
 
 // ============================================================================
 // Opérations et calculs sur les investissements.
@@ -97,6 +100,8 @@ export function createInvestment(
     inv.name = isParking
       ? `Parking ${pickOne(FRENCH_CITIES)}`
       : `${sqm} m² ${pickOne(FRENCH_CITIES)}`
+    // Parking : pas de locataire nommé. Logements : un locataire avec une histoire.
+    const tenant = isParking ? null : generateTenant()
     inv.propertyDetails = {
       address: `${randInt(1, 120)} ${pickOne(STREET_NAMES)}`,
       city: pickOne(FRENCH_CITIES),
@@ -104,7 +109,10 @@ export function createInvestment(
       furnitureCost,
       monthlyRent,
       baseMonthlyRent: monthlyRent,
-      tenantProfile: 'professional',
+      tenantProfile: tenant?.tenantProfile ?? 'professional',
+      tenantName: tenant?.tenantName,
+      tenantStory: tenant?.tenantStory,
+      tenantSinceMonthIndex: 0,
       isVacant: false,
       vacancyMonthsLeft: 0,
       maintenanceCostYearly: Math.round(price * 0.008),
@@ -145,12 +153,17 @@ function effectiveAnnualRate(base: number, variance: number): number {
  * Met à jour currentValue (mode compound) — l'income mensuel est géré ailleurs.
  * Renvoie un nouvel objet Investment.
  */
-export function applyDailyYield(inv: Investment, economy: EconomyState): Investment {
+export function applyDailyYield(
+  inv: Investment,
+  economy: EconomyState,
+  stance?: StrategicStance,
+): Investment {
   const item = getCatalogItem(inv.catalogId)
   const updated = { ...inv }
+  const stanceMult = stanceYieldMultiplier(inv.catalogId, stance)
 
   if (item.yieldMode === 'compound') {
-    let dailyRate = Math.pow(1 + inv.annualReturnRate, 1 / 365) - 1
+    let dailyRate = (Math.pow(1 + inv.annualReturnRate, 1 / 365) - 1) * stanceMult
     if (item.reactsToMarket) {
       const mult = PHASE_RETURN_MULTIPLIER[economy.marketPhase]
       // On module la tendance, avec un peu de bruit quotidien.
@@ -181,9 +194,11 @@ export function applyDailyYield(inv: Investment, economy: EconomyState): Investm
 export function applyMonthlyIncome(
   inv: Investment,
   economy: EconomyState,
+  stance?: StrategicStance,
 ): { investment: Investment; netCash: number; tax: number } {
   const item = getCatalogItem(inv.catalogId)
   const updated = { ...inv }
+  const stanceMult = stanceYieldMultiplier(inv.catalogId, stance)
   let gross = 0
 
   if (item.yieldMode === 'income') {
@@ -194,6 +209,14 @@ export function applyMonthlyIncome(
         prop.vacancyMonthsLeft -= 1
         if (prop.vacancyMonthsLeft <= 0) {
           prop.isVacant = false
+          // Nouveau locataire (sauf parking).
+          if (inv.catalogId !== 'parking') {
+            const t = generateTenant()
+            prop.tenantName = t.tenantName
+            prop.tenantProfile = t.tenantProfile
+            prop.tenantStory = t.tenantStory
+            prop.tenantSinceMonthIndex = 0
+          }
         }
         gross = 0
       } else {
@@ -227,6 +250,7 @@ export function applyMonthlyIncome(
     }
   }
 
+  gross *= stanceMult
   const tax = taxOnMonthlyIncome(updated, gross)
   const netCash = gross - tax
   updated.monthlyIncome = Math.round(netCash)

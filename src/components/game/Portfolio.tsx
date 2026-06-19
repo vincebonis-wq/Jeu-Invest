@@ -497,6 +497,14 @@ function InvestmentDetailModal({
               label="Statut"
               value={inv.propertyDetails.isVacant ? `🔴 Vacant (${inv.propertyDetails.vacancyMonthsLeft} mois)` : '🟢 Loué'}
             />
+            {!inv.propertyDetails.isVacant && inv.propertyDetails.tenantName && (
+              <div className="mt-2 pt-2 border-t border-blue-100 flex items-start gap-2">
+                <span className="text-base shrink-0">🧑</span>
+                <p className="text-xs text-blue-700 leading-snug">
+                  {inv.propertyDetails.tenantStory}
+                </p>
+              </div>
+            )}
           </div>
         )}
 

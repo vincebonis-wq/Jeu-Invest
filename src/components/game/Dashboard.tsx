@@ -34,6 +34,7 @@ import { ProgressBar } from '../ui/ProgressBar'
 import { NumberTicker } from '../ui/NumberTicker'
 import { OnboardingGuide } from '../ui/OnboardingGuide'
 import { GigsCard } from './GigsCard'
+import { LifeGoalCard, BehaviorMirrorCard } from './StrategyCards'
 import { Icon } from '../ui/Icon'
 import {
   formatEuro,
@@ -194,8 +195,14 @@ export function Dashboard() {
         />
       </Card>
 
+      {/* Objectif de vie */}
+      <LifeGoalCard game={game} />
+
       {/* Copilote patrimonial */}
       <CopiloteCard game={game} netWorth={netWorth} passiveIncome={passiveIncome} cashflow={cashflow} setScreen={setScreen} />
+
+      {/* Miroir comportemental */}
+      <BehaviorMirrorCard game={game} />
 
       {/* Missions express — petit revenu d'appoint */}
       <GigsCard />

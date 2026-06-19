@@ -461,13 +461,30 @@ function PropertyCard({
 
         {/* Section locataire */}
         <div className="border-t border-slate-100 pt-3 space-y-2">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <Users size={12} />
-              <span className="font-semibold">Locataire :</span>
-              <span>{currentProfile.emoji} {currentProfile.label}</span>
+          {!prop.isVacant && prop.tenantName ? (
+            <div className="rounded-xl bg-slate-50 p-2.5 mb-1">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-0.5">
+                <span>{currentProfile.emoji}</span>
+                <span>{prop.tenantName}</span>
+                {prop.tenantSinceMonthIndex !== undefined && prop.tenantSinceMonthIndex >= 1 && (
+                  <span className="text-slate-400 font-normal">
+                    · {prop.tenantSinceMonthIndex} mois
+                  </span>
+                )}
+              </div>
+              {prop.tenantStory && (
+                <p className="text-[11px] text-slate-400 leading-snug">{prop.tenantStory}</p>
+              )}
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <Users size={12} />
+                <span className="font-semibold">Locataire :</span>
+                <span>{prop.isVacant ? '🔍 Recherche en cours' : `${currentProfile.emoji} ${currentProfile.label}`}</span>
+              </div>
+            </div>
+          )}
           <Button
             variant="secondary"
             size="sm"

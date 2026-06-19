@@ -28,6 +28,64 @@ export interface PlayerProfile {
   jobChangeCooldownMonths?: number  // mois restants avant de pouvoir changer de poste
   learnedSkillIds: string[]         // compétences maîtrisées
   activeTraining?: ActiveTraining   // formation en cours
+  lifeGoalId?: LifeGoalId           // rêve de vie choisi à la création
+  goalStartMonthIndex?: number      // monthIndex au démarrage du compteur d'objectif
+  dependents?: number               // nombre d'enfants à charge (impacte les charges)
+}
+
+// ----------------------------------------------------------------------------
+// Objectifs de vie — donnent un sens et une deadline émotionnelle
+// ----------------------------------------------------------------------------
+
+export type LifeGoalId =
+  | 'early_retirement'
+  | 'kids_education'
+  | 'beach_house'
+  | 'family_legacy'
+
+export interface LifeGoal {
+  id: LifeGoalId
+  title: string
+  emoji: string
+  tagline: string
+  description: string
+  targetNetWorth: number
+  deadlineMonths: number // mois de jeu pour atteindre l'objectif
+  successMessage: string
+}
+
+// ----------------------------------------------------------------------------
+// Posture stratégique — choisie au bilan trimestriel
+// ----------------------------------------------------------------------------
+
+export type StrategicStance = 'secure' | 'growth' | 'income'
+
+export interface QuarterlyReview {
+  quarter: number       // 1-4
+  year: number
+  monthIndex: number
+  netWorthDelta: number
+  netWorthDeltaPct: number
+  cashflow: number
+  passiveIncome: number
+  highlight: string     // fait marquant du trimestre
+  inflationLost: number // cash grignoté par l'inflation ce trimestre
+}
+
+// ----------------------------------------------------------------------------
+// Suivi comportemental — alimente le « miroir » du joueur
+// ----------------------------------------------------------------------------
+
+export interface BehaviorStats {
+  buysInBull: number
+  buysInBear: number
+  buysInCrash: number
+  buysInNeutral: number
+  totalBuys: number
+  totalSells: number
+  lastSellMonthIndex: number
+  lastBuyMonthIndex: number
+  inflationLostTotal: number  // cumul du cash grignoté par l'inflation
 }
 
 export interface ReturnBonus {
@@ -127,6 +185,9 @@ export interface PropertyDetails {
   monthlyRent: number
   baseMonthlyRent?: number  // loyer de référence avant profil locataire
   tenantProfile?: string    // 'professional' | 'student' | 'family'
+  tenantName?: string       // locataire nommé (attachement émotionnel)
+  tenantStory?: string      // courte histoire du locataire
+  tenantSinceMonthIndex?: number // depuis combien de mois il occupe le bien
   isVacant: boolean
   vacancyMonthsLeft: number
   maintenanceCostYearly: number
@@ -398,6 +459,13 @@ export interface GameState {
   tutorialDismissed?: boolean  // 1er pas guidé (Livret A) terminé/passé
   gigCooldowns?: Record<string, number> // gigId -> epoch ms réel de disponibilité
   immoSearches?: ImmoSearch[]  // recherches immobilières en cours
+  monthIndex?: number          // nombre de mois de jeu écoulés depuis le début
+  strategicStance?: StrategicStance // posture en cours (bilan trimestriel)
+  pendingReview?: QuarterlyReview   // bilan trimestriel en attente de réponse
+  behavior?: BehaviorStats          // suivi comportemental du joueur
+  hasReachedFreedom?: boolean       // a déjà franchi le point de bascule
+  pendingFreedom?: boolean          // célébration de bascule à afficher
+  lastInflationCost?: number        // cash grignoté par l'inflation au dernier mois
 }
 
 export type SpeedMultiplier = 1 | 5 | 10 | 50

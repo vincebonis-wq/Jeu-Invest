@@ -20,11 +20,14 @@ import {
 } from './events'
 import {
   MILESTONE_INFO,
+  calcMonthlyPassiveIncome,
   evaluateMilestone,
   milestoneRank,
 } from '../utils/calculations'
+import { analyzeDiversification } from '../utils/strategy'
 import { FLAT_TAX_RATE } from './fiscal'
 import { SKILL_BY_ID } from '../data/skills'
+import { getCatalogItem } from '../data/investments'
 import { pickBusinessDecision } from '../data/businessDecisions'
 import { generatePropertyCandidates } from './immoEngine'
 
@@ -74,6 +77,10 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
   let taxLiability = { ...state.taxLiability }
   let eventCooldowns = { ...state.eventCooldowns }
   let totalTaxPaid = state.totalTaxPaid
+  let monthIndex = state.monthIndex ?? 0
+  let behavior = state.behavior ?? createInitialBehavior()
+  let pendingReview = state.pendingReview
+  let lastInflationCost = state.lastInflationCost ?? 0
 
   for (let d = 0; d < days; d++) {
     const prevMonth = gameDate.getUTCMonth()
@@ -99,7 +106,7 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
     }
 
     // Rendements quotidiens (croissance fluide du patrimoine).
-    investments = investments.map((inv) => applyDailyYield(inv, economy))
+    investments = investments.map((inv) => applyDailyYield(inv, economy, state.strategicStance))
 
     // --- FRONTIÈRE DE MOIS ---
     const monthChanged = newMonth !== prevMonth || newYear !== prevYear
@@ -117,6 +124,10 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
         monthlyExpenses,
         stats,
         totalTaxPaid,
+        monthIndex,
+        stance: state.strategicStance,
+        behavior,
+        pendingReview,
       })
       player = monthResult.player
       economy = monthResult.economy
@@ -129,6 +140,10 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
       monthlyExpenses = monthResult.monthlyExpenses
       stats = monthResult.stats
       totalTaxPaid = monthResult.totalTaxPaid
+      monthIndex = monthResult.monthIndex
+      behavior = monthResult.behavior
+      pendingReview = monthResult.pendingReview
+      lastInflationCost = monthResult.lastInflationCost
       toasts.push(...monthResult.toasts)
 
       // --- FRONTIÈRE D'ANNÉE ---
@@ -172,6 +187,10 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
     taxLiability,
     eventCooldowns,
     totalTaxPaid,
+    monthIndex,
+    behavior,
+    pendingReview,
+    lastInflationCost,
     lastRealTimestamp: Date.now(),
   }
 
@@ -191,7 +210,48 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
     toasts.push(toast(`🏆 ${info.label} !`, info.description, 'good'))
   }
 
+  // Point de bascule : revenus passifs >= charges pour la première fois.
+  const passiveNow = calcMonthlyPassiveIncome(newState)
+  if (
+    !newState.hasReachedFreedom &&
+    passiveNow > 0 &&
+    passiveNow >= newState.monthlyExpenses.total
+  ) {
+    newState.hasReachedFreedom = true
+    newState.pendingFreedom = true
+    newState.events = [
+      ...newState.events,
+      {
+        id: `freedom_${Date.now()}`,
+        dateISO: newState.gameDateISO,
+        category: 'milestone',
+        severity: 'good',
+        title: '🕊️ Indépendance financière atteinte !',
+        description:
+          'Tes revenus passifs couvrent désormais toutes tes charges. Travailler devient un choix, plus une nécessité.',
+        financialImpact: 0,
+        isRead: false,
+        requiresAction: false,
+        resolved: true,
+      },
+    ]
+  }
+
   return { state: newState, toasts }
+}
+
+export function createInitialBehavior(): import('../types').BehaviorStats {
+  return {
+    buysInBull: 0,
+    buysInBear: 0,
+    buysInCrash: 0,
+    buysInNeutral: 0,
+    totalBuys: 0,
+    totalSells: 0,
+    lastSellMonthIndex: 0,
+    lastBuyMonthIndex: 0,
+    inflationLostTotal: 0,
+  }
 }
 
 /**
@@ -340,6 +400,10 @@ interface MonthContext {
   monthlyExpenses: GameState['monthlyExpenses']
   stats: GameState['stats']
   totalTaxPaid: number
+  monthIndex: number
+  stance: GameState['strategicStance']
+  behavior: NonNullable<GameState['behavior']>
+  pendingReview: GameState['pendingReview']
 }
 
 function processMonth(ctx: MonthContext) {
@@ -355,6 +419,9 @@ function processMonth(ctx: MonthContext) {
   const monthlyExpenses = { ...ctx.monthlyExpenses }
   let stats = ctx.stats
   let totalTaxPaid = ctx.totalTaxPaid
+  const monthIndex = ctx.monthIndex + 1
+  let behavior = { ...ctx.behavior }
+  let pendingReview = ctx.pendingReview
   const toasts: Toast[] = []
 
   // 1. Phase de marché.
@@ -376,6 +443,38 @@ function processMonth(ctx: MonthContext) {
   }
   economy.interestRateBase = driftInterestRate(economy.interestRateBase)
 
+  // 1b. Choc de krach : perte immédiate sur les actifs sensibles au marché,
+  // amplifiée par la concentration, amortie par la diversification.
+  if (phaseStep.changed && phaseStep.phase === 'crash') {
+    const div = analyzeDiversification({ investments, cashBalance: cash } as GameState)
+    const baseShock = 0.10 // -10% de référence
+    const shock = Math.min(0.30, baseShock * div.shockFactor)
+    let lost = 0
+    investments = investments.map((inv) => {
+      const it = getCatalogItem(inv.catalogId)
+      if (it.reactsToMarket && it.yieldMode === 'compound') {
+        const loss = inv.currentValue * shock
+        lost += loss
+        return { ...inv, currentValue: Math.max(0, inv.currentValue - loss) }
+      }
+      return inv
+    })
+    if (lost > 100) {
+      const resilientNote = div.isResilient
+        ? ' Ta diversification a amorti le choc.'
+        : div.isConcentrated
+          ? ' Ton portefeuille concentré a encaissé le choc de plein fouet.'
+          : ''
+      toasts.push(
+        toast(
+          '💥 Krach : −' + Math.round(lost).toLocaleString('fr-FR') + ' €',
+          `Tes actifs risqués ont chuté en une nuit.${resilientNote}`,
+          'bad',
+        ),
+      )
+    }
+  }
+
   // 2. Salaire.
   cash += player.salary
 
@@ -385,16 +484,47 @@ function processMonth(ctx: MonthContext) {
     monthlyExpenses.base + monthlyExpenses.rent + monthlyExpenses.insurance
   cash -= monthlyExpenses.total
 
+  // 3b. Pouvoir d'achat du cash grignoté par l'inflation (métrique visible,
+  // ne déduit pas le cash — c'est une perte silencieuse de valeur réelle).
+  const inflationCost = Math.max(0, cash) * (economy.inflationRate / 12)
+  behavior = { ...behavior, inflationLostTotal: behavior.inflationLostTotal + inflationCost }
+
   // 4. Revenus mensuels des investissements.
   let monthlyTax = 0
   investments = investments.map((inv) => {
-    const { investment, netCash, tax } = applyMonthlyIncome(inv, economy)
+    const { investment, netCash, tax } = applyMonthlyIncome(inv, economy, ctx.stance)
     cash += netCash
     monthlyTax += tax
     return investment
   })
   totalTaxPaid += monthlyTax
   taxLiability.flatTaxBase += monthlyTax / FLAT_TAX_RATE // approximation base
+
+  // 4b. Risque de défaut sur le crowdfunding immobilier (perte TOTALE, rare).
+  // ~0.15%/mois → ~7% de probabilité sur un projet de 4 ans. Le vrai risque.
+  const crowdfundingDefaults: Investment[] = []
+  investments = investments.filter((inv) => {
+    if (inv.catalogId === 'crowdfunding_immo' && Math.random() < 0.0015) {
+      crowdfundingDefaults.push(inv)
+      return false
+    }
+    return true
+  })
+  for (const defaulted of crowdfundingDefaults) {
+    events = [...events, {
+      id: `default_${defaulted.instanceId}_${Date.now()}`,
+      dateISO: gameDateISO,
+      category: 'market',
+      severity: 'bad',
+      title: '🏗️ Faillite du promoteur',
+      description: `Le promoteur de "${defaulted.name}" a fait faillite. Ton investissement de ${Math.round(defaulted.totalInvested).toLocaleString('fr-FR')} € est perdu. C'est le risque du crowdfunding : diversifie tes projets.`,
+      financialImpact: 0,
+      isRead: false,
+      requiresAction: false,
+      resolved: true,
+    }]
+    toasts.push(toast('🏗️ Faillite promoteur', `${defaulted.name} : −${Math.round(defaulted.totalInvested).toLocaleString('fr-FR')} € perdus.`, 'bad'))
+  }
 
   // 5. Crédits immobiliers.
   let mortgagePaid = 0
@@ -421,6 +551,20 @@ function processMonth(ctx: MonthContext) {
   investments = investments.map((inv) => {
     if (inv.isLocked && inv.unlockDateISO && new Date(inv.unlockDateISO) <= ctx.gameDate) {
       return { ...inv, isLocked: false }
+    }
+    return inv
+  })
+
+  // 6b. Ancienneté des locataires (attachement).
+  investments = investments.map((inv) => {
+    if (inv.propertyDetails?.tenantName && !inv.propertyDetails.isVacant) {
+      return {
+        ...inv,
+        propertyDetails: {
+          ...inv.propertyDetails,
+          tenantSinceMonthIndex: (inv.propertyDetails.tenantSinceMonthIndex ?? 0) + 1,
+        },
+      }
     }
     return inv
   })
@@ -464,10 +608,15 @@ function processMonth(ctx: MonthContext) {
       player,
       investments,
       cash,
+      monthlyExpenses,
     })
     player = applied.player
     investments = applied.investments
     cash = applied.cash
+    monthlyExpenses.base = applied.monthlyExpenses.base
+    monthlyExpenses.rent = applied.monthlyExpenses.rent
+    monthlyExpenses.insurance = applied.monthlyExpenses.insurance
+    monthlyExpenses.total = applied.monthlyExpenses.total
     if (evt.templateId) {
       const cd = templateCooldown(evt.templateId)
       if (cd) eventCooldowns[evt.templateId] = cd
@@ -499,6 +648,57 @@ function processMonth(ctx: MonthContext) {
   ]
   if (stats.length > MAX_STATS) stats = stats.slice(-MAX_STATS)
 
+  // 11. Tension de trésorerie : cash sous un mois de charges après ce mois.
+  if (cash < monthlyExpenses.total && cash < 1500) {
+    const tensionId = 'cash_tension'
+    if (!eventCooldowns[tensionId]) {
+      events = [...events, {
+        id: `tension_${Date.now()}`,
+        dateISO: gameDateISO,
+        category: 'personal',
+        severity: 'warning',
+        title: '🚨 Tension de trésorerie',
+        description: `Ton cash est tombé à ${Math.round(cash).toLocaleString('fr-FR')} €, sous le niveau d'un mois de charges. Pense à vendre un actif liquide ou à retirer du Livret A avant d'être à découvert.`,
+        financialImpact: 0,
+        isRead: false,
+        requiresAction: false,
+        resolved: true,
+      }]
+      toasts.push(toast('🚨 Trésorerie tendue', 'Ton cash est dangereusement bas.', 'warning'))
+      eventCooldowns[tensionId] = 4 // pas plus d'une alerte tous les 4 mois
+    }
+  }
+
+  // 12. Bilan trimestriel : tous les 3 mois de jeu, on impose une réflexion.
+  if (monthIndex > 0 && monthIndex % 3 === 0 && !pendingReview) {
+    // Compare au snapshot d'il y a ~3 mois.
+    const prevSnap = stats.length >= 4 ? stats[stats.length - 4] : stats[0]
+    const nwDelta = Math.round(netWorthNow - (prevSnap?.netWorth ?? netWorthNow))
+    const nwDeltaPct = prevSnap && prevSnap.netWorth > 0
+      ? nwDelta / prevSnap.netWorth
+      : 0
+    const cashflow = Math.round(player.salary + passiveIncome - monthlyExpenses.total - mortgagePaid)
+    // Fait marquant : dernier événement bad/good du trimestre.
+    const recentNotable = [...events].reverse().find(
+      (e) => (e.severity === 'bad' || e.severity === 'good') && e.category !== 'milestone',
+    )
+    const inflationThisQuarter = Math.round(inflationCost * 3) // ~3 mois d'inflation sur le cash
+    const date = ctx.gameDate
+    pendingReview = {
+      quarter: Math.floor(date.getUTCMonth() / 3) + 1,
+      year: date.getUTCFullYear(),
+      monthIndex,
+      netWorthDelta: nwDelta,
+      netWorthDeltaPct: nwDeltaPct,
+      cashflow,
+      passiveIncome: Math.round(passiveIncome),
+      highlight: recentNotable
+        ? recentNotable.title
+        : 'Un trimestre calme, sans événement majeur.',
+      inflationLost: inflationThisQuarter,
+    }
+  }
+
   return {
     player,
     economy,
@@ -511,6 +711,10 @@ function processMonth(ctx: MonthContext) {
     monthlyExpenses,
     stats,
     totalTaxPaid,
+    monthIndex,
+    behavior,
+    pendingReview,
+    lastInflationCost: Math.round(inflationCost),
     toasts,
   }
 }
@@ -568,16 +772,33 @@ function processYear(ctx: YearContext) {
 
 function applyEventEffects(
   evt: GameEvent,
-  ctx: { player: GameState['player']; investments: Investment[]; cash: number },
+  ctx: {
+    player: GameState['player']
+    investments: Investment[]
+    cash: number
+    monthlyExpenses: GameState['monthlyExpenses']
+  },
 ) {
   let player = ctx.player
   let investments = ctx.investments
   let cash = ctx.cash
+  const monthlyExpenses = { ...ctx.monthlyExpenses }
 
   // Impact cash direct.
   cash += evt.financialImpact
 
   switch (evt.templateId) {
+    case 'marriage':
+      // Vie à deux : charges de base mutualisées (-8%).
+      monthlyExpenses.base = Math.round(monthlyExpenses.base * 0.92)
+      monthlyExpenses.total = monthlyExpenses.base + monthlyExpenses.rent + monthlyExpenses.insurance
+      break
+    case 'have_child':
+      // Un enfant : +350 €/mois de charges durables, +1 personne à charge.
+      monthlyExpenses.base = Math.round(monthlyExpenses.base + 350)
+      monthlyExpenses.total = monthlyExpenses.base + monthlyExpenses.rent + monthlyExpenses.insurance
+      player = { ...player, dependents: (player.dependents ?? 0) + 1 }
+      break
     case 'promotion':
       player = { ...player, salary: Math.round(player.salary * 1.12) }
       break
@@ -597,6 +818,12 @@ function applyEventEffects(
       )
       if (rentals.length > 0) {
         const target = rentals[Math.floor(Math.random() * rentals.length)]
+        const name = target.propertyDetails?.tenantName
+        const tenure = target.propertyDetails?.tenantSinceMonthIndex ?? 0
+        if (name) {
+          const yearsPart = tenure >= 12 ? ` après ${Math.floor(tenure / 12)} an(s) chez toi` : ''
+          evt.description = `${name} quitte ton bien "${target.name}"${yearsPart}. Le logement sera vacant le temps de retrouver un locataire.`
+        }
         investments = investments.map((i) =>
           i.instanceId === target.instanceId && i.propertyDetails
             ? {
@@ -605,6 +832,9 @@ function applyEventEffects(
                   ...i.propertyDetails,
                   isVacant: true,
                   vacancyMonthsLeft: randomVacancyMonths(),
+                  tenantName: undefined,
+                  tenantStory: undefined,
+                  tenantSinceMonthIndex: 0,
                 },
               }
             : i,
@@ -655,7 +885,7 @@ function applyEventEffects(
       break
   }
 
-  return { player, investments, cash }
+  return { player, investments, cash, monthlyExpenses }
 }
 
 function templateCooldown(templateId: string): number {
