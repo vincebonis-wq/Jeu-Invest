@@ -11,7 +11,6 @@ import { buildAmortizationSchedule } from '../../engine/immoEngine'
 import { monthlyPaymentFor } from '../../engine/investments'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
-import { Badge, RiskBadge } from '../ui/Badge'
 import { Icon } from '../ui/Icon'
 import { Portfolio } from './Portfolio'
 import { StockMarketWidget } from './StockMarketWidget'
@@ -272,7 +271,6 @@ function CatalogCard({
   const startImmoSearch = useGameStore((s) => s.startImmoSearch)
   const setScreen = useGameStore((s) => s.setScreen)
   const marketPhase = useGameStore((s) => s.game?.economy.marketPhase ?? 'neutral')
-  const knowsMarket = useGameStore((s) => s.game?.player.learnedSkillIds.includes('lecture_marche') ?? false)
   const gameInvestments = useGameStore((s) => s.game?.investments ?? [])
 
   const ownedInvs = gameInvestments.filter((i) => i.catalogId === item.id)
@@ -304,125 +302,161 @@ function CatalogCard({
     return `${m}min`
   }
 
+  // Market signal for header
+  const marketSignal = item.reactsToMarket && unlocked ? (() => {
+    if (marketPhase === 'bull') return { pill: 'bg-emerald-400/20 text-emerald-100', label: '📈 Haussier' }
+    if (marketPhase === 'crash') return { pill: 'bg-red-400/20 text-red-100', label: '💥 Krach' }
+    if (marketPhase === 'bear') return { pill: 'bg-orange-400/20 text-orange-100', label: '📉 Baissier' }
+    return null
+  })() : null
+
+  // Safe-haven signal for or/obligations
+  const isSafeHaven = (item.id === 'or_metaux' || item.id === 'obligations_etat') && (marketPhase === 'crash' || marketPhase === 'bear')
+
   return (
     <div
       data-glow
       style={{ '--glow': item.color } as React.CSSProperties}
-      className={cn('card-base overflow-hidden flex flex-col', !unlocked && 'opacity-80')}
+      className={cn(
+        'card-base overflow-hidden flex flex-col group transition-all duration-200',
+        unlocked ? 'hover:scale-[1.02] hover:shadow-xl cursor-pointer' : 'opacity-75',
+      )}
     >
-      <div className={cn('h-2 bg-gradient-to-r', item.gradient)} />
-      <div className="p-4 flex flex-col flex-1">
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2.5">
-            <div
-              className={cn('w-11 h-11 rounded-xl bg-gradient-to-br flex items-center justify-center text-white shrink-0', item.gradient)}
-            >
-              <Icon name={item.icon} size={22} />
-            </div>
-            <div>
-              <div className="font-display font-bold text-slate-800 leading-tight">
-                {item.shortName}
-              </div>
-              <div className="text-xs text-slate-400">
-                dès {formatEuroCompact(item.minAmount)}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={onInfo}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-              title="En savoir plus"
-              aria-label="En savoir plus"
-            >
-              <Info size={16} />
-            </button>
-            {!unlocked && <Lock size={14} className="text-slate-400" />}
+      {/* ── Hero gradient header ── */}
+      <div className={cn('relative h-28 bg-gradient-to-br flex items-center justify-center', item.gradient)}>
+        {/* Background decorative circles */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full bg-white/10" />
+          <div className="absolute -bottom-6 -left-6 w-20 h-20 rounded-full bg-black/10" />
+        </div>
+
+        {/* Info button */}
+        <button
+          onClick={onInfo}
+          className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg flex items-center justify-center bg-black/20 text-white/70 hover:bg-black/30 hover:text-white transition-colors z-10"
+          title="En savoir plus"
+          aria-label="En savoir plus"
+        >
+          <Info size={14} />
+        </button>
+
+        {/* Return rate badge — top left */}
+        <div className="absolute top-2.5 left-2.5 bg-black/25 backdrop-blur-sm text-white rounded-lg px-2.5 py-1 z-10">
+          <div className="text-[10px] text-white/70 leading-none">Rendement</div>
+          <div className="font-display font-extrabold text-base leading-tight">
+            {item.returnVariance > 0 ? '~' : ''}{formatPercent(item.baseAnnualReturn)}
+            <span className="text-[10px] font-normal text-white/70">/an</span>
           </div>
         </div>
 
-        <p className="text-xs text-slate-500 leading-relaxed mb-2 flex-1">
-          {item.description}
-        </p>
-
-        {/* Signal de timing marché — uniquement pour les actifs sensibles aux cycles */}
-        {item.reactsToMarket && unlocked && (() => {
-          const signals: Record<string, { bg: string; text: string; label: string; detail?: string }> = {
-            bull:    { bg: 'bg-emerald-50 text-emerald-700', text: 'text-emerald-600', label: '📈 Marché haussier — bon timing', detail: knowsMarket ? 'Rendement boosté par la phase (+60% de l\'effet de marché)' : undefined },
-            neutral: { bg: 'bg-slate-50 text-slate-600', text: 'text-slate-500', label: '➡️ Marché stable — conditions normales', detail: undefined },
-            bear:    { bg: 'bg-orange-50 text-orange-700', text: 'text-orange-600', label: '📉 Phase baissière — prudence', detail: knowsMarket ? 'Rendement fortement réduit en ce moment' : undefined },
-            crash:   { bg: 'bg-red-50 text-red-700', text: 'text-red-600', label: '💥 Krach — risque élevé / opportunité DCA', detail: knowsMarket ? 'Rendement négatif possible à court terme, mais acheter bas = gain à long terme' : undefined },
-          }
-          const s = signals[marketPhase]
-          return (
-            <div className={cn('rounded-lg px-3 py-1.5 mb-2 text-xs', s.bg)}>
-              <div className="font-semibold">{s.label}</div>
-              {s.detail && <div className="mt-0.5 opacity-80">{s.detail}</div>}
-            </div>
-          )
-        })()}
-
-        <div className="flex flex-wrap gap-1.5 mb-3">
-          <Badge tone="success">
-            <TrendingUp size={11} />
-            {item.returnVariance > 0
-              ? `~${formatPercent(item.baseAnnualReturn)}`
-              : formatPercent(item.baseAnnualReturn)}
-            /an
-          </Badge>
-          <RiskBadge level={item.riskLevel} />
-          {item.lockPeriodMonths && (
-            <Badge tone="warning">
-              <Clock size={11} />
-              {item.lockPeriodMonths} mois
-            </Badge>
-          )}
-          <Badge tone="slate">
-            <Droplets size={11} />
-            Liquidité {item.liquidityLevel}/5
-          </Badge>
-          {item.purchaseCostPct > 0 && (
-            <Badge tone="warning">
-              Frais {(item.purchaseCostPct * 100).toFixed(0)}%
-            </Badge>
-          )}
-          {item.id === 'produit_structure' && (
-            <>
-              <Badge tone="brand">
-                <Shield size={11} />
-                Barrière 60%
-              </Badge>
-              <Badge tone="success">Plafond 10%/an</Badge>
-            </>
-          )}
+        {/* Central icon */}
+        <div className={cn(
+          'relative z-10 w-14 h-14 rounded-2xl flex items-center justify-center',
+          'bg-white/20 backdrop-blur-sm border border-white/30',
+          'shadow-lg group-hover:scale-110 transition-transform duration-200',
+        )}>
+          <Icon name={item.icon} size={26} className="text-white drop-shadow-sm" />
         </div>
 
-        {unlocked ? (
-          isFullyOwned ? (
-            <div className="flex items-center justify-between mt-3">
-              <div className="flex items-center gap-1.5">
-                {[1,2,3,4,5].map((l) => (
-                  <div
-                    key={l}
-                    className={cn(
-                      'w-2 h-2 rounded-full',
-                      l <= (ownedLevel ?? 1) ? 'bg-brand-500' : 'bg-slate-200',
-                    )}
-                  />
-                ))}
-                <span className="text-xs font-semibold text-brand-600 ml-1">Niv. {ownedLevel}</span>
+        {/* Risk stars — bottom right */}
+        <div className="absolute bottom-2 right-2.5 flex items-center gap-0.5 z-10">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <span key={i} className={cn('text-[11px]', i < item.riskLevel ? 'text-white' : 'text-white/25')}>★</span>
+          ))}
+        </div>
+
+        {/* Safe haven signal */}
+        {isSafeHaven && (
+          <div className="absolute bottom-2 left-2.5 bg-emerald-500/80 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full z-10">
+            🛡️ Valeur refuge
+          </div>
+        )}
+
+        {/* Market signal */}
+        {marketSignal && !isSafeHaven && (
+          <div className={cn('absolute bottom-2 left-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full z-10 backdrop-blur-sm', marketSignal.pill)}>
+            {marketSignal.label}
+          </div>
+        )}
+
+        {/* Locked overlay */}
+        {!unlocked && (
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center z-20">
+            <div className="flex flex-col items-center gap-1">
+              <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center">
+                <Lock size={18} className="text-white/80" />
               </div>
-              {(ownedLevel ?? 1) < 5 ? (
-                <button
-                  onClick={() => setScreen('portfolio')}
-                  className="text-xs font-bold text-brand-600 underline hover:text-brand-700"
-                >
-                  Améliorer →
-                </button>
-              ) : (
-                <span className="text-xs font-bold text-violet-600">★ Maître</span>
+              {item.unlockThreshold > 0 && (
+                <span className="text-white/70 text-[10px] font-semibold">
+                  {formatEuroCompact(item.unlockThreshold)}
+                </span>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Fully-owned overlay */}
+        {isFullyOwned && unlocked && (
+          <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-20">
+            <div className="bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 flex items-center gap-1.5">
+              <span className="text-brand-600 font-bold text-xs">Niv. {ownedLevel}</span>
+              <div className="flex gap-0.5">
+                {[1,2,3,4,5].map((l) => (
+                  <div key={l} className={cn('w-1.5 h-1.5 rounded-full', l <= (ownedLevel ?? 1) ? 'bg-brand-500' : 'bg-slate-200')} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Body ── */}
+      <div className="p-4 flex flex-col flex-1">
+        {/* Name + min */}
+        <div className="mb-2.5">
+          <div className="font-display font-bold text-slate-800 leading-tight">{item.shortName}</div>
+          <div className="text-xs text-slate-400 mt-0.5">dès {formatEuroCompact(item.minAmount)}</div>
+        </div>
+
+        <p className="text-xs text-slate-500 leading-relaxed mb-3 flex-1">{item.description}</p>
+
+        {/* Tags row */}
+        <div className="flex flex-wrap gap-1 mb-3">
+          {item.lockPeriodMonths && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-50 text-orange-600">
+              <Clock size={9} /> {item.lockPeriodMonths} mois
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500">
+            <Droplets size={9} /> Liquid. {item.liquidityLevel}/5
+          </span>
+          {item.purchaseCostPct > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-600">
+              Frais {(item.purchaseCostPct * 100).toFixed(0)}%
+            </span>
+          )}
+          {item.id === 'produit_structure' && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand-50 text-brand-600">
+              <Shield size={9} /> Barrière 60%
+            </span>
+          )}
+          {item.id === 'or_metaux' && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-yellow-50 text-yellow-600">
+              🛡️ Anti-krach
+            </span>
+          )}
+        </div>
+
+        {/* CTA area */}
+        {unlocked ? (
+          isFullyOwned ? (
+            (ownedLevel ?? 1) < 5 ? (
+              <Button fullWidth variant="secondary" onClick={() => setScreen('portfolio')}>
+                ⬆️ Améliorer (Niv. {(ownedLevel ?? 1)} → {(ownedLevel ?? 1) + 1})
+              </Button>
+            ) : (
+              <div className="text-center py-2.5 text-xs font-bold text-violet-600">⚜️ Niveau Maître atteint</div>
+            )
           ) : isImmoType ? (
             searchWithCandidates && onShowCandidates ? (
               <Button fullWidth variant="gold" onClick={() => onShowCandidates(searchWithCandidates)}>
