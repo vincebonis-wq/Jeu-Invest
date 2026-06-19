@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Lock, TrendingUp, Droplets, Clock, Check, GraduationCap, Wallet, Info, Search, Shield } from 'lucide-react'
-import { INVESTMENT_CATALOG } from '../../data/investments'
+import { INVESTMENT_CATALOG, getCatalogItem } from '../../data/investments'
 import { SKILL_BY_ID } from '../../data/skills'
 import { INVESTMENT_EDU } from '../../data/education'
 import type { ImmoSearch, InvestmentCatalogItem, PropertyCandidate } from '../../types'
@@ -268,6 +268,7 @@ function CatalogCard({
   isImmoType?: boolean
 }) {
   const [now, setNow] = useState(() => Date.now())
+  const [depositTarget, setDepositTarget] = useState<string | null>(null)
   const startImmoSearch = useGameStore((s) => s.startImmoSearch)
   const setScreen = useGameStore((s) => s.setScreen)
   const marketPhase = useGameStore((s) => s.game?.economy.marketPhase ?? 'neutral')
@@ -278,6 +279,7 @@ function CatalogCard({
   const maxInstances = isRealEstateType ? 3 : 1
   const isFullyOwned = ownedInvs.length >= maxInstances
   const ownedLevel = ownedInvs.length > 0 ? Math.min(...ownedInvs.map(i => i.level ?? 1)) : null
+  const ownedInv = ownedInvs[0] ?? null
 
   useEffect(() => {
     if (!activeSearch) return
@@ -450,13 +452,29 @@ function CatalogCard({
         {/* CTA area */}
         {unlocked ? (
           isFullyOwned ? (
-            (ownedLevel ?? 1) < 5 ? (
-              <Button fullWidth variant="secondary" onClick={() => setScreen('portfolio')}>
-                ⬆️ Améliorer (Niv. {(ownedLevel ?? 1)} → {(ownedLevel ?? 1) + 1})
-              </Button>
-            ) : (
-              <div className="text-center py-2.5 text-xs font-bold text-violet-600">⚜️ Niveau Maître atteint</div>
-            )
+            <div className="space-y-2">
+              {/* Deposit button (not for real estate) */}
+              {!isRealEstateType && ownedInv && (
+                <Button fullWidth variant="secondary" onClick={(e) => { e.stopPropagation(); setDepositTarget(ownedInv.instanceId) }}>
+                  💰 Ajouter des fonds
+                </Button>
+              )}
+              {/* Upgrade button */}
+              {(ownedLevel ?? 1) < 5 ? (
+                <Button fullWidth variant="ghost" onClick={() => setScreen('portfolio')}>
+                  ⬆️ Améliorer → Niv. {(ownedLevel ?? 1) + 1}
+                </Button>
+              ) : (
+                <div className="text-center py-2 text-xs font-bold text-violet-600">⚜️ Niveau Maître atteint</div>
+              )}
+              {/* Deposit modal */}
+              {depositTarget && (
+                <DepositModal
+                  instanceId={depositTarget}
+                  onClose={() => setDepositTarget(null)}
+                />
+              )}
+            </div>
           ) : isImmoType ? (
             searchWithCandidates && onShowCandidates ? (
               <Button fullWidth variant="gold" onClick={() => onShowCandidates(searchWithCandidates)}>
@@ -1205,6 +1223,109 @@ function BuyModal({
             disabled={amount < item.minAmount}
           >
             Confirmer l'investissement
+          </Button>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function DepositModal({ instanceId, onClose }: { instanceId: string; onClose: () => void }) {
+  const game = useGameStore((s) => s.game)!
+  const depositToInvestment = useGameStore((s) => s.depositToInvestment)
+  const inv = game.investments.find((i) => i.instanceId === instanceId)
+  const [amount, setAmount] = useState(() => {
+    if (!inv) return 100
+    const catalogItem = getCatalogItem(inv.catalogId)
+    return Math.min(Math.round(game.cashBalance * 0.5), Math.max(catalogItem.minAmount, 100))
+  })
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  if (!inv) return null
+  const catalogItem = getCatalogItem(inv.catalogId)
+  const maxDeposit = inv.catalogId === 'livret'
+    ? Math.max(0, 22_950 - inv.currentValue)
+    : game.cashBalance
+
+  function handleDeposit() {
+    const res = depositToInvestment(instanceId, amount)
+    setResult(res)
+    if (res.success) setTimeout(onClose, 1400)
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Ajouter des fonds — ${inv.name}`} size="sm">
+      {result?.success ? (
+        <div className="py-8 text-center animate-pop-in">
+          <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
+            <Check size={32} />
+          </div>
+          <p className="font-display font-bold text-slate-800">{result.message}</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className={cn('rounded-2xl p-3 bg-gradient-to-br text-white', catalogItem.gradient)}>
+            <div className="flex items-center gap-2">
+              <Icon name={catalogItem.icon} size={16} />
+              <span className="font-display font-bold text-sm">{inv.name}</span>
+            </div>
+            <div className="text-xs text-white/80 mt-0.5">
+              Valeur actuelle : {formatEuro(Math.round(inv.currentValue))}
+            </div>
+          </div>
+
+          <div>
+            <label className="flex justify-between text-sm font-semibold text-slate-600 mb-1.5">
+              <span>Montant à verser</span>
+              <span className="text-brand-600">{formatEuro(amount)}</span>
+            </label>
+            <input
+              type="range"
+              min={10}
+              max={Math.max(10, Math.min(game.cashBalance, maxDeposit))}
+              step={catalogItem.minAmount >= 1000 ? 500 : 10}
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+              className="w-full accent-brand-600"
+            />
+            <div className="flex justify-between text-xs text-slate-400 mt-1">
+              <span>min 10 €</span>
+              <span>dispo {formatEuroCompact(game.cashBalance)}</span>
+            </div>
+            <input
+              type="number"
+              value={amount}
+              min={10}
+              max={Math.min(game.cashBalance, maxDeposit)}
+              onChange={(e) => setAmount(Number(e.target.value) || 10)}
+              className="mt-2 w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-brand-400 outline-none text-sm"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-slate-50 p-4 text-sm space-y-1.5">
+            <Row label="Valeur actuelle" value={formatEuro(Math.round(inv.currentValue))} />
+            <Row label="Versement" value={`+${formatEuro(amount)}`} />
+            <div className="flex justify-between pt-1.5 border-t border-slate-200">
+              <span className="text-slate-500">Valeur après</span>
+              <span className="font-display font-bold text-slate-800">{formatEuro(Math.round(inv.currentValue + amount))}</span>
+            </div>
+            {inv.catalogId === 'livret' && (
+              <div className="text-xs text-slate-400">Plafond Livret A : 22 950 € (reste {formatEuro(Math.round(maxDeposit))})</div>
+            )}
+          </div>
+
+          {result && !result.success && (
+            <div className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{result.message}</div>
+          )}
+
+          <Button
+            fullWidth
+            size="lg"
+            variant="gold"
+            onClick={handleDeposit}
+            disabled={amount < 10 || amount > game.cashBalance || amount > maxDeposit}
+          >
+            Verser {formatEuro(amount)}
           </Button>
         </div>
       )}

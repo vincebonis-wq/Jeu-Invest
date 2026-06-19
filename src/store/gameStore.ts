@@ -134,6 +134,7 @@ interface GameStore {
   prestige: () => void
   claimChallengeReward: (challengeId: string) => void
   upgradeInvestment: (instanceId: string) => { success: boolean; message: string }
+  depositToInvestment: (instanceId: string, amount: number) => BuyResult
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -1455,6 +1456,46 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const tierLabel = TIER_LABELS[targetLevel]
     return { success: true, message: `Mise à niveau vers le palier ${targetLevel} lancée ! (${tierLabel})` }
+  },
+
+  depositToInvestment: (instanceId, amount) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+
+    const inv = game.investments.find((i) => i.instanceId === instanceId)
+    if (!inv) return { success: false, message: 'Investissement introuvable.' }
+
+    const catalogItem = getCatalogItem(inv.catalogId)
+    if (catalogItem.isRealEstate) {
+      return { success: false, message: 'Impossible d\'ajouter des fonds à un bien immobilier.' }
+    }
+    if (amount < 10) {
+      return { success: false, message: 'Montant minimum : 10 €.' }
+    }
+    if (game.cashBalance < amount) {
+      return { success: false, message: `Solde insuffisant (${game.cashBalance.toLocaleString('fr-FR')} €).` }
+    }
+    // Livret A : plafond légal 22 950 €
+    if (inv.catalogId === 'livret' && inv.currentValue + amount > 22_950) {
+      return {
+        success: false,
+        message: `Plafond Livret A atteint. Solde actuel : ${Math.round(inv.currentValue).toLocaleString('fr-FR')} € / 22 950 €.`,
+      }
+    }
+
+    set((s) => ({
+      game: {
+        ...s.game!,
+        cashBalance: s.game!.cashBalance - amount,
+        investments: s.game!.investments.map((i) =>
+          i.instanceId === instanceId
+            ? { ...i, currentValue: i.currentValue + amount, totalInvested: i.totalInvested + amount }
+            : i,
+        ),
+      },
+    }))
+    get().saveGame()
+    return { success: true, message: `${amount.toLocaleString('fr-FR')} € versés dans ${inv.name}.` }
   },
 
   earlyRepayMortgage: (mortgageId) => {
