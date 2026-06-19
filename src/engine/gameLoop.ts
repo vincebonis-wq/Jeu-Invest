@@ -110,10 +110,13 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
     const prestigeReturnBonus = state.prestige?.heritageBonus.returnBonusPct ?? 0
     investments = investments.map((inv) => {
       const levelBonus = getLevelReturnBonus(inv.level ?? 1)
-      const boostedInv = (levelBonus > 0 || prestigeReturnBonus > 0)
-        ? { ...inv, annualReturnRate: inv.annualReturnRate * (1 + levelBonus + prestigeReturnBonus) }
+      const totalBonus = levelBonus + prestigeReturnBonus
+      const boostedInv = totalBonus > 0
+        ? { ...inv, annualReturnRate: inv.annualReturnRate * (1 + totalBonus) }
         : inv
-      return applyDailyYield(boostedInv, economy, state.strategicStance)
+      const result = applyDailyYield(boostedInv, economy, state.strategicStance)
+      // Restore original annualReturnRate — the boost is per-tick only, must not accumulate
+      return totalBonus > 0 ? { ...result, annualReturnRate: inv.annualReturnRate } : result
     })
 
     // --- FRONTIÈRE DE MOIS ---
