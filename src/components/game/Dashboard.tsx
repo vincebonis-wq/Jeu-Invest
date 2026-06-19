@@ -163,22 +163,27 @@ export function Dashboard() {
         )
       })()}
 
-      {/* Streak quotidien */}
-      {game.streak && game.streak.currentStreak >= 2 && (
+      {/* Streak quotidien — affiché dès le 1er jour */}
+      {game.streak && (
         <div className="flex items-center gap-2 px-1">
           <div className={cn(
             'flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full',
             game.streak.currentStreak >= 30 ? 'bg-purple-100 text-purple-700' :
-            game.streak.currentStreak >= 7 ? 'bg-amber-100 text-amber-700' :
-            'bg-orange-50 text-orange-600',
+            game.streak.currentStreak >= 7  ? 'bg-amber-100 text-amber-700' :
+            game.streak.currentStreak >= 2  ? 'bg-orange-50 text-orange-600' :
+                                              'bg-slate-100 text-slate-500',
           )}>
             <Flame size={13} />
-            <span>{game.streak.currentStreak} jours</span>
+            <span>
+              {game.streak.currentStreak >= 2
+                ? `${game.streak.currentStreak} jours`
+                : 'Jour 1 — reviens demain !'}
+            </span>
           </div>
           {game.streak.streakBonusActiveUntilReal && game.streak.streakBonusActiveUntilReal > Date.now() && (
             <div className="text-xs text-emerald-600 font-semibold">+5% rendement actif 🎯</div>
           )}
-          {game.streak.longestStreak > game.streak.currentStreak && (
+          {game.streak.longestStreak > 1 && game.streak.longestStreak > game.streak.currentStreak && (
             <div className="text-xs text-slate-400">Record : {game.streak.longestStreak}j</div>
           )}
         </div>
