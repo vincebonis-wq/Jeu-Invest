@@ -3,6 +3,7 @@ import { Flame, TrendingUp, Star } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { BADGE_BY_ID } from '../../data/badges'
 import { Confetti } from '../ui/Confetti'
+import { playCashRegister } from '../../utils/sounds'
 import { formatEuroCompact, formatEuroSigned, cn } from '../../utils/formatting'
 
 // Modal "Bon retour" — révèle les gains faits pendant l'absence du joueur.
@@ -156,7 +157,7 @@ export function ReturnModal() {
           {/* CTA Encaisser */}
           <div className="px-5 pb-5">
             <button
-              onClick={collectOfflineGains}
+              onClick={() => { playCashRegister(); collectOfflineGains() }}
               className="w-full py-3.5 bg-gradient-to-r from-brand-500 to-indigo-600 text-white font-display font-bold rounded-2xl text-base hover:from-brand-600 hover:to-indigo-700 transition-all active:scale-95 shadow-lg shadow-brand-200"
             >
               Encaisser {gains.netWorthGain > 0 ? formatEuroCompact(gains.netWorthGain) : ''}

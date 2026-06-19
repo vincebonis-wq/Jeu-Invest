@@ -4,6 +4,7 @@ import { useGameStore } from '../../store/gameStore'
 import { getCatalogItem } from '../../data/investments'
 import { formatEuroCompact, cn } from '../../utils/formatting'
 import { calcNetWorth } from '../../utils/calculations'
+import { playPop } from '../../utils/sounds'
 
 // Carte "Opportunité flash" — affichée sur le Dashboard, expire en temps réel.
 export function FlashOpportunityCard() {
@@ -76,7 +77,7 @@ export function FlashOpportunityCard() {
         </div>
         {canUse ? (
           <button
-            onClick={() => claimFlash(opp.id)}
+            onClick={() => { playPop(); claimFlash(opp.id) }}
             className="shrink-0 px-3 py-1.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-xs font-bold rounded-xl hover:from-amber-500 hover:to-orange-600 transition-all active:scale-95 shadow-sm"
           >
             Saisir →

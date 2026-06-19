@@ -17,6 +17,7 @@ import { QuarterlyReviewModal } from './components/game/QuarterlyReviewModal'
 import { FreedomModal } from './components/game/FreedomModal'
 import { ReturnModal } from './components/game/ReturnModal'
 import { BadgeNotification } from './components/game/BadgeNotification'
+import { FirstInvestModal } from './components/game/FirstInvestModal'
 import { Modal } from './components/ui/Modal'
 import { Button } from './components/ui/Button'
 import { formatEuroSigned } from './utils/formatting'
@@ -94,6 +95,7 @@ export default function App() {
       <QuarterlyReviewModal />
       <ReturnModal />
       <BadgeNotification />
+      <FirstInvestModal />
     </div>
   )
 }

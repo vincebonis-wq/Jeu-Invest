@@ -526,6 +526,55 @@ function processMonth(ctx: MonthContext) {
     toasts.push(toast('🏗️ Faillite promoteur', `${defaulted.name} : −${Math.round(defaulted.totalInvested).toLocaleString('fr-FR')} € perdus.`, 'bad'))
   }
 
+  // 4c. Surprises de rendement sur les actifs volatils (variable rewards).
+  // 15 % de chance par mois par actif à forte variance → sentiment d'imprévisibilité.
+  for (const inv of investments) {
+    const item = getCatalogItem(inv.catalogId)
+    if (item.returnVariance < 0.05 || inv.currentValue < 500) continue
+    if (Math.random() > 0.15) continue
+
+    const crashPenalty = economy.marketPhase === 'crash'
+    const isPositive = crashPenalty ? Math.random() < 0.25 : Math.random() < 0.68
+    const magnitudePct = item.returnVariance * (0.4 + Math.random() * 0.6) * (isPositive ? 1 : -0.6)
+    const delta = Math.round(inv.currentValue * magnitudePct)
+    if (Math.abs(delta) < 80) continue
+
+    investments = investments.map((i) =>
+      i.instanceId === inv.instanceId
+        ? { ...i, currentValue: Math.max(0, i.currentValue + delta) }
+        : i,
+    )
+
+    const SURPRISE_MSGS: Record<string, [string, string]> = {
+      bourse_etf:       ['📈 ETF en hausse surprise !',     '🔻 ETF : mois difficile'],
+      crypto:           ['🚀 Ta crypto explose !',          '📉 Crypto : forte correction'],
+      or_metaux:        ['✨ L\'or brille ce mois !',       '🪙 Or en repli ce mois'],
+      business:         ['💼 Business en forme !',          '⚠️ Business : mois creux'],
+      crowdfunding_immo:['🏗️ Projet immo performant !',    '🏗️ Projet immo décevant'],
+    }
+    const [posMsg, negMsg] = SURPRISE_MSGS[inv.catalogId] ?? ['✨ Rendement surprise !', '⚠️ Mois difficile']
+    const title = isPositive ? posMsg : negMsg
+    const sign = isPositive ? '+' : ''
+
+    if (isPositive) {
+      events = [...events, {
+        id: `yield_surprise_${inv.instanceId}_${monthIndex}`,
+        dateISO: gameDateISO,
+        category: 'market' as const,
+        severity: 'good' as const,
+        title: `${title} (${sign}${Math.round(delta).toLocaleString('fr-FR')} €)`,
+        description: `${inv.name} a eu un mois exceptionnel. Continue d'investir régulièrement !`,
+        financialImpact: 0,
+        isRead: false,
+        requiresAction: false,
+        resolved: true,
+      }]
+      if (delta > 200) {
+        toasts.push(toast(title, `${sign}${Math.round(delta).toLocaleString('fr-FR')} € sur ${inv.name}`, 'good'))
+      }
+    }
+  }
+
   // 5. Crédits immobiliers.
   let mortgagePaid = 0
   const survivingMortgages: typeof mortgages = []

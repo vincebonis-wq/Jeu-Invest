@@ -12,13 +12,14 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { RotateCcw, Receipt, Trophy } from 'lucide-react'
+import { RotateCcw, Receipt, Trophy, Share2 } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { MILESTONE_INFO, milestoneRank } from '../../utils/calculations'
 import type { GameState, MilestoneLevel } from '../../types'
 import { Card, CardHeader } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
+import { ShareModal } from './ShareModal'
 import { Icon } from '../ui/Icon'
 import { BADGES, BADGE_BY_ID } from '../../data/badges'
 import {
@@ -97,6 +98,7 @@ export function Stats() {
   const game = useGameStore((s) => s.game)!
   const newGame = useGameStore((s) => s.newGame)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const data = useMemo(
     () =>
@@ -240,6 +242,15 @@ export function Stats() {
       {/* Trophées */}
       <BadgesPanel game={game} />
 
+      {/* Partager */}
+      <Card className="p-5">
+        <CardHeader title="Partager ta progression" subtitle="Montre à tes amis où tu en es" icon={<Share2 size={18} />} />
+        <p className="text-sm text-slate-500 mb-3">Génère une carte de résumé à partager sur les réseaux.</p>
+        <Button variant="primary" onClick={() => setShareOpen(true)}>
+          <Share2 size={16} /> Partager ma progression
+        </Button>
+      </Card>
+
       {/* Réglages */}
       <Card className="p-5">
         <CardHeader title="Réglages" subtitle="Gestion de la partie" />
@@ -256,6 +267,8 @@ export function Stats() {
           </Button>
         </div>
       </Card>
+
+      {shareOpen && <ShareModal onClose={() => setShareOpen(false)} />}
 
       <Modal open={confirmReset} onClose={() => setConfirmReset(false)} title="Recommencer ?" size="sm">
         <p className="text-sm text-slate-500 mb-4">

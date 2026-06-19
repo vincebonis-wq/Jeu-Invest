@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { BADGE_BY_ID } from '../../data/badges'
 import { Confetti } from '../ui/Confetti'
+import { playDing, playMajorDing } from '../../utils/sounds'
 import type { BadgeId } from '../../types'
 
 // Pop-up empilé en bas-gauche pour les badges gagnés en cours de jeu.
@@ -24,6 +25,9 @@ export function BadgeNotification() {
     if (deserveConfetti) {
       setConfetti(true)
       setTimeout(() => setConfetti(false), 3000)
+      playMajorDing()
+    } else {
+      playDing()
     }
 
     // Auto-fermeture après 6 secondes si le joueur ne ferme pas
