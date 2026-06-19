@@ -21,7 +21,7 @@ import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { ShareModal } from './ShareModal'
 import { Icon } from '../ui/Icon'
-import { BADGES, BADGE_BY_ID } from '../../data/badges'
+import { BADGES } from '../../data/badges'
 import {
   formatEuro,
   formatEuroCompact,
