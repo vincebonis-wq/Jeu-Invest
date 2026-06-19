@@ -106,7 +106,13 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
     }
 
     // Rendements quotidiens (croissance fluide du patrimoine).
-    investments = investments.map((inv) => applyDailyYield(inv, economy, state.strategicStance))
+    const prestigeReturnBonus = state.prestige?.heritageBonus.returnBonusPct ?? 0
+    investments = investments.map((inv) => {
+      const boostedInv = prestigeReturnBonus > 0
+        ? { ...inv, annualReturnRate: inv.annualReturnRate * (1 + prestigeReturnBonus) }
+        : inv
+      return applyDailyYield(boostedInv, economy, state.strategicStance)
+    })
 
     // --- FRONTIÈRE DE MOIS ---
     const monthChanged = newMonth !== prevMonth || newYear !== prevYear

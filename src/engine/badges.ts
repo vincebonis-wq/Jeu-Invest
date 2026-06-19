@@ -69,6 +69,12 @@ export function checkBadges(game: GameState): BadgeId[] {
     if (streak.currentStreak >= 30) award('streak_30')
   }
 
+  // Prestige
+  const prestigeLevel = game.prestige?.level ?? 0
+  if (prestigeLevel >= 1) award('prestige_1')
+  if (prestigeLevel >= 3) award('prestige_3')
+  if (prestigeLevel >= 5) award('prestige_5')
+
   return newBadges
 }
 

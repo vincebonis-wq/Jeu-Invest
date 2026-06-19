@@ -4,10 +4,11 @@ import {
   GraduationCap,
   HelpCircle,
   LayoutDashboard,
+  Target,
   TrendingUp,
 } from 'lucide-react'
 import type { LucideProps } from 'lucide-react'
-import { useGameStore, selectUnreadCount } from '../../store/gameStore'
+import { useGameStore, selectUnreadCount, selectCompletedChallenges } from '../../store/gameStore'
 import type { Screen } from '../../types'
 import { cn } from '../../utils/formatting'
 import { formatEuroCompact } from '../../utils/formatting'
@@ -24,6 +25,7 @@ const NAV: NavItem[] = [
   { screen: 'properties', label: 'Biens', icon: Building2 },
   { screen: 'skills', label: 'Carrière', icon: GraduationCap },
   { screen: 'events', label: 'Actualités', icon: Bell },
+  { screen: 'challenges', label: 'Défis', icon: Target },
 ]
 
 export function Sidebar() {
@@ -31,6 +33,7 @@ export function Sidebar() {
   const setScreen = useGameStore((s) => s.setScreen)
   const cash = useGameStore((s) => s.game?.cashBalance ?? 0)
   const unread = useGameStore(selectUnreadCount)
+  const challengeCount = useGameStore(selectCompletedChallenges)
   const activeTraining = useGameStore((s) => s.game?.player.activeTraining)
   const reopenOnboarding = useGameStore((s) => s.reopenOnboarding)
 
@@ -63,7 +66,7 @@ export function Sidebar() {
               key={item.screen}
               item={item}
               active={screen === item.screen || (item.screen === 'marketplace' && (screen === 'portfolio')) || (item.screen === 'skills' && screen === 'job')}
-              badge={item.screen === 'events' ? unread : 0}
+              badge={item.screen === 'events' ? unread : item.screen === 'challenges' ? challengeCount : 0}
               pulse={item.screen === 'skills' && !!activeTraining}
               onClick={() => setScreen(item.screen)}
             />
@@ -100,6 +103,11 @@ export function Sidebar() {
               {item.screen === 'events' && unread > 0 && (
                 <span className="absolute top-0 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
                   {unread > 9 ? '9+' : unread}
+                </span>
+              )}
+              {item.screen === 'challenges' && challengeCount > 0 && (
+                <span className="absolute top-0 right-1 w-4 h-4 rounded-full bg-violet-500 text-white text-[9px] font-bold flex items-center justify-center">
+                  {challengeCount > 9 ? '9+' : challengeCount}
                 </span>
               )}
             </button>

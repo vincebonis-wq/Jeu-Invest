@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { PrestigeModal } from './PrestigeModal'
 import {
   Area,
   AreaChart,
@@ -99,6 +100,7 @@ export function Stats() {
   const newGame = useGameStore((s) => s.newGame)
   const [confirmReset, setConfirmReset] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [prestigeOpen, setPrestigeOpen] = useState(false)
 
   const data = useMemo(
     () =>
@@ -250,6 +252,31 @@ export function Stats() {
           <Share2 size={16} /> Partager ma progression
         </Button>
       </Card>
+
+      {/* Prestige */}
+      {(game.player.milestone === 'millionnaire' || game.player.milestone === 'multimillionnaire') && (
+        <Card className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-xl shrink-0">
+              {game.prestige ? `×${game.prestige.level}` : '👑'}
+            </div>
+            <div className="flex-1">
+              <div className="font-display font-bold text-slate-800">
+                {game.prestige ? `Prestige niveau ${game.prestige.level}` : 'Prestige disponible !'}
+              </div>
+              <div className="text-sm text-slate-500">
+                {game.prestige
+                  ? `+${Math.round(game.prestige.heritageBonus.returnBonusPct * 100)}% rendements actifs`
+                  : 'Recommence avec des avantages permanents'}
+              </div>
+            </div>
+            <Button variant="primary" onClick={() => setPrestigeOpen(true)}>
+              {game.prestige ? 'Monter' : 'Activer'}
+            </Button>
+          </div>
+        </Card>
+      )}
+      {prestigeOpen && <PrestigeModal onClose={() => setPrestigeOpen(false)} />}
 
       {/* Réglages */}
       <Card className="p-5">

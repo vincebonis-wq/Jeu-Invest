@@ -21,6 +21,9 @@ export const BADGES: Badge[] = [
   { id: 'streak_7', name: 'Habitué', emoji: '🔥', description: '7 jours de connexion consécutifs.', category: 'behavior' },
   { id: 'streak_30', name: 'Investisseur acharné', emoji: '🔥🔥', description: '30 jours de connexion consécutifs !', category: 'special' },
   { id: 'buy_in_crash', name: 'Contrarian', emoji: '🦅', description: 'Tu as acheté pendant un krach. Pensée à long terme.', category: 'market' },
+  { id: 'prestige_1', name: 'Héritier', emoji: '👑', description: 'Premier prestige — tu recommences avec avantage.', category: 'special' },
+  { id: 'prestige_3', name: 'Dynastie', emoji: '🏛️', description: 'Troisième prestige. Fondateur d\'une lignée.', category: 'special' },
+  { id: 'prestige_5', name: 'Légende', emoji: '⚜️', description: 'Cinquième prestige. Irréductible.', category: 'special' },
 ]
 
 export const BADGE_BY_ID: Record<BadgeId, Badge> = BADGES.reduce(

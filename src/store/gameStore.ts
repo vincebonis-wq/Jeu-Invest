@@ -6,16 +6,19 @@ import type {
   GameEvent,
   GameState,
   ImmoSearch,
+  Investment,
   InvestmentCategory,
   JobProfile,
   LifeGoalId,
   MortgageQuote,
   OfflineGains,
+  PrestigeRecord,
   Screen,
   SpeedMultiplier,
   StrategicStance,
   Toast,
 } from '../types'
+import { generateWeeklyChallenges, getCurrentWeekISO } from '../data/weeklyChallenges'
 import { getCatalogItem } from '../data/investments'
 import { advanceDays, checkRealTimeProgress, createInitialBehavior } from '../engine/gameLoop'
 import { checkBadges, awardBadges } from '../engine/badges'
@@ -127,6 +130,8 @@ interface GameStore {
   collectOfflineGains: () => void
   dismissBadge: (id: BadgeId) => void
   claimFlashOpportunity: (id: string) => void
+  prestige: () => void
+  claimChallengeReward: (challengeId: string) => void
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -170,11 +175,14 @@ function createInitialState(
   savings: number,
   ownsResidence: boolean,
   lifeGoalId?: LifeGoalId,
+  prestige?: PrestigeRecord,
 ): GameState {
   // Date de départ : 1er janvier d'une année "ronde".
   const startDate = new Date(Date.UTC(2025, 0, 1))
   const baseExpense = 750 + (job.monthlySalary * 0.08) // charges proportionnelles légères
   const rent = ownsResidence ? 0 : Math.round(450 + job.monthlySalary * 0.18)
+  const extraCash = prestige?.heritageBonus.extraStartingCash ?? 0
+  const salaryMult = 1 + (prestige?.heritageBonus.salaryBonusPct ?? 0)
 
   return {
     player: {
@@ -182,7 +190,7 @@ function createInitialState(
       age,
       jobId: job.id,
       jobTitle: job.title,
-      salary: job.monthlySalary,
+      salary: Math.round(job.monthlySalary * salaryMult),
       ownsResidence,
       milestone: 'debutant',
       learnedSkillIds: [...AUTO_SKILLS],
@@ -195,7 +203,7 @@ function createInitialState(
     lastRealTimestamp: Date.now(),
     speedMultiplier: 1,
     isPaused: false,
-    cashBalance: savings,
+    cashBalance: savings + extraCash,
     investments: [],
     mortgages: [],
     events: [
@@ -257,6 +265,8 @@ function createInitialState(
     badges: [],
     pendingBadges: [],
     flashOpportunities: [],
+    prestige: prestige,
+    weeklyChallenges: generateWeeklyChallenges(savings + extraCash, 0),
   }
 }
 
@@ -327,6 +337,36 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Badges gagnés pendant le tick
       const tickBadgeIds = checkBadges(rawGame)
       let newGame = tickBadgeIds.length > 0 ? awardBadges(rawGame, tickBadgeIds) : rawGame
+
+      // Update passive income & net worth challenges each tick
+      const passiveNow = calcMonthlyPassiveIncome(newGame)
+      const wcState = newGame.weeklyChallenges
+      if (wcState) {
+        const updatedCh = wcState.challenges.map((ch) => {
+          if (ch.completed) return ch
+          if (ch.id.startsWith('earn_passive_week') || ch.id.startsWith('passive_500')) {
+            const p = Math.min(ch.target, passiveNow)
+            return { ...ch, progress: p, completed: p >= ch.target }
+          }
+          if (ch.id.startsWith('reach_net_worth')) {
+            const nw = calcNetWorth(newGame)
+            const p = Math.min(ch.target, nw)
+            return { ...ch, progress: p, completed: p >= ch.target }
+          }
+          if (ch.id.startsWith('hold_week')) {
+            const lastSell = newGame.behavior?.lastSellMonthIndex ?? 0
+            const currentMonth = newGame.monthIndex ?? 0
+            if (lastSell < currentMonth) {
+              const p = Math.min(ch.target, ch.progress + 1)
+              return { ...ch, progress: p, completed: p >= ch.target }
+            }
+          }
+          return ch
+        })
+        if (updatedCh.some((ch, i) => ch.progress !== wcState.challenges[i].progress || ch.completed !== wcState.challenges[i].completed)) {
+          newGame = { ...newGame, weeklyChallenges: { ...wcState, challenges: updatedCh } }
+        }
+      }
 
       // Génération opportunités flash (12 min réelles entre chaque)
       const nowMs = Date.now()
@@ -488,6 +528,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
         streakBroken = true
       }
       saved.streak = newStreak
+
+      // Reset weekly challenges if new week
+      const thisWeek = getCurrentWeekISO()
+      if (!saved.weeklyChallenges || saved.weeklyChallenges.weekISO !== thisWeek) {
+        saved.weeklyChallenges = generateWeeklyChallenges(
+          calcNetWorth(saved),
+          calcMonthlyPassiveIncome(saved),
+        )
+      }
 
       // ── Progression offline ───────────────────────────────────────────
       const savedNetWorth = calcNetWorth(saved)
@@ -780,11 +829,36 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const inv = createInvestment(catalogId, amount, game.gameDateISO, null)
     set((s) => {
       if (!s.game) return s
-      const nextGame = {
+      let nextGame: GameState = {
         ...s.game,
         cashBalance: s.game.cashBalance - totalNeeded,
         investments: [...s.game.investments, inv],
         behavior: recordBuy(s.game),
+      }
+      const newInvs = nextGame.investments
+      // Update weekly challenge progress
+      const wc = nextGame.weeklyChallenges
+      if (wc) {
+        const updated = wc.challenges.map((ch) => {
+          if (ch.completed) return ch
+          let progress = ch.progress
+          if (ch.id.startsWith('invest_week')) {
+            progress = Math.min(ch.target, ch.progress + amount)
+          } else if (ch.id.startsWith('buy_3_investments')) {
+            progress = Math.min(ch.target, ch.progress + 1)
+          } else if (ch.id.startsWith('diversify')) {
+            const classes = new Set(newInvs.map((i: Investment) => {
+              if (['bourse_etf','crypto','or_metaux'].includes(i.catalogId)) return 'bourse'
+              if (['parking','lmnp','immo_classique'].includes(i.catalogId)) return 'immo'
+              if (['crowdfunding_immo','scpi','club_deal_immo'].includes(i.catalogId)) return 'crowd'
+              if (i.catalogId === 'business') return 'business'
+              return 'epargne'
+            }))
+            progress = Math.min(ch.target, classes.size)
+          }
+          return { ...ch, progress, completed: progress >= ch.target }
+        })
+        nextGame = { ...nextGame, weeklyChallenges: { ...wc, challenges: updated } }
       }
       const newBadgeIds = checkBadges(nextGame)
       return { game: newBadgeIds.length > 0 ? awardBadges(nextGame, newBadgeIds) : nextGame }
@@ -1245,6 +1319,90 @@ export const useGameStore = create<GameStore>((set, get) => ({
     get().saveGame()
   },
 
+  prestige: () => {
+    const { game } = get()
+    if (!game) return
+    const currentLevel = (game.prestige?.level ?? 0) + 1
+    const bonusTable = [
+      { extraStartingCash: 5000, returnBonusPct: 0.05, salaryBonusPct: 0, earlyUnlock: false },
+      { extraStartingCash: 15000, returnBonusPct: 0.10, salaryBonusPct: 0.05, earlyUnlock: false },
+      { extraStartingCash: 30000, returnBonusPct: 0.15, salaryBonusPct: 0.10, earlyUnlock: true },
+      { extraStartingCash: 60000, returnBonusPct: 0.20, salaryBonusPct: 0.15, earlyUnlock: true },
+      { extraStartingCash: 100000, returnBonusPct: 0.25, salaryBonusPct: 0.20, earlyUnlock: true },
+    ]
+    const bonusIdx = Math.min(currentLevel - 1, bonusTable.length - 1)
+    const heritageBonus = bonusTable[bonusIdx]
+
+    const newPrestige: PrestigeRecord = {
+      level: currentLevel,
+      heritageBonus,
+      allTimeBadges: [
+        ...(game.prestige?.allTimeBadges ?? []),
+        ...(game.badges ?? []).filter(b => !(game.prestige?.allTimeBadges ?? []).some(ab => ab.id === b.id)),
+      ],
+      allTimeLongestStreak: Math.max(
+        game.prestige?.allTimeLongestStreak ?? 0,
+        game.streak?.longestStreak ?? 0,
+      ),
+      allTimeNetWorthPeak: Math.max(
+        game.prestige?.allTimeNetWorthPeak ?? 0,
+        calcNetWorth(game),
+      ),
+    }
+
+    get().stopLoop()
+    localStorage.removeItem(SAVE_KEY)
+
+    const job = JOB_BY_ID[game.player.jobId] ?? Object.values(JOB_BY_ID)[0]
+    const newGame = createInitialState(
+      job,
+      game.player.name,
+      game.player.age,
+      job.startingSavings,
+      game.player.ownsResidence,
+      game.player.lifeGoalId,
+      newPrestige,
+    )
+
+    set({ game: newGame, screen: 'dashboard', toasts: [], selectedInvestmentId: null })
+    get().saveGame()
+    get().startLoop()
+  },
+
+  claimChallengeReward: (challengeId: string) => {
+    set((s) => {
+      if (!s.game?.weeklyChallenges) return s
+      const wc = s.game.weeklyChallenges
+      const ch = wc.challenges.find((c) => c.id === challengeId)
+      if (!ch || !ch.completed) return s
+      if (wc.claimedChallengeIds.includes(challengeId)) return s
+
+      let game = s.game
+      if (ch.rewardType === 'cash_bonus') {
+        game = { ...game, cashBalance: game.cashBalance + ch.rewardValue }
+      } else if (ch.rewardType === 'return_bonus') {
+        game = {
+          ...game,
+          weeklyChallenges: {
+            ...wc,
+            bonusActiveUntilReal: Date.now() + 4 * 60 * 60 * 1000,
+          },
+        }
+      }
+
+      game = {
+        ...game,
+        weeklyChallenges: {
+          ...(game.weeklyChallenges ?? wc),
+          claimedChallengeIds: [...wc.claimedChallengeIds, challengeId],
+        },
+      }
+
+      return { game }
+    })
+    get().saveGame()
+  },
+
   earlyRepayMortgage: (mortgageId) => {
     const game = get().game
     if (!game) return { success: false, message: 'Aucune partie.' }
@@ -1379,3 +1537,6 @@ export const selectPendingAction = (s: GameStore): GameEvent | null =>
   s.game
     ? s.game.events.find((e) => e.requiresAction && !e.resolved) ?? null
     : null
+
+export const selectCompletedChallenges = (s: GameStore): number =>
+  s.game?.weeklyChallenges?.challenges.filter(c => c.completed && !s.game!.weeklyChallenges!.claimedChallengeIds.includes(c.id)).length ?? 0

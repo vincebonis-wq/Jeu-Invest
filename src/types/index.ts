@@ -471,6 +471,8 @@ export interface GameState {
   pendingBadges?: BadgeId[]         // badges gagnés mais pas encore affichés
   pendingOfflineGains?: OfflineGains // gains offline à révéler au joueur
   flashOpportunities?: FlashOpportunity[] // opportunités flash en cours
+  prestige?: PrestigeRecord
+  weeklyChallenges?: WeeklyChallengesState
 }
 
 export type SpeedMultiplier = 1 | 5 | 10 | 50
@@ -512,6 +514,9 @@ export type BadgeId =
   | 'streak_7'
   | 'streak_30'
   | 'buy_in_crash'
+  | 'prestige_1'
+  | 'prestige_3'
+  | 'prestige_5'
 
 export interface Badge {
   id: BadgeId
@@ -559,6 +564,49 @@ export interface FlashOpportunity {
 }
 
 // ----------------------------------------------------------------------------
+// Prestige (New Game+) — recommencer avec des avantages permanents
+// ----------------------------------------------------------------------------
+
+export interface PrestigeRecord {
+  level: number
+  heritageBonus: {
+    extraStartingCash: number
+    returnBonusPct: number
+    salaryBonusPct: number
+    earlyUnlock: boolean
+  }
+  allTimeBadges: EarnedBadge[]
+  allTimeLongestStreak: number
+  allTimeNetWorthPeak: number
+}
+
+// ----------------------------------------------------------------------------
+// Défis hebdomadaires
+// ----------------------------------------------------------------------------
+
+export type ChallengeRewardType = 'cash_bonus' | 'return_bonus'
+
+export interface WeeklyChallenge {
+  id: string
+  label: string
+  description: string
+  target: number
+  progress: number
+  completed: boolean
+  rewardType: ChallengeRewardType
+  rewardValue: number
+  rewardLabel: string
+}
+
+export interface WeeklyChallengesState {
+  weekISO: string
+  challenges: WeeklyChallenge[]
+  allClaimedBonus: boolean
+  bonusActiveUntilReal?: number
+  claimedChallengeIds: string[]
+}
+
+// ----------------------------------------------------------------------------
 // UI / navigation
 // ----------------------------------------------------------------------------
 
@@ -571,6 +619,7 @@ export type Screen =
   | 'stats'
   | 'job'
   | 'skills'
+  | 'challenges'
 
 export interface Toast {
   id: string

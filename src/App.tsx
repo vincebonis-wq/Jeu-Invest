@@ -12,6 +12,7 @@ import { Events } from './components/game/Events'
 import { Stats } from './components/game/Stats'
 import { Job } from './components/game/Job'
 import { Skills } from './components/game/Skills'
+import { WeeklyChallenges } from './components/game/WeeklyChallenges'
 import { FirstStepModal } from './components/game/FirstStepModal'
 import { QuarterlyReviewModal } from './components/game/QuarterlyReviewModal'
 import { FreedomModal } from './components/game/FreedomModal'
@@ -31,6 +32,7 @@ const SCREENS = {
   stats: Stats,
   job: Job,
   skills: Skills,
+  challenges: WeeklyChallenges,
 }
 
 const SCREEN_TITLES: Record<string, string> = {
@@ -42,6 +44,7 @@ const SCREEN_TITLES: Record<string, string> = {
   stats: 'Statistiques',
   job: 'Mon Emploi',
   skills: 'Compétences',
+  challenges: 'Défis hebdomadaires',
 }
 
 export default function App() {
