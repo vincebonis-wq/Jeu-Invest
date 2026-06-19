@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Lock, Search, Info, Check, GraduationCap, Clock, Droplets, TrendingUp, ChevronRight } from 'lucide-react'
+import { Check, Clock, Droplets, GraduationCap, Lock, Search, TrendingUp } from 'lucide-react'
 import { INVESTMENT_CATALOG } from '../../data/investments'
 import { SKILL_BY_ID } from '../../data/skills'
-import { getLevelReturnBonus, TIER_SECS, LEVEL_LABELS } from '../../data/upgradeTiers'
+import { getLevelReturnBonus, LEVEL_LABELS } from '../../data/upgradeTiers'
 import { useGameStore } from '../../store/gameStore'
 import { calcNetWorth } from '../../utils/calculations'
 import { Icon } from '../ui/Icon'
@@ -11,12 +11,33 @@ import { Modal } from '../ui/Modal'
 import { formatPercent, formatEuro, formatEuroCompact, cn } from '../../utils/formatting'
 import type { ImmoSearch, InvestmentCatalogItem } from '../../types'
 
-// Layout du parcours vertical
-const VSPACING = 112          // espace vertical entre noeuds (px)
-const PAD_TOP = 56
-const PAD_BOTTOM = 56
-const NODE = 66               // diamètre du noeud (px)
-const X_PATTERN = [50, 24, 50, 76]  // serpentin doux (% horizontal)
+const CATEGORIES = [
+  {
+    emoji: '💰',
+    label: 'Épargne sécurisée',
+    ids: ['livret', 'assurance_vie', 'obligations_etat'],
+  },
+  {
+    emoji: '📈',
+    label: 'Marchés financiers',
+    ids: ['bourse_etf', 'or_metaux', 'produit_structure', 'crypto'],
+  },
+  {
+    emoji: '🏢',
+    label: 'Immobilier collectif',
+    ids: ['crowdfunding_immo', 'scpi', 'club_deal_immo'],
+  },
+  {
+    emoji: '🏠',
+    label: 'Immobilier direct',
+    ids: ['parking', 'lmnp', 'immo_classique'],
+  },
+  {
+    emoji: '💼',
+    label: 'Entrepreneuriat',
+    ids: ['business'],
+  },
+]
 
 const IMMO_SEARCHABLE = ['parking', 'lmnp', 'immo_classique']
 
@@ -33,87 +54,141 @@ export function MarketplaceMap({ onBuy, onDeposit, onInfo, onShowCandidates }: M
   const learned = game.player.learnedSkillIds || []
   const [selected, setSelected] = useState<string | null>(null)
 
-  // Ordre du parcours : du plus accessible au plus avancé
-  const ordered = useMemo(
-    () => [...INVESTMENT_CATALOG].sort((a, b) => a.unlockThreshold - b.unlockThreshold),
-    [],
-  )
-
-  const totalHeight = PAD_TOP + (ordered.length - 1) * VSPACING + PAD_BOTTOM
-
-  // Calcul d'état pour chaque noeud
-  const nodes = ordered.map((item, i) => {
-    const skillOk = !item.skillRequired || learned.includes(item.skillRequired)
-    const wealthOk = netWorth >= item.unlockThreshold
-    const unlocked = skillOk && wealthOk
-    const owned = game.investments.filter((inv) => inv.catalogId === item.id)
-    const isOwned = owned.length > 0
-    const level = owned[0]?.level ?? 1
-    const isUpgrading = !!owned[0]?.upgradeReadyAtReal && owned[0].upgradeReadyAtReal > Date.now()
-    const activeSearch = IMMO_SEARCHABLE.includes(item.id)
-      ? (game.immoSearches ?? []).find((s) => s.catalogId === item.id)
-      : undefined
-    const searchReady = !!activeSearch?.candidates
-    const x = X_PATTERN[i % X_PATTERN.length]
-    const y = PAD_TOP + i * VSPACING
-    return { item, i, unlocked, skillOk, wealthOk, isOwned, level, isUpgrading, activeSearch, searchReady, x, y }
-  })
-
-  // Premier noeud verrouillé = frontière (objectif suivant)
-  const frontierIndex = nodes.findIndex((n) => !n.unlocked)
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, NodeData>()
+    for (const item of INVESTMENT_CATALOG) {
+      const skillOk = !item.skillRequired || learned.includes(item.skillRequired)
+      const wealthOk = netWorth >= item.unlockThreshold
+      const unlocked = skillOk && wealthOk
+      const owned = game.investments.filter((inv) => inv.catalogId === item.id)
+      const isOwned = owned.length > 0
+      const level = owned[0]?.level ?? 1
+      const isUpgrading = !!owned[0]?.upgradeReadyAtReal && owned[0].upgradeReadyAtReal > Date.now()
+      const activeSearch = IMMO_SEARCHABLE.includes(item.id)
+        ? (game.immoSearches ?? []).find((s) => s.catalogId === item.id)
+        : undefined
+      const searchReady = !!activeSearch?.candidates
+      map.set(item.id, { item, unlocked, isOwned, level, isUpgrading, activeSearch, searchReady })
+    }
+    return map
+  }, [game, netWorth, learned])
 
   const selectedItem = selected ? INVESTMENT_CATALOG.find((it) => it.id === selected) ?? null : null
 
   return (
     <>
-      <div
-        className="relative w-full rounded-3xl overflow-hidden border border-slate-700/40 shadow-2xl"
-        style={{
-          height: totalHeight,
-          background:
-            'radial-gradient(120% 60% at 50% 0%, #1e3a5f 0%, #0f172a 45%, #0b1120 100%)',
-        }}
-      >
-        {/* Texture / glpoints décoratifs */}
-        <div
-          className="absolute inset-0 opacity-[0.15]"
-          style={{
-            backgroundImage:
-              'radial-gradient(circle, rgba(255,255,255,0.4) 1px, transparent 1px)',
-            backgroundSize: '22px 22px',
-          }}
-        />
+      <div className="space-y-3">
+        {CATEGORIES.map((cat) => {
+          const nodes = cat.ids.map((id) => nodeMap.get(id)).filter((n): n is NodeData => !!n)
+          const ownedCount = nodes.filter((n) => n.isOwned).length
+          const unlockedCount = nodes.filter((n) => n.unlocked).length
 
-        {/* Chemin (SVG) */}
-        <svg className="absolute inset-0 w-full" height={totalHeight} style={{ pointerEvents: 'none' }}>
-          {nodes.slice(0, -1).map((n, idx) => {
-            const next = nodes[idx + 1]
-            const active = n.isOwned && next.unlocked
-            const midY = (n.y + next.y) / 2
-            return (
-              <path
-                key={`path-${idx}`}
-                d={`M ${n.x}% ${n.y} C ${n.x}% ${midY}, ${next.x}% ${midY}, ${next.x}% ${next.y}`}
-                fill="none"
-                stroke={active ? '#38bdf8' : '#475569'}
-                strokeOpacity={active ? 0.55 : 0.3}
-                strokeWidth={active ? 4 : 3}
-                strokeDasharray={next.unlocked ? undefined : '6 7'}
-                strokeLinecap="round"
-              />
-            )
-          })}
-        </svg>
+          return (
+            <div key={cat.label} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm">
+              {/* Category header */}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{cat.emoji}</span>
+                  <span className="font-display font-bold text-sm text-slate-700">{cat.label}</span>
+                </div>
+                <span className="text-xs text-slate-400 font-medium">
+                  {ownedCount > 0
+                    ? `${ownedCount} possédé${ownedCount > 1 ? 's' : ''}`
+                    : `${unlockedCount}/${nodes.length} débloqué${unlockedCount !== 1 ? 's' : ''}`}
+                </span>
+              </div>
 
-        {/* Noeuds */}
-        {nodes.map((n) => (
-          <JourneyNode
-            key={n.item.id}
-            node={n}
-            isFrontier={n.i === frontierIndex}
-            onTap={() => setSelected(n.item.id)}
-          />
-        ))}
+              {/* Cards grid */}
+              <div className="p-2 grid grid-cols-2 gap-2">
+                {nodes.map((n) => {
+                  const returnRate =
+                    n.item.baseAnnualReturn * (1 + (n.isOwned ? getLevelReturnBonus(n.level) : 0))
+                  return (
+                    <button
+                      key={n.item.id}
+                      onClick={() => setSelected(n.item.id)}
+                      className={cn(
+                        'relative flex items-center gap-2.5 p-3 rounded-xl text-left transition-all active:scale-[0.97]',
+                        n.isOwned
+                          ? cn('bg-gradient-to-br shadow-sm border border-white/40', n.item.gradient)
+                          : n.unlocked
+                            ? 'bg-white border-2 border-slate-200 hover:border-brand-300 hover:shadow-sm'
+                            : 'bg-slate-50 border border-slate-100 opacity-55',
+                      )}
+                    >
+                      {/* Icon */}
+                      <div
+                        className={cn(
+                          'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                          n.isOwned
+                            ? 'bg-white/20'
+                            : n.unlocked
+                              ? cn('bg-gradient-to-br', n.item.gradient)
+                              : 'bg-slate-200',
+                        )}
+                      >
+                        {n.unlocked ? (
+                          <Icon name={n.item.icon} size={18} className="text-white" />
+                        ) : (
+                          <Lock size={14} className="text-slate-400" />
+                        )}
+                      </div>
+
+                      {/* Text */}
+                      <div className="flex-1 min-w-0">
+                        <div
+                          className={cn(
+                            'font-display font-bold text-[12px] leading-tight truncate',
+                            n.isOwned ? 'text-white' : 'text-slate-800',
+                          )}
+                        >
+                          {n.item.shortName}
+                        </div>
+                        {n.unlocked ? (
+                          <div
+                            className={cn(
+                              'text-[11px] font-semibold mt-0.5',
+                              n.isOwned ? 'text-white/80' : 'text-emerald-600',
+                            )}
+                          >
+                            {n.item.returnVariance > 0 ? '~' : ''}
+                            {formatPercent(returnRate)}/an
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-amber-600 font-semibold mt-0.5">
+                            🔒 {formatEuroCompact(n.item.unlockThreshold)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Status badge */}
+                      {n.isOwned && !n.isUpgrading && !n.activeSearch && (
+                        <span
+                          className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-white/30 text-white text-[9px] font-extrabold flex items-center justify-center"
+                        >
+                          {n.level > 1 ? `N${n.level}` : <Check size={9} />}
+                        </span>
+                      )}
+                      {n.isUpgrading && (
+                        <span className="absolute top-1.5 right-1.5 text-sm animate-pulse">⚡</span>
+                      )}
+                      {n.activeSearch && !n.searchReady && (
+                        <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center">
+                          <Search size={8} className="text-white" />
+                        </span>
+                      )}
+                      {n.searchReady && (
+                        <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-emerald-400 flex items-center justify-center text-white text-[9px] font-extrabold">
+                          !
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {selectedItem && (
@@ -130,7 +205,8 @@ export function MarketplaceMap({ onBuy, onDeposit, onInfo, onShowCandidates }: M
   )
 }
 
-// ── Noeud du parcours ───────────────────────────────────────────────────────
+// ── Types internes ───────────────────────────────────────────────────────────
+
 type NodeData = {
   item: InvestmentCatalogItem
   unlocked: boolean
@@ -139,137 +215,10 @@ type NodeData = {
   isUpgrading: boolean
   activeSearch?: ImmoSearch
   searchReady: boolean
-  x: number
-  y: number
-}
-
-function JourneyNode({
-  node,
-  isFrontier,
-  onTap,
-}: {
-  node: NodeData
-  isFrontier: boolean
-  onTap: () => void
-}) {
-  const { item, unlocked, isOwned, level, isUpgrading, activeSearch, searchReady, x, y } = node
-  const [now, setNow] = useState(Date.now())
-  const upgradeReadyAtReal = useGameStore((s) =>
-    s.game?.investments.find((inv) => inv.catalogId === item.id)?.upgradeReadyAtReal,
-  )
-
-  useEffect(() => {
-    if (!isUpgrading) return
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [isUpgrading])
-
-  const RADIUS = (NODE - 6) / 2
-  const CIRC = 2 * Math.PI * RADIUS
-  let arc = 0
-  if (isUpgrading && upgradeReadyAtReal) {
-    const totalMs = TIER_SECS[level + 1] * 1000
-    arc = Math.min(1, (totalMs - Math.max(0, upgradeReadyAtReal - now)) / totalMs)
-  }
-
-  return (
-    <button
-      onClick={onTap}
-      className="absolute flex flex-col items-center group"
-      style={{ left: `${x}%`, top: y, transform: 'translate(-50%, -50%)', zIndex: isOwned ? 4 : 2 }}
-    >
-      {/* Halo possédé / frontière */}
-      {isOwned && (
-        <span
-          className="absolute rounded-full blur-md opacity-50"
-          style={{ width: NODE * 1.4, height: NODE * 1.4, background: item.color, top: -NODE * 0.2 }}
-        />
-      )}
-      {isFrontier && (
-        <span
-          className="absolute rounded-full animate-ping"
-          style={{ width: NODE + 14, height: NODE + 14, border: '2px solid rgba(56,189,248,0.6)', top: -7 }}
-        />
-      )}
-
-      {/* Médaillon */}
-      <span
-        className={cn(
-          'relative flex items-center justify-center rounded-full bg-gradient-to-br shadow-xl transition-transform duration-150',
-          item.gradient,
-          unlocked ? 'group-hover:scale-110 group-active:scale-95' : 'grayscale',
-        )}
-        style={{ width: NODE, height: NODE, opacity: unlocked ? 1 : 0.45 }}
-      >
-        <Icon name={item.icon} size={28} className="text-white drop-shadow relative z-10" />
-
-        {!unlocked && (
-          <span className="absolute inset-0 rounded-full bg-slate-950/40 flex items-center justify-center">
-            <Lock size={16} className="text-white/70" />
-          </span>
-        )}
-
-        {/* Arc d'amélioration */}
-        {isUpgrading && (
-          <svg className="absolute inset-0" width={NODE} height={NODE} style={{ transform: 'rotate(-90deg)' }}>
-            <circle cx={NODE / 2} cy={NODE / 2} r={RADIUS} fill="none" stroke="rgba(251,191,36,0.25)" strokeWidth="3.5" />
-            <circle
-              cx={NODE / 2} cy={NODE / 2} r={RADIUS} fill="none" stroke="#fbbf24" strokeWidth="3.5"
-              strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - arc)} strokeLinecap="round"
-            />
-          </svg>
-        )}
-      </span>
-
-      {/* Badge niveau */}
-      {isOwned && (
-        <span
-          className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white shadow-md border border-white/30"
-          style={{ backgroundColor: item.color }}
-        >
-          {level > 1 ? `N${level}` : <Check size={11} />}
-        </span>
-      )}
-
-      {/* Indicateur recherche immo */}
-      {activeSearch && !searchReady && (
-        <span className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center shadow-md animate-pulse">
-          <Search size={10} className="text-white" />
-        </span>
-      )}
-      {searchReady && (
-        <span className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-emerald-400 flex items-center justify-center shadow-md animate-bounce">
-          <span className="text-[10px] font-extrabold text-white">!</span>
-        </span>
-      )}
-
-      {/* Étiquette */}
-      <span
-        className="mt-2 px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap"
-        style={{
-          color: unlocked ? '#fff' : 'rgba(255,255,255,0.4)',
-          backgroundColor: unlocked ? 'rgba(15,23,42,0.6)' : 'transparent',
-          textShadow: '0 1px 3px rgba(0,0,0,0.7)',
-        }}
-      >
-        {item.shortName}
-      </span>
-
-      {/* Rendement / objectif */}
-      {unlocked ? (
-        <span className="text-[10px] font-bold mt-0.5" style={{ color: item.color, textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
-          {item.returnVariance > 0 ? '~' : ''}{formatPercent(item.baseAnnualReturn * (1 + (isOwned ? getLevelReturnBonus(level) : 0)))}/an
-        </span>
-      ) : (
-        <span className="text-[10px] font-semibold text-amber-300/80 mt-0.5">
-          🔒 {formatEuroCompact(item.unlockThreshold)}
-        </span>
-      )}
-    </button>
-  )
 }
 
 // ── Panneau d'action (bottom sheet) ─────────────────────────────────────────
+
 function NodeDetailSheet({
   item,
   onClose,
@@ -310,7 +259,6 @@ function NodeDetailSheet({
     : undefined
   const searchReady = !!activeSearch?.candidates
 
-  // Live countdown pour la recherche immo
   useEffect(() => {
     if (!activeSearch || searchReady) return
     const id = setInterval(() => setNow(Date.now()), 1000)
@@ -343,7 +291,11 @@ function NodeDetailSheet({
             <div className="font-display font-extrabold text-lg leading-tight">{item.name}</div>
             <div className="text-sm text-white/85">
               {item.returnVariance > 0 ? '~' : ''}{formatPercent(returnRate)}/an
-              {isOwned && level > 1 && <span className="ml-1.5 font-bold">· {LEVEL_LABELS[level]} (+{Math.round(getLevelReturnBonus(level) * 100)}%)</span>}
+              {isOwned && level > 1 && (
+                <span className="ml-1.5 font-bold">
+                  · {LEVEL_LABELS[level]} (+{Math.round(getLevelReturnBonus(level) * 100)}%)
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -365,11 +317,16 @@ function NodeDetailSheet({
           <div className="rounded-2xl bg-slate-50 p-3">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-semibold text-slate-500">Tu possèdes — Niveau {level}/5</span>
-              <span className="text-sm font-display font-bold text-slate-800">{formatEuro(Math.round(ownedInv!.currentValue))}</span>
+              <span className="text-sm font-display font-bold text-slate-800">
+                {formatEuro(Math.round(ownedInv!.currentValue))}
+              </span>
             </div>
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5].map((l) => (
-                <div key={l} className={cn('flex-1 h-1.5 rounded-full', l <= level ? 'bg-brand-500' : 'bg-slate-200')} />
+                <div
+                  key={l}
+                  className={cn('flex-1 h-1.5 rounded-full', l <= level ? 'bg-brand-500' : 'bg-slate-200')}
+                />
               ))}
             </div>
           </div>
@@ -380,18 +337,20 @@ function NodeDetailSheet({
           <div className="rounded-2xl bg-amber-50 border border-amber-100 p-3 text-sm text-amber-800 space-y-1">
             {!skillOk && (
               <div className="flex items-center gap-1.5">
-                <GraduationCap size={14} /> Requiert la formation : <strong>{SKILL_BY_ID[item.skillRequired!]?.name ?? item.skillRequired}</strong>
+                <GraduationCap size={14} /> Requiert la formation :{' '}
+                <strong>{SKILL_BY_ID[item.skillRequired!]?.name ?? item.skillRequired}</strong>
               </div>
             )}
             {!wealthOk && (
               <div className="flex items-center gap-1.5">
-                <Lock size={14} /> Débloqué à <strong>{formatEuro(item.unlockThreshold)}</strong> de patrimoine (encore {formatEuroCompact(item.unlockThreshold - netWorth)})
+                <Lock size={14} /> Débloqué à <strong>{formatEuro(item.unlockThreshold)}</strong> de
+                patrimoine (encore {formatEuroCompact(item.unlockThreshold - netWorth)})
               </div>
             )}
           </div>
         )}
 
-        {/* Recherche immobilière en cours */}
+        {/* Recherche immo en cours */}
         {unlocked && activeSearch && !searchReady && (
           <div className="rounded-2xl bg-blue-50 border border-blue-100 p-3 space-y-2.5">
             <div className="text-xs font-bold text-blue-700 flex items-center gap-1.5">
@@ -401,24 +360,32 @@ function NodeDetailSheet({
               label="Financement"
               done={now >= activeSearch.financingReadyAtReal}
               timeLeft={fmtTime(activeSearch.financingReadyAtReal)}
-              progress={Math.min(1, (now - activeSearch.startedAtReal) / (activeSearch.financingReadyAtReal - activeSearch.startedAtReal))}
+              progress={Math.min(
+                1,
+                (now - activeSearch.startedAtReal) /
+                  (activeSearch.financingReadyAtReal - activeSearch.startedAtReal),
+              )}
               color="bg-brand-500"
             />
             <ProgressLine
               label="Recherche de bien"
               done={now >= activeSearch.propertyReadyAtReal}
               timeLeft={fmtTime(activeSearch.propertyReadyAtReal)}
-              progress={Math.min(1, (now - activeSearch.startedAtReal) / (activeSearch.propertyReadyAtReal - activeSearch.startedAtReal))}
+              progress={Math.min(
+                1,
+                (now - activeSearch.startedAtReal) /
+                  (activeSearch.propertyReadyAtReal - activeSearch.startedAtReal),
+              )}
               color="bg-violet-500"
             />
           </div>
         )}
 
-        {/* ── Actions ── */}
+        {/* Actions */}
         <div className="space-y-2">
           {!unlocked ? (
             <Button fullWidth variant="secondary" onClick={() => { onInfo(item); onClose() }}>
-              <Info size={15} /> En savoir plus
+              En savoir plus
             </Button>
           ) : isImmoSearchable ? (
             searchReady && activeSearch ? (
@@ -430,12 +397,15 @@ function NodeDetailSheet({
                 <Clock size={15} /> Recherche en cours...
               </Button>
             ) : (
-              <Button fullWidth onClick={() => {
-                const res = startImmoSearch(item.id as 'parking' | 'lmnp' | 'immo_classique')
-                if (!res.success) { onBuy(item) }
-                onClose()
-              }}>
-                <Search size={15} /> Lancer une recherche {isFullyOwned ? '(bien supplémentaire)' : ''}
+              <Button
+                fullWidth
+                onClick={() => {
+                  const res = startImmoSearch(item.id as 'parking' | 'lmnp' | 'immo_classique')
+                  if (!res.success) { onBuy(item) }
+                  onClose()
+                }}
+              >
+                <Search size={15} /> Lancer une recherche{isFullyOwned ? ' (bien supplémentaire)' : ''}
               </Button>
             )
           ) : isFullyOwned ? (
@@ -455,7 +425,7 @@ function NodeDetailSheet({
             </>
           ) : (
             <Button fullWidth onClick={() => { onBuy(item); onClose() }}>
-              Investir <ChevronRight size={15} />
+              Investir →
             </Button>
           )}
 
@@ -484,9 +454,17 @@ function Stat({ label, value, icon }: { label: string; value: string; icon: Reac
 }
 
 function ProgressLine({
-  label, done, timeLeft, progress, color,
+  label,
+  done,
+  timeLeft,
+  progress,
+  color,
 }: {
-  label: string; done: boolean; timeLeft: string; progress: number; color: string
+  label: string
+  done: boolean
+  timeLeft: string
+  progress: number
+  color: string
 }) {
   return (
     <div>
@@ -495,7 +473,10 @@ function ProgressLine({
         <span className="font-semibold">{done ? '✓ Prêt' : timeLeft}</span>
       </div>
       <div className="h-1.5 bg-white rounded-full overflow-hidden">
-        <div className={cn('h-full rounded-full transition-all', done ? 'bg-emerald-500' : color)} style={{ width: `${progress * 100}%` }} />
+        <div
+          className={cn('h-full rounded-full transition-all', done ? 'bg-emerald-500' : color)}
+          style={{ width: `${progress * 100}%` }}
+        />
       </div>
     </div>
   )

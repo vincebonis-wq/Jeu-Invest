@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, type ReactNode } from 'react'
 import {
   Area,
   AreaChart,
@@ -14,6 +14,7 @@ import {
 import {
   ArrowDownRight,
   ArrowUpRight,
+  ChevronDown,
   Flame,
   TrendingUp,
   Zap,
@@ -237,158 +238,154 @@ export function Dashboard() {
       {/* Copilote patrimonial */}
       <CopiloteCard game={game} netWorth={netWorth} passiveIncome={passiveIncome} cashflow={cashflow} setScreen={setScreen} />
 
-      {/* Miroir comportemental */}
-      <BehaviorMirrorCard game={game} />
+      {/* ── Section secondaire : Missions & Objectifs ── */}
+      <SectionDisclosure label="🎯 Missions & Objectifs">
+        <LifeGoalCard game={game} />
+        <BehaviorMirrorCard game={game} />
+        <GigsCard />
+      </SectionDisclosure>
 
-      {/* Missions express — petit revenu d'appoint */}
-      <GigsCard />
-
-      <div className="grid lg:grid-cols-3 gap-4">
-        {/* Évolution du patrimoine */}
-        <Card className="p-5 lg:col-span-2">
-          <CardHeader
-            title="Évolution du patrimoine"
-            subtitle="2 dernières années"
-            icon={<TrendingUp size={18} />}
-          />
-          {chartData.length > 1 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={chartData} margin={{ left: -10, right: 8, top: 4 }}>
-                <defs>
-                  <linearGradient id="gradCash" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.8} />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.1} />
-                  </linearGradient>
-                  <linearGradient id="gradUnlocked" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#1c84f5" stopOpacity={0.7} />
-                    <stop offset="100%" stopColor="#1c84f5" stopOpacity={0.1} />
-                  </linearGradient>
-                  <linearGradient id="gradLocked" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#a855f7" stopOpacity={0.6} />
-                    <stop offset="100%" stopColor="#a855f7" stopOpacity={0.1} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={30} />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} tickFormatter={(v) => formatEuroCompact(v)} width={56} />
-                <Tooltip formatter={(v) => [formatEuro(Number(v)), '']} contentStyle={tooltipStyle} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Area type="monotone" dataKey="locked" name="Bloqués" stackId="1" stroke="#a855f7" fill="url(#gradLocked)" strokeWidth={1.5} />
-                <Area type="monotone" dataKey="unlocked" name="Disponibles" stackId="1" stroke="#1c84f5" fill="url(#gradUnlocked)" strokeWidth={1.5} />
-                <Area type="monotone" dataKey="cash" name="Cash" stackId="1" stroke="#10b981" fill="url(#gradCash)" strokeWidth={1.5} />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyChart text="Les données apparaîtront après quelques mois de jeu." />
-          )}
-        </Card>
-
-        {/* Répartition des actifs */}
-        <Card className="p-5">
-          <CardHeader title="Répartition" subtitle="Allocation de ton capital" />
-          {allocationData.length > 0 ? (
-            <>
-              <ResponsiveContainer width="100%" height={170}>
-                <PieChart>
-                  <Pie
-                    data={allocationData}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={45}
-                    outerRadius={75}
-                    paddingAngle={2}
-                    stroke="none"
-                  >
-                    {allocationData.map((d) => (
-                      <Cell key={d.key} fill={d.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(v) => formatEuro(Number(v))}
-                    contentStyle={tooltipStyle}
-                  />
-                </PieChart>
+      {/* ── Section secondaire : Analyses ── */}
+      <SectionDisclosure label="📊 Analyses détaillées">
+        <div className="grid lg:grid-cols-3 gap-4">
+          {/* Évolution du patrimoine */}
+          <Card className="p-5 lg:col-span-2">
+            <CardHeader
+              title="Évolution du patrimoine"
+              subtitle="2 dernières années"
+              icon={<TrendingUp size={18} />}
+            />
+            {chartData.length > 1 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={chartData} margin={{ left: -10, right: 8, top: 4 }}>
+                  <defs>
+                    <linearGradient id="gradCash" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.8} />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.1} />
+                    </linearGradient>
+                    <linearGradient id="gradUnlocked" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#1c84f5" stopOpacity={0.7} />
+                      <stop offset="100%" stopColor="#1c84f5" stopOpacity={0.1} />
+                    </linearGradient>
+                    <linearGradient id="gradLocked" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#a855f7" stopOpacity={0.6} />
+                      <stop offset="100%" stopColor="#a855f7" stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={30} />
+                  <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} tickFormatter={(v) => formatEuroCompact(v)} width={56} />
+                  <Tooltip formatter={(v) => [formatEuro(Number(v)), '']} contentStyle={tooltipStyle} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Area type="monotone" dataKey="locked" name="Bloqués" stackId="1" stroke="#a855f7" fill="url(#gradLocked)" strokeWidth={1.5} />
+                  <Area type="monotone" dataKey="unlocked" name="Disponibles" stackId="1" stroke="#1c84f5" fill="url(#gradUnlocked)" strokeWidth={1.5} />
+                  <Area type="monotone" dataKey="cash" name="Cash" stackId="1" stroke="#10b981" fill="url(#gradCash)" strokeWidth={1.5} />
+                </AreaChart>
               </ResponsiveContainer>
-              <div className="space-y-1.5 mt-2 max-h-32 overflow-y-auto">
-                {allocationData
-                  .sort((a, b) => b.value - a.value)
-                  .map((d) => (
-                    <button
-                      key={d.key}
-                      onClick={() =>
-                        setScreen(d.key === 'cash' ? 'dashboard' : 'portfolio')
-                      }
-                      className="w-full flex items-center gap-2 text-xs hover:bg-slate-50 rounded-lg px-1.5 py-1 transition-colors"
-                    >
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: d.color }}
-                      />
-                      <span className="text-slate-600 truncate flex-1 text-left">
-                        {d.name}
-                      </span>
-                      <span className="font-semibold text-slate-700">
-                        {formatEuroCompact(d.value)}
-                      </span>
-                    </button>
-                  ))}
-              </div>
-            </>
-          ) : (
-            <EmptyChart text="Aucun actif pour l'instant. Va investir !" />
-          )}
-        </Card>
-      </div>
+            ) : (
+              <EmptyChart text="Les données apparaîtront après quelques mois de jeu." />
+            )}
+          </Card>
 
-      {/* Détail du cashflow */}
-      <Card className="p-5">
-        <CardHeader title="Flux mensuel" subtitle="D'où vient ton argent chaque mois" />
-        <div className="grid sm:grid-cols-2 gap-4">
-          <FlowColumn
-            title="Entrées"
-            positive
-            rows={[
-              { label: 'Salaire', value: game.player.salary },
-              { label: 'Revenus passifs', value: passiveIncome },
-            ]}
-          />
-          <FlowColumn
-            title="Sorties"
-            rows={[
-              { label: 'Charges courantes', value: game.monthlyExpenses.total },
-              { label: 'Crédits', value: totalMortgagePayments(game) },
-            ]}
-          />
+          {/* Répartition des actifs */}
+          <Card className="p-5">
+            <CardHeader title="Répartition" subtitle="Allocation de ton capital" />
+            {allocationData.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={170}>
+                  <PieChart>
+                    <Pie
+                      data={allocationData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={45}
+                      outerRadius={75}
+                      paddingAngle={2}
+                      stroke="none"
+                    >
+                      {allocationData.map((d) => (
+                        <Cell key={d.key} fill={d.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v) => formatEuro(Number(v))}
+                      contentStyle={tooltipStyle}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1.5 mt-2 max-h-32 overflow-y-auto">
+                  {allocationData
+                    .sort((a, b) => b.value - a.value)
+                    .map((d) => (
+                      <button
+                        key={d.key}
+                        onClick={() =>
+                          setScreen(d.key === 'cash' ? 'dashboard' : 'portfolio')
+                        }
+                        className="w-full flex items-center gap-2 text-xs hover:bg-slate-50 rounded-lg px-1.5 py-1 transition-colors"
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: d.color }}
+                        />
+                        <span className="text-slate-600 truncate flex-1 text-left">
+                          {d.name}
+                        </span>
+                        <span className="font-semibold text-slate-700">
+                          {formatEuroCompact(d.value)}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              </>
+            ) : (
+              <EmptyChart text="Aucun actif pour l'instant. Va investir !" />
+            )}
+          </Card>
         </div>
-        {/* Détail revenus passifs */}
-        {game.investments.filter(i => i.monthlyIncome !== 0).length > 0 && (
-          <div className="mt-3">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Détail revenus passifs</div>
-            <div className="space-y-1">
-              {game.investments.filter(i => i.monthlyIncome !== 0).map(inv => {
-                return (
+
+        {/* Détail du cashflow */}
+        <Card className="p-5">
+          <CardHeader title="Flux mensuel" subtitle="D'où vient ton argent chaque mois" />
+          <div className="grid sm:grid-cols-2 gap-4">
+            <FlowColumn
+              title="Entrées"
+              positive
+              rows={[
+                { label: 'Salaire', value: game.player.salary },
+                { label: 'Revenus passifs', value: passiveIncome },
+              ]}
+            />
+            <FlowColumn
+              title="Sorties"
+              rows={[
+                { label: 'Charges courantes', value: game.monthlyExpenses.total },
+                { label: 'Crédits', value: totalMortgagePayments(game) },
+              ]}
+            />
+          </div>
+          {game.investments.filter(i => i.monthlyIncome !== 0).length > 0 && (
+            <div className="mt-3">
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Détail revenus passifs</div>
+              <div className="space-y-1">
+                {game.investments.filter(i => i.monthlyIncome !== 0).map(inv => (
                   <div key={inv.instanceId} className="flex items-center justify-between text-xs px-1">
                     <span className="text-slate-500 truncate flex-1 mr-2">{inv.name}</span>
                     <span className={cn('font-semibold shrink-0', inv.monthlyIncome >= 0 ? 'text-emerald-600' : 'text-red-500')}>
                       {inv.monthlyIncome >= 0 ? '+' : ''}{formatEuro(inv.monthlyIncome)}/mois
                     </span>
                   </div>
-                )
-              })}
+                ))}
+              </div>
             </div>
+          )}
+          <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+            <span className="font-display font-bold text-slate-700">Solde net</span>
+            <span className={cn('font-display font-extrabold text-xl', cashflow >= 0 ? 'text-emerald-600' : 'text-red-500')}>
+              {formatEuroSigned(cashflow)}
+            </span>
           </div>
-        )}
-        <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
-          <span className="font-display font-bold text-slate-700">Solde net</span>
-          <span
-            className={cn(
-              'font-display font-extrabold text-xl',
-              cashflow >= 0 ? 'text-emerald-600' : 'text-red-500',
-            )}
-          >
-            {formatEuroSigned(cashflow)}
-          </span>
-        </div>
-      </Card>
+        </Card>
+      </SectionDisclosure>
     </div>
   )
 }
@@ -398,6 +395,22 @@ const tooltipStyle = {
   border: '1px solid #e2e8f0',
   fontSize: 12,
   boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+}
+
+function SectionDisclosure({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-1 py-2.5 text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+      >
+        <span>{label}</span>
+        <ChevronDown size={14} className={cn('transition-transform duration-200', open && 'rotate-180')} />
+      </button>
+      {open && <div className="space-y-4 animate-fade-in">{children}</div>}
+    </div>
+  )
 }
 
 function FlowColumn({
