@@ -170,6 +170,23 @@ export function applyDailyYield(
       // On module la tendance, avec un peu de bruit quotidien.
       dailyRate = dailyRate * mult + randRange(-0.0006, 0.0006)
     }
+    // Or/métaux : valeur refuge, corrélation inverse au marché
+    if (inv.catalogId === 'or_metaux') {
+      const inversePhaseBonus =
+        economy.marketPhase === 'crash' ? 1.35
+        : economy.marketPhase === 'bear' ? 1.12
+        : economy.marketPhase === 'bull' ? 0.88
+        : 1.0
+      dailyRate = dailyRate * inversePhaseBonus
+    }
+    // Obligations d'État : valeur refuge en bear/crash
+    if (inv.catalogId === 'obligations_etat') {
+      const safeHavenBonus =
+        economy.marketPhase === 'crash' ? 1.12
+        : economy.marketPhase === 'bear' ? 1.06
+        : 1.0
+      dailyRate = dailyRate * safeHavenBonus
+    }
     updated.currentValue = Math.max(0, inv.currentValue * (1 + dailyRate))
   } else if (item.isRealEstate) {
     // L'immobilier prend de la valeur via l'indice (géré dans le tick).

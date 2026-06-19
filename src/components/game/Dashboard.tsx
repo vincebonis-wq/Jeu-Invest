@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   Area,
   AreaChart,
@@ -16,6 +16,7 @@ import {
   ArrowUpRight,
   Flame,
   TrendingUp,
+  Zap,
 } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import {
@@ -31,6 +32,7 @@ import { PHASE_LABEL } from '../../engine/economy'
 import type { Screen } from '../../types'
 import { SKILLS, SKILL_BY_ID } from '../../data/skills'
 import { CATALOG_BY_ID, INVESTMENT_CATALOG } from '../../data/investments'
+import { LEVEL_LABELS, getUpgradeCost, TIER_SECS, getLevelReturnBonus } from '../../data/upgradeTiers'
 import { Card, CardHeader } from '../ui/Card'
 import { ProgressBar } from '../ui/ProgressBar'
 import { NumberTicker } from '../ui/NumberTicker'
@@ -228,6 +230,9 @@ export function Dashboard() {
 
       {/* Opportunité flash — priorité max sur le dashboard */}
       <FlashOpportunityCard />
+
+      {/* Améliorations en cours (timers) */}
+      <ActiveUpgradesCard setScreen={setScreen} />
 
       {/* Copilote patrimonial */}
       <CopiloteCard game={game} netWorth={netWorth} passiveIncome={passiveIncome} cashflow={cashflow} setScreen={setScreen} />
@@ -626,6 +631,28 @@ function CopiloteCard({
         ctaLabel: 'Marketplace →', ctaScreen: 'marketplace',
       })
     }
+    // Suggérer une amélioration d'investissement existant (niveau non maximal + budget ok)
+    const upgradeable = game.investments.find((inv) => {
+      const level = inv.level ?? 1
+      if (level >= 5) return false
+      if (inv.upgradeReadyAtReal && inv.upgradeReadyAtReal > Date.now()) return false
+      const catalog = CATALOG_BY_ID[inv.catalogId]
+      if (!catalog) return false
+      const cost = getUpgradeCost(catalog.minAmount, level + 1)
+      return game.cashBalance >= cost
+    })
+    if (upgradeable) {
+      const level = upgradeable.level ?? 1
+      const catalog = CATALOG_BY_ID[upgradeable.catalogId]
+      const cost = getUpgradeCost(catalog.minAmount, level + 1)
+      const bonus = getLevelReturnBonus(level + 1)
+      result.push({
+        level: 'action', icon: '⬆️',
+        text: `Améliore ton "${upgradeable.name}" au niveau ${LEVEL_LABELS[level + 1]} (${formatEuroCompact(cost)}) pour +${Math.round(bonus * 100)} % de rendement.`,
+        ctaLabel: 'Portefeuille →', ctaScreen: 'portfolio',
+      })
+    }
+
     // Signal marché si compétence acquise
     if (knowsMarket && (marketPhase === 'neutral' || marketPhase === 'bear')) {
       const msg = marketPhase === 'neutral'
@@ -727,6 +754,77 @@ function CopiloteCard({
           ))}
         </div>
       )}
+    </Card>
+  )
+}
+
+function ActiveUpgradesCard({ setScreen }: { setScreen: (s: Screen) => void }) {
+  const game = useGameStore((s) => s.game)!
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const active = game.investments.filter(
+    (inv) => inv.upgradeReadyAtReal !== undefined && inv.upgradeReadyAtReal > now,
+  )
+
+  if (active.length === 0) return null
+
+  function fmtCountdown(ms: number): string {
+    const s = Math.ceil(ms / 1000)
+    if (s < 60) return `${s}s`
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    if (m < 60) return `${m}m ${sec}s`
+    const h = Math.floor(m / 60)
+    const min = m % 60
+    return `${h}h ${min}m`
+  }
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-6 h-6 rounded-lg bg-amber-500/20 flex items-center justify-center">
+          <Zap size={14} className="text-amber-500" />
+        </div>
+        <span className="font-display font-bold text-sm text-slate-800">Améliorations en cours</span>
+      </div>
+      <div className="space-y-2">
+        {active.map((inv) => {
+          const remaining = (inv.upgradeReadyAtReal ?? 0) - now
+          const targetLevel = (inv.level ?? 1) + 1
+          const totalMs = TIER_SECS[targetLevel] * 1000
+          const progress = Math.max(0, Math.min(100, ((totalMs - remaining) / totalMs) * 100))
+          return (
+            <div key={inv.instanceId} className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-slate-700 truncate">{inv.name}</span>
+                  <span className="text-xs font-bold text-amber-600 ml-2 shrink-0">
+                    → {LEVEL_LABELS[targetLevel]}
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-1000"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">{fmtCountdown(remaining)} restant</div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <button
+        onClick={() => setScreen('portfolio')}
+        className="mt-3 text-xs font-semibold text-brand-600 hover:text-brand-700"
+      >
+        Voir le portefeuille →
+      </button>
     </Card>
   )
 }
