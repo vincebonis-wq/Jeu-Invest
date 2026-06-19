@@ -29,6 +29,7 @@ import {
 import { PHASE_LABEL } from '../../engine/economy'
 import type { Screen } from '../../types'
 import { SKILLS, SKILL_BY_ID } from '../../data/skills'
+import { CATALOG_BY_ID, INVESTMENT_CATALOG } from '../../data/investments'
 import { Card, CardHeader } from '../ui/Card'
 import { ProgressBar } from '../ui/ProgressBar'
 import { NumberTicker } from '../ui/NumberTicker'
@@ -41,7 +42,6 @@ import {
   formatEuroCompact,
   formatEuroSigned,
   formatMonthShort,
-  formatDuration,
   cn,
 } from '../../utils/formatting'
 import type { AssetBreakdown, GameState } from '../../types'
@@ -449,7 +449,6 @@ function CopiloteCard({
     const hasETF = game.investments.some((i) => i.catalogId === 'bourse_etf')
     const hasLivret = game.investments.some((i) => i.catalogId === 'livret')
     const knowsInvesting = learned.includes('investissement_101')
-    const knowsRental = learned.includes('gestion_locative')
     const knowsMarket = learned.includes('lecture_marche')
     const debtRatio = calcDebtRatio(game)
 
@@ -485,8 +484,10 @@ function CopiloteCard({
         ctaLabel: 'Investir →', ctaScreen: 'marketplace',
       })
     }
-    // Opportunité de krach
-    if (marketPhase === 'crash' && knowsInvesting && game.cashBalance > 2000) {
+    // Opportunité de krach — seulement si ETF est accessible (compétence + mise min)
+    const etfItem = CATALOG_BY_ID['bourse_etf']
+    const canAccessETF = knowsInvesting && game.cashBalance >= etfItem.minAmount
+    if (marketPhase === 'crash' && canAccessETF) {
       result.push({
         level: 'action', icon: '💎',
         text: 'Krach en cours — les ETF sont en soldes. Renforcer progressivement (DCA) est la stratégie des investisseurs qui s\'enrichissent sur les crises.',
@@ -500,8 +501,8 @@ function CopiloteCard({
         text: 'Marché baissier — ne vends pas tes ETF en panique. Historiquement, les marchés se redressent. Tiens la position.',
       })
     }
-    // Bull + ETF dispo
-    if (marketPhase === 'bull' && knowsInvesting && game.cashBalance > 1000 && !hasETF) {
+    // Bull + ETF dispo — seulement si le joueur peut réellement acheter des ETF
+    if (marketPhase === 'bull' && canAccessETF && !hasETF) {
       result.push({
         level: 'action', icon: '📈',
         text: `Marché haussier${knowsMarket ? ` depuis ${phaseMonthsElapsed} mois` : ''} — bon moment pour ouvrir une position ETF à rendement élevé.`,
@@ -519,13 +520,23 @@ function CopiloteCard({
         })
       }
     }
-    // Levier immobilier
-    if (debtRatio < 0.05 && netWorth >= 25000 && knowsRental) {
-      result.push({
-        level: 'action', icon: '🏗️',
-        text: 'Taux d\'endettement quasi nul — tu peux emprunter pour acheter de l\'immobilier et démultiplier ton rendement avec l\'effet de levier.',
-        ctaLabel: 'Chercher →', ctaScreen: 'marketplace',
-      })
+    // Levier immobilier — seulement si au moins un bien mortgageable est réellement débloqué
+    if (debtRatio < 0.05) {
+      const unlockedMortgageable = INVESTMENT_CATALOG.filter(
+        (item) =>
+          item.canUseMortgage &&
+          item.isRealEstate &&
+          netWorth >= item.unlockThreshold &&
+          (!item.skillRequired || learned.includes(item.skillRequired)),
+      )
+      if (unlockedMortgageable.length > 0) {
+        const topItem = unlockedMortgageable[unlockedMortgageable.length - 1]
+        result.push({
+          level: 'action', icon: '🏗️',
+          text: `Taux d'endettement quasi nul — tu peux emprunter pour acheter un ${topItem.shortName} et démultiplier ton rendement avec l'effet de levier.`,
+          ctaLabel: 'Chercher →', ctaScreen: 'marketplace',
+        })
+      }
     }
 
     // ── INFO ────────────────────────────────────────────────────────────────
@@ -570,6 +581,20 @@ function CopiloteCard({
         text: `Revenus passifs : ${formatEuroCompact(passiveIncome)}/mois (${ratio} % de ton salaire). Objectif : 100 % pour devenir rentier.`,
       })
     }
+    // Prochain investissement bientôt débloqué (dans les 20% restants)
+    const nearUnlock = INVESTMENT_CATALOG.find((item) => {
+      if (item.unlockThreshold <= 0) return false
+      if (netWorth >= item.unlockThreshold) return false
+      return netWorth / item.unlockThreshold >= 0.80
+    })
+    if (nearUnlock) {
+      const missing = Math.ceil(nearUnlock.unlockThreshold - netWorth)
+      result.push({
+        level: 'info', icon: '🔓',
+        text: `Plus que ${formatEuroCompact(missing)} pour débloquer ${nearUnlock.name} ! Encore un effort.`,
+        ctaLabel: 'Marketplace →', ctaScreen: 'marketplace',
+      })
+    }
     // Signal marché si compétence acquise
     if (knowsMarket && (marketPhase === 'neutral' || marketPhase === 'bear')) {
       const msg = marketPhase === 'neutral'
@@ -577,18 +602,27 @@ function CopiloteCard({
         : `Phase baissière depuis ${phaseMonthsElapsed} mois. Probabilité de transition vers "neutre" : 20 %/mois. Actifs défensifs conseillés (Livret, SCPI).`
       result.push({ level: 'info', icon: '🎯', text: msg })
     }
-    // Formations
+    // Formation en cours
     if (game.player.activeTraining) {
       const skill = SKILL_BY_ID[game.player.activeTraining.skillId]
       if (skill) {
-        const elapsed = Date.now() - game.player.activeTraining.startedAtReal
-        const pct = Math.round(Math.min(100, (elapsed / skill.realDurationMs) * 100))
-        const remaining = Math.max(0, skill.realDurationMs - elapsed)
-        result.push({
-          level: 'info', icon: '🎓',
-          text: `"${skill.name}" en cours — ${pct} % (encore ${formatDuration(remaining)}). Effet : ${skill.benefits[0]}.`,
-          ctaLabel: 'Carrière →', ctaScreen: 'skills',
-        })
+        const monthsDone = game.player.activeTraining.monthsCompleted ?? 0
+        const totalMonths = skill.trainingMonths
+        if (totalMonths > 0) {
+          const pct = Math.round(Math.min(100, (monthsDone / totalMonths) * 100))
+          const monthsLeft = Math.max(0, totalMonths - monthsDone)
+          result.push({
+            level: 'info', icon: '🎓',
+            text: `"${skill.name}" en cours — ${pct} % (encore ${monthsLeft} mois de jeu). Effet : ${skill.benefits[0]}.`,
+            ctaLabel: 'Carrière →', ctaScreen: 'skills',
+          })
+        } else {
+          result.push({
+            level: 'info', icon: '🎓',
+            text: `"${skill.name}" terminée — ${skill.benefits[0]}.`,
+            ctaLabel: 'Carrière →', ctaScreen: 'skills',
+          })
+        }
       }
     } else {
       const next = SKILLS.find((s) => {
@@ -598,9 +632,10 @@ function CopiloteCard({
         return prereqsMet && wealthMet
       })
       if (next) {
+        const durationLabel = next.trainingMonths > 0 ? `${next.trainingMonths} mois de jeu` : 'instantané'
         result.push({
           level: 'info', icon: '📚',
-          text: `Formation disponible : "${next.name}" (${formatDuration(next.realDurationMs)}) → ${next.benefits[0]}`,
+          text: `Formation disponible : "${next.name}" (${durationLabel}) → ${next.benefits[0]}`,
           ctaLabel: 'Commencer →', ctaScreen: 'skills',
         })
       }
