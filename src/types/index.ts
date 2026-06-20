@@ -487,6 +487,7 @@ export interface GameState {
   flashOpportunities?: FlashOpportunity[] // opportunités flash en cours
   prestige?: PrestigeRecord
   weeklyChallenges?: WeeklyChallengesState
+  questProgress?: QuestChainProgress[]
 }
 
 export type SpeedMultiplier = 1 | 5 | 10 | 50
@@ -599,6 +600,7 @@ export interface PrestigeRecord {
 // ----------------------------------------------------------------------------
 
 export type ChallengeRewardType = 'cash_bonus' | 'return_bonus'
+export type ChallengeDifficulty = 'easy' | 'medium' | 'hard'
 
 export interface WeeklyChallenge {
   id: string
@@ -610,6 +612,7 @@ export interface WeeklyChallenge {
   rewardType: ChallengeRewardType
   rewardValue: number
   rewardLabel: string
+  difficulty?: ChallengeDifficulty
 }
 
 export interface WeeklyChallengesState {
@@ -618,6 +621,43 @@ export interface WeeklyChallengesState {
   allClaimedBonus: boolean
   bonusActiveUntilReal?: number
   claimedChallengeIds: string[]
+  comboClaimed?: boolean
+}
+
+// ----------------------------------------------------------------------------
+// Campagnes / Quêtes
+// ----------------------------------------------------------------------------
+
+export type QuestConditionType =
+  | 'net_worth'
+  | 'passive_income_monthly'
+  | 'n_investments'
+  | 'buy_real_estate'
+  | 'renovated_count'
+  | 'investment_class_count'
+
+export interface QuestStep {
+  id: string
+  label: string
+  narrative: string
+  conditionType: QuestConditionType
+  conditionTarget: number
+  rewardCash: number
+}
+
+export interface QuestChainTemplate {
+  id: string
+  title: string
+  description: string
+  emoji: string
+  steps: QuestStep[]
+}
+
+export interface QuestChainProgress {
+  chainId: string
+  nextStepIndex: number
+  claimableStepIndex?: number
+  claimedStepIndices: number[]
 }
 
 // ----------------------------------------------------------------------------

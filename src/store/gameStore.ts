@@ -19,6 +19,8 @@ import type {
   Toast,
 } from '../types'
 import { generateWeeklyChallenges, getCurrentWeekISO } from '../data/weeklyChallenges'
+import { QUEST_CHAINS, QUEST_CHAIN_BY_ID } from '../data/questChains'
+import type { QuestChainProgress, QuestStep } from '../types'
 import { getCatalogItem } from '../data/investments'
 import { advanceDays, checkRealTimeProgress, createInitialBehavior } from '../engine/gameLoop'
 import { checkBadges, awardBadges } from '../engine/badges'
@@ -136,6 +138,8 @@ interface GameStore {
   claimFlashOpportunity: (id: string) => void
   prestige: () => void
   claimChallengeReward: (challengeId: string) => void
+  claimComboBonus: () => void
+  claimQuestStepReward: (chainId: string, stepIndex: number) => void
   upgradeInvestment: (instanceId: string) => { success: boolean; message: string }
   depositToInvestment: (instanceId: string, amount: number) => BuyResult
   renovateProperty: (instanceId: string) => BuyResult
@@ -148,6 +152,31 @@ let lastTick = 0
 let saveAccumulator = 0
 let lastFlashGeneratedAt = 0
 const FLASH_INTERVAL_MS = 12 * 60_000 // 12 min réelles entre chaque opportunité flash
+
+function checkQuestCondition(step: QuestStep, game: GameState, passiveIncome: number, netWorth: number): boolean {
+  switch (step.conditionType) {
+    case 'net_worth':
+      return netWorth >= step.conditionTarget
+    case 'passive_income_monthly':
+      return passiveIncome >= step.conditionTarget
+    case 'n_investments':
+      return game.investments.length >= step.conditionTarget
+    case 'buy_real_estate':
+      return game.investments.filter((i) => ['parking', 'lmnp', 'immo_classique'].includes(i.catalogId)).length >= step.conditionTarget
+    case 'renovated_count':
+      return game.investments.filter((i) => (i.propertyDetails?.renovationLevel ?? 0) >= 1).length >= step.conditionTarget
+    case 'investment_class_count': {
+      const classes = new Set(game.investments.map((i) => {
+        if (['bourse_etf', 'crypto', 'or_metaux'].includes(i.catalogId)) return 'bourse'
+        if (['parking', 'lmnp', 'immo_classique'].includes(i.catalogId)) return 'immo'
+        if (['crowdfunding_immo', 'scpi', 'club_deal_immo'].includes(i.catalogId)) return 'crowd'
+        if (i.catalogId === 'business') return 'business'
+        return 'epargne'
+      }))
+      return classes.size >= step.conditionTarget
+    }
+  }
+}
 
 /** Met à jour le suivi comportemental après un achat (selon la phase de marché). */
 function recordBuy(game: GameState): GameState['behavior'] {
@@ -274,6 +303,12 @@ function createInitialState(
     flashOpportunities: [],
     prestige: prestige,
     weeklyChallenges: generateWeeklyChallenges(savings + extraCash, 0),
+    questProgress: QUEST_CHAINS.map((chain) => ({
+      chainId: chain.id,
+      nextStepIndex: 0,
+      claimableStepIndex: undefined,
+      claimedStepIndices: [] as number[],
+    })),
   }
 }
 
@@ -347,17 +382,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       // Update passive income & net worth challenges each tick
       const passiveNow = calcMonthlyPassiveIncome(newGame)
+      const netWorthNow = calcNetWorth(newGame)
       const wcState = newGame.weeklyChallenges
       if (wcState) {
         const updatedCh = wcState.challenges.map((ch) => {
           if (ch.completed) return ch
-          if (ch.id.startsWith('earn_passive_day') || ch.id.startsWith('passive_500')) {
+          if (ch.id.startsWith('earn_passive_day') || ch.id.startsWith('passive_500') || ch.id.startsWith('passive_1000')) {
             const p = Math.min(ch.target, passiveNow)
             return { ...ch, progress: p, completed: p >= ch.target }
           }
+          if (ch.id.startsWith('passive_ratio')) {
+            const p = Math.min(ch.target, Math.round((passiveNow / (newGame.player.salary || 1)) * 100))
+            return { ...ch, progress: p, completed: p >= ch.target }
+          }
           if (ch.id.startsWith('reach_net_worth')) {
-            const nw = calcNetWorth(newGame)
-            const p = Math.min(ch.target, nw)
+            const p = Math.min(ch.target, netWorthNow)
             return { ...ch, progress: p, completed: p >= ch.target }
           }
           if (ch.id.startsWith('hold_day')) {
@@ -366,11 +405,50 @@ export const useGameStore = create<GameStore>((set, get) => ({
             const p = lastSell < currentMonth ? ch.target : 0
             return { ...ch, progress: p, completed: p >= ch.target }
           }
+          if (ch.id.startsWith('three_investments') || ch.id.startsWith('five_investments')) {
+            const p = Math.min(ch.target, newGame.investments.length)
+            return { ...ch, progress: p, completed: p >= ch.target }
+          }
+          if (ch.id.startsWith('save_cash_buffer')) {
+            const p = Math.min(ch.target, newGame.cashBalance)
+            return { ...ch, progress: p, completed: p >= ch.target }
+          }
+          if (ch.id.startsWith('diversify_4classes')) {
+            const classes = new Set(newGame.investments.map((i) => {
+              if (['bourse_etf','crypto','or_metaux'].includes(i.catalogId)) return 'bourse'
+              if (['parking','lmnp','immo_classique'].includes(i.catalogId)) return 'immo'
+              if (['crowdfunding_immo','scpi','club_deal_immo'].includes(i.catalogId)) return 'crowd'
+              if (i.catalogId === 'business') return 'business'
+              return 'epargne'
+            }))
+            const p = Math.min(ch.target, classes.size)
+            return { ...ch, progress: p, completed: p >= ch.target }
+          }
           return ch
         })
         if (updatedCh.some((ch, i) => ch.progress !== wcState.challenges[i].progress || ch.completed !== wcState.challenges[i].completed)) {
           newGame = { ...newGame, weeklyChallenges: { ...wcState, challenges: updatedCh } }
         }
+      }
+
+      // Update quest chain progress each tick
+      const qp = newGame.questProgress ?? []
+      let qpChanged = false
+      const updatedQp: QuestChainProgress[] = qp.map((progress) => {
+        const chain = QUEST_CHAIN_BY_ID[progress.chainId]
+        if (!chain) return progress
+        if (progress.claimableStepIndex !== undefined) return progress
+        const step = chain.steps[progress.nextStepIndex]
+        if (!step) return progress
+        const conditionMet = checkQuestCondition(step, newGame, passiveNow, netWorthNow)
+        if (conditionMet) {
+          qpChanged = true
+          return { ...progress, claimableStepIndex: progress.nextStepIndex }
+        }
+        return progress
+      })
+      if (qpChanged) {
+        newGame = { ...newGame, questProgress: updatedQp }
       }
 
       // Génération opportunités flash (12 min réelles entre chaque)
@@ -548,7 +626,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
         saved.weeklyChallenges = generateWeeklyChallenges(
           calcNetWorth(saved),
           calcMonthlyPassiveIncome(saved),
+          saved.player.salary,
         )
+      }
+
+      // Init quest progress for existing saves that don't have it
+      if (!saved.questProgress) {
+        saved.questProgress = QUEST_CHAINS.map((chain) => ({
+          chainId: chain.id,
+          nextStepIndex: 0,
+          claimableStepIndex: undefined,
+          claimedStepIndices: [] as number[],
+        }))
+      } else {
+        // Add any new chains added after a previous save
+        const existingChainIds = new Set(saved.questProgress.map((p) => p.chainId))
+        const missingChains = QUEST_CHAINS.filter((c) => !existingChainIds.has(c.id))
+        if (missingChains.length > 0) {
+          saved.questProgress = [
+            ...saved.questProgress,
+            ...missingChains.map((chain) => ({
+              chainId: chain.id,
+              nextStepIndex: 0,
+              claimableStepIndex: undefined,
+              claimedStepIndices: [] as number[],
+            })),
+          ]
+        }
       }
 
       // ── Progression offline ───────────────────────────────────────────
@@ -869,11 +973,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const updated = wc.challenges.map((ch) => {
           if (ch.completed) return ch
           let progress = ch.progress
-          if (ch.id.startsWith('invest_day')) {
+          if (ch.id.startsWith('invest_day') || ch.id.startsWith('big_invest_day')) {
             progress = Math.min(ch.target, ch.progress + amount)
           } else if (ch.id.startsWith('buy_investments_day')) {
             progress = Math.min(ch.target, ch.progress + 1)
-          } else if (ch.id.startsWith('diversify')) {
+          } else if (ch.id.startsWith('diversify_2') || ch.id.startsWith('diversify_challenge') || ch.id.startsWith('diversify_4classes')) {
             const classes = new Set(newInvs.map((i: Investment) => {
               if (['bourse_etf','crypto','or_metaux'].includes(i.catalogId)) return 'bourse'
               if (['parking','lmnp','immo_classique'].includes(i.catalogId)) return 'immo'
@@ -882,6 +986,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
               return 'epargne'
             }))
             progress = Math.min(ch.target, classes.size)
+          } else if (ch.id.startsWith('invest_etf') && catalogId === 'bourse_etf') {
+            progress = 1
+          } else if (ch.id.startsWith('three_investments') || ch.id.startsWith('five_investments')) {
+            progress = Math.min(ch.target, newInvs.length)
           }
           return { ...ch, progress, completed: progress >= ch.target }
         })
@@ -1584,6 +1692,59 @@ export const useGameStore = create<GameStore>((set, get) => ({
     get().saveGame()
   },
 
+  claimComboBonus: () => {
+    set((s) => {
+      if (!s.game?.weeklyChallenges) return s
+      const wc = s.game.weeklyChallenges
+      if (wc.comboClaimed) return s
+      if (!wc.challenges.every((c) => c.completed)) return s
+      const netWorth = calcNetWorth(s.game)
+      const comboBonus = Math.round(Math.max(2000, netWorth * 0.005))
+      return {
+        game: {
+          ...s.game,
+          cashBalance: s.game.cashBalance + comboBonus,
+          weeklyChallenges: {
+            ...wc,
+            comboClaimed: true,
+            bonusActiveUntilReal: Math.max(wc.bonusActiveUntilReal ?? 0, Date.now() + 8 * 60 * 60 * 1000),
+          },
+        },
+      }
+    })
+    get().saveGame()
+  },
+
+  claimQuestStepReward: (chainId: string, stepIndex: number) => {
+    set((s) => {
+      if (!s.game) return s
+      const chain = QUEST_CHAIN_BY_ID[chainId]
+      if (!chain) return s
+      const qp = s.game.questProgress ?? []
+      const progress = qp.find((p) => p.chainId === chainId)
+      if (!progress || progress.claimableStepIndex !== stepIndex) return s
+      const step = chain.steps[stepIndex]
+      if (!step) return s
+      const updatedQp: QuestChainProgress[] = qp.map((p) => {
+        if (p.chainId !== chainId) return p
+        return {
+          ...p,
+          nextStepIndex: stepIndex + 1,
+          claimableStepIndex: undefined,
+          claimedStepIndices: [...p.claimedStepIndices, stepIndex],
+        }
+      })
+      return {
+        game: {
+          ...s.game,
+          cashBalance: s.game.cashBalance + step.rewardCash,
+          questProgress: updatedQp,
+        },
+      }
+    })
+    get().saveGame()
+  },
+
   upgradeInvestment: (instanceId: string) => {
     const game = get().game
     if (!game) return { success: false, message: 'Aucune partie.' }
@@ -1604,17 +1765,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const tierSecs = TIER_SECS[targetLevel]
     const completesAt = Date.now() + tierSecs * 1000
 
-    set((s) => ({
-      game: {
-        ...s.game!,
-        cashBalance: s.game!.cashBalance - cost,
-        investments: s.game!.investments.map((i) =>
-          i.instanceId === instanceId
-            ? { ...i, upgradeReadyAtReal: completesAt }
-            : i,
-        ),
-      },
-    }))
+    set((s) => {
+      if (!s.game) return s
+      const wc = s.game.weeklyChallenges
+      const updatedChallenges = wc
+        ? wc.challenges.map((ch) => {
+            if (ch.completed || !ch.id.startsWith('upgrade_investment')) return ch
+            const p = 1
+            return { ...ch, progress: p, completed: true }
+          })
+        : undefined
+      return {
+        game: {
+          ...s.game,
+          cashBalance: s.game.cashBalance - cost,
+          investments: s.game.investments.map((i) =>
+            i.instanceId === instanceId ? { ...i, upgradeReadyAtReal: completesAt } : i,
+          ),
+          weeklyChallenges: wc && updatedChallenges ? { ...wc, challenges: updatedChallenges } : wc,
+        },
+      }
+    })
     get().saveGame()
 
     const tierLabel = TIER_LABELS[targetLevel]
