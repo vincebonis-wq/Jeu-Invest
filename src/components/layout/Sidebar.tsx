@@ -1,6 +1,7 @@
 import {
   Bell,
   Building2,
+  BarChart2,
   GraduationCap,
   HelpCircle,
   LayoutDashboard,
@@ -26,6 +27,7 @@ const NAV: NavItem[] = [
   { screen: 'skills', label: 'Carrière', icon: GraduationCap },
   { screen: 'events', label: 'Actualités', icon: Bell },
   { screen: 'challenges', label: 'Défis', icon: Target },
+  { screen: 'stats', label: 'Statistiques', icon: BarChart2 },
 ]
 
 export function Sidebar() {

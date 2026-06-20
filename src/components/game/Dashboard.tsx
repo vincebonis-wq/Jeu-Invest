@@ -472,6 +472,8 @@ function MilestoneRoadmapCard({ game }: { game: GameState }) {
 function FreedomCountdownCard({ game, passiveIncome }: { game: GameState; passiveIncome: number }) {
   const salary = game.player.salary
 
+  if (game.investments.length === 0) return null
+
   const monthsToFreedom = useMemo(() => {
     if (passiveIncome >= salary) return 0
     const recentStats = game.stats.slice(-6)
@@ -488,6 +490,8 @@ function FreedomCountdownCard({ game, passiveIncome }: { game: GameState; passiv
     return Math.ceil(remaining / monthlyGrowth)
   }, [game.stats, passiveIncome, salary])
 
+  const pct = Math.min(99, Math.round((passiveIncome / salary) * 100))
+
   if (passiveIncome >= salary) {
     return (
       <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white">
@@ -500,17 +504,15 @@ function FreedomCountdownCard({ game, passiveIncome }: { game: GameState; passiv
     )
   }
 
-  if (monthsToFreedom === null || monthsToFreedom > 600) {
-    return null
-  }
+  const hasGoodEta = monthsToFreedom !== null && monthsToFreedom <= 1200
 
-  const years = Math.floor(monthsToFreedom / 12)
-  const months = monthsToFreedom % 12
-  const label = years > 0
-    ? `~${years} an${years > 1 ? 's' : ''}${months > 0 ? ` ${months} mois` : ''}`
-    : `~${monthsToFreedom} mois`
-
-  const pct = Math.min(99, Math.round((passiveIncome / salary) * 100))
+  const etaLabel = hasGoodEta ? (() => {
+    const years = Math.floor(monthsToFreedom! / 12)
+    const months = monthsToFreedom! % 12
+    return years > 0
+      ? `~${years} an${years > 1 ? 's' : ''}${months > 0 ? ` ${months} mois` : ''}`
+      : `~${monthsToFreedom} mois`
+  })() : null
 
   return (
     <div className="rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 p-4">
@@ -520,18 +522,24 @@ function FreedomCountdownCard({ game, passiveIncome }: { game: GameState; passiv
         </div>
         <div>
           <div className="font-display font-bold text-slate-800 text-sm">Liberté financière</div>
-          <div className="text-xs text-slate-500">Au rythme actuel : <span className="font-bold text-indigo-700">{label}</span></div>
+          <div className="text-xs text-slate-500">
+            {etaLabel
+              ? <>Au rythme actuel : <span className="font-bold text-indigo-700">{etaLabel}</span></>
+              : passiveIncome > 0
+                ? 'Diversifie tes revenus passifs pour accélérer'
+                : 'Génère des revenus passifs pour activer ce compteur'}
+          </div>
         </div>
       </div>
       <div className="space-y-1">
         <div className="flex justify-between text-xs text-slate-500">
-          <span>Revenus passifs : {formatEuroCompact(passiveIncome)}/mois</span>
+          <span>Rev. passifs : {formatEuroCompact(passiveIncome)}/mois</span>
           <span className="font-bold text-indigo-700">{pct}%</span>
         </div>
         <div className="h-2 rounded-full bg-indigo-100 overflow-hidden">
           <div
             className="h-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
-            style={{ width: `${pct}%` }}
+            style={{ width: `${Math.max(1, pct)}%` }}
           />
         </div>
         <div className="text-[10px] text-slate-400 text-right">Objectif : {formatEuroCompact(salary)}/mois</div>

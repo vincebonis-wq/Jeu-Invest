@@ -88,6 +88,7 @@ export function MarketTicker() {
     game.economy.interestRateBase,
     game.economy.realEstateIndex,
     game.player.milestone,
+    game.player.age,
     game.investments.length,
   ])
 
