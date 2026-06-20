@@ -102,7 +102,7 @@ export function MarketplaceMap({ onBuy, onDeposit, onInfo, onShowCandidates }: M
               <div className="p-2 grid grid-cols-2 gap-2">
                 {nodes.map((n) => {
                   const returnRate =
-                    n.item.baseAnnualReturn * (1 + (n.isOwned ? getInvestmentLevelBonus(n.item.id, n.level) : 0))
+                    n.item.baseAnnualReturn + (n.isOwned ? getInvestmentLevelBonus(n.item.id, n.level) : 0)
                   return (
                     <button
                       key={n.item.id}
@@ -275,7 +275,7 @@ function NodeDetailSheet({
     return `${s}s`
   }
 
-  const returnRate = item.baseAnnualReturn * (1 + (isOwned ? getInvestmentLevelBonus(item.id,level) : 0))
+  const returnRate = item.baseAnnualReturn + (isOwned ? getInvestmentLevelBonus(item.id, level) : 0)
 
   return (
     <Modal open onClose={onClose} title={undefined} size="md">

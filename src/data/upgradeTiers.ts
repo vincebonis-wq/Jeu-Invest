@@ -10,10 +10,10 @@ export interface UpgradeTier {
 }
 
 export const UPGRADE_TIERS: UpgradeTier[] = [
-  { targetLevel: 2, costMultiplier: 1.0,  realTimeSecs: 180,   returnBonusPct: 0.01,  label: 'Développé'    },
-  { targetLevel: 3, costMultiplier: 2.5,  realTimeSecs: 1200,  returnBonusPct: 0.025, label: 'Avancé'       },
-  { targetLevel: 4, costMultiplier: 6.0,  realTimeSecs: 7200,  returnBonusPct: 0.04,  label: 'Expert'       },
-  { targetLevel: 5, costMultiplier: 15.0, realTimeSecs: 43200, returnBonusPct: 0.06,  label: 'Maître'       },
+  { targetLevel: 2, costMultiplier: 1.0,  realTimeSecs: 180,   returnBonusPct: 0.010, label: 'Développé' },
+  { targetLevel: 3, costMultiplier: 2.5,  realTimeSecs: 1200,  returnBonusPct: 0.020, label: 'Avancé'    },
+  { targetLevel: 4, costMultiplier: 6.0,  realTimeSecs: 7200,  returnBonusPct: 0.035, label: 'Expert'    },
+  { targetLevel: 5, costMultiplier: 15.0, realTimeSecs: 43200, returnBonusPct: 0.055, label: 'Maître'    },
 ]
 
 export function getTierForLevel(targetLevel: number): UpgradeTier | undefined {
@@ -32,11 +32,20 @@ export function getLevelReturnBonus(level: number): number {
   return tier?.returnBonusPct ?? 0
 }
 
-// Certains investissements ont un bonus de niveau différent du standard.
-// Livret A : +0,5 %/niveau (renégociation de taux avec la banque).
+// Bonus de niveau — valeur ABSOLUE en points de % à ADDITIONNER au taux de base.
+// Les actifs conservateurs ont des plafonds plus bas que les actifs dynamiques.
+const CONSERVATIVE_BONUS_PER_LEVEL: Record<string, number> = {
+  livret:           0.005, // +0,5 %/niv → max +2 %  (1,5 % → 3,5 %)
+  or_metaux:        0.005, // +0,5 %/niv → max +2 %  (5,5 % → 7,5 %)
+  obligations_etat: 0.005, // +0,5 %/niv → max +2 %  (3,5 % → 5,5 %)
+  assurance_vie:    0.007, // +0,7 %/niv → max +2,8 % (4 % → 6,8 %)
+  scpi:             0.008, // +0,8 %/niv → max +3,2 % (5 % → 8,2 %)
+}
+
 export function getInvestmentLevelBonus(catalogId: string, level: number): number {
   if (level <= 1) return 0
-  if (catalogId === 'livret') return (level - 1) * 0.005
+  const perLevel = CONSERVATIVE_BONUS_PER_LEVEL[catalogId]
+  if (perLevel !== undefined) return (level - 1) * perLevel
   return getLevelReturnBonus(level)
 }
 
