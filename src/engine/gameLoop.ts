@@ -1,5 +1,5 @@
 import type { GameEvent, GameState, Investment, SaleOffer, Toast } from '../types'
-import { getLevelReturnBonus } from '../data/upgradeTiers'
+import { getInvestmentLevelBonus } from '../data/upgradeTiers'
 import {
   MAX_INDEX_HISTORY,
   dailyStockDrift,
@@ -109,7 +109,7 @@ export function advanceDays(input: GameState, days: number): AdvanceResult {
     // Rendements quotidiens (croissance fluide du patrimoine).
     const prestigeReturnBonus = state.prestige?.heritageBonus.returnBonusPct ?? 0
     investments = investments.map((inv) => {
-      const levelBonus = getLevelReturnBonus(inv.level ?? 1)
+      const levelBonus = getInvestmentLevelBonus(inv.catalogId, inv.level ?? 1)
       const totalBonus = levelBonus + prestigeReturnBonus
       const boostedInv = totalBonus > 0
         ? { ...inv, annualReturnRate: inv.annualReturnRate * (1 + totalBonus) }

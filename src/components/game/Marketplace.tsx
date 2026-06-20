@@ -446,10 +446,10 @@ function CreditSimulationModal({
             </div>
           </div>
 
-          {/* Résumé crédit */}
+          {/* Résumé crédit + cashflow locatif */}
           <div className="rounded-2xl bg-slate-50 p-4 space-y-1.5 text-sm">
             <Row label="Taux annuel" value={formatPercent(annualRate)} />
-            <Row label="Mensualité" value={formatEuro(Math.round(payment))} bold />
+            <Row label="Mensualité crédit" value={`-${formatEuro(Math.round(payment))}`} bold />
             <Row label="Coût total intérêts" value={formatEuro(Math.round(totalInterest))} />
             <div className="flex justify-between pt-1.5 border-t border-slate-200">
               <span className="text-slate-500">Taux d'endettement</span>
@@ -463,6 +463,27 @@ function CreditSimulationModal({
               </div>
             )}
           </div>
+
+          {/* Cashflow locatif prévisionnel */}
+          {candidate.monthlyRent > 0 && (
+            <div className="rounded-2xl border-2 border-slate-200 p-4 space-y-1.5 text-sm">
+              <div className="font-semibold text-slate-600 mb-2">Cashflow mensuel prévisionnel</div>
+              <Row label="Loyer encaissé" value={`+${formatEuro(candidate.monthlyRent)}`} />
+              <Row label="Charges (copro, taxe…)" value={`-${formatEuro(candidate.monthlyCharges)}`} />
+              <Row label="Mensualité crédit" value={`-${formatEuro(Math.round(payment))}`} />
+              {(() => {
+                const cf = candidate.monthlyRent - candidate.monthlyCharges - Math.round(payment)
+                return (
+                  <div className="flex justify-between pt-1.5 border-t border-slate-200">
+                    <span className="font-display font-bold text-slate-700">Cash-flow net</span>
+                    <span className={cn('font-display font-extrabold text-base', cf >= 0 ? 'text-emerald-600' : 'text-red-500')}>
+                      {cf >= 0 ? '+' : ''}{formatEuro(cf)}/mois
+                    </span>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
 
           {/* Preview amortissement */}
           <div>

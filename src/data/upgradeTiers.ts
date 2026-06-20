@@ -32,6 +32,20 @@ export function getLevelReturnBonus(level: number): number {
   return tier?.returnBonusPct ?? 0
 }
 
+// Certains investissements ont un bonus de niveau différent du standard.
+// Livret A : +0,5 %/niveau (renégociation de taux avec la banque).
+export function getInvestmentLevelBonus(catalogId: string, level: number): number {
+  if (level <= 1) return 0
+  if (catalogId === 'livret') return (level - 1) * 0.005
+  return getLevelReturnBonus(level)
+}
+
+// Label d'upgrade contextuel selon l'investissement
+export function getUpgradeLabel(catalogId: string): string {
+  if (catalogId === 'livret') return 'Optimisation bancaire'
+  return 'Amélioration'
+}
+
 export const LEVEL_LABELS = ['', 'Découverte', 'Développé', 'Avancé', 'Expert', 'Maître']
 
 // Inline lookup arrays (index = targetLevel)

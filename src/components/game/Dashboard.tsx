@@ -33,7 +33,7 @@ import { PHASE_LABEL } from '../../engine/economy'
 import type { Screen } from '../../types'
 import { SKILLS, SKILL_BY_ID } from '../../data/skills'
 import { CATALOG_BY_ID, INVESTMENT_CATALOG } from '../../data/investments'
-import { LEVEL_LABELS, getUpgradeCost, TIER_SECS, getLevelReturnBonus } from '../../data/upgradeTiers'
+import { LEVEL_LABELS, getUpgradeCost, TIER_SECS, getInvestmentLevelBonus } from '../../data/upgradeTiers'
 import { Card, CardHeader } from '../ui/Card'
 import { ProgressBar } from '../ui/ProgressBar'
 import { NumberTicker } from '../ui/NumberTicker'
@@ -658,7 +658,7 @@ function CopiloteCard({
       const level = upgradeable.level ?? 1
       const catalog = CATALOG_BY_ID[upgradeable.catalogId]
       const cost = getUpgradeCost(catalog.minAmount, level + 1)
-      const bonus = getLevelReturnBonus(level + 1)
+      const bonus = getInvestmentLevelBonus(upgradeable.catalogId, level + 1) - getInvestmentLevelBonus(upgradeable.catalogId, level)
       result.push({
         level: 'action', icon: '⬆️',
         text: `Améliore ton "${upgradeable.name}" au niveau ${LEVEL_LABELS[level + 1]} (${formatEuroCompact(cost)}) pour +${Math.round(bonus * 100)} % de rendement.`,

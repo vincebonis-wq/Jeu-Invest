@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Check, Clock, Droplets, GraduationCap, Lock, Search, TrendingUp } from 'lucide-react'
 import { INVESTMENT_CATALOG } from '../../data/investments'
 import { SKILL_BY_ID } from '../../data/skills'
-import { getLevelReturnBonus, LEVEL_LABELS } from '../../data/upgradeTiers'
+import { getInvestmentLevelBonus, getUpgradeLabel, LEVEL_LABELS } from '../../data/upgradeTiers'
 import { useGameStore } from '../../store/gameStore'
 import { calcNetWorth } from '../../utils/calculations'
 import { Icon } from '../ui/Icon'
@@ -102,7 +102,7 @@ export function MarketplaceMap({ onBuy, onDeposit, onInfo, onShowCandidates }: M
               <div className="p-2 grid grid-cols-2 gap-2">
                 {nodes.map((n) => {
                   const returnRate =
-                    n.item.baseAnnualReturn * (1 + (n.isOwned ? getLevelReturnBonus(n.level) : 0))
+                    n.item.baseAnnualReturn * (1 + (n.isOwned ? getInvestmentLevelBonus(n.item.id, n.level) : 0))
                   return (
                     <button
                       key={n.item.id}
@@ -275,7 +275,7 @@ function NodeDetailSheet({
     return `${s}s`
   }
 
-  const returnRate = item.baseAnnualReturn * (1 + (isOwned ? getLevelReturnBonus(level) : 0))
+  const returnRate = item.baseAnnualReturn * (1 + (isOwned ? getInvestmentLevelBonus(item.id,level) : 0))
 
   return (
     <Modal open onClose={onClose} title={undefined} size="md">
@@ -293,7 +293,7 @@ function NodeDetailSheet({
               {item.returnVariance > 0 ? '~' : ''}{formatPercent(returnRate)}/an
               {isOwned && level > 1 && (
                 <span className="ml-1.5 font-bold">
-                  · {LEVEL_LABELS[level]} (+{Math.round(getLevelReturnBonus(level) * 100)}%)
+                  · {LEVEL_LABELS[level]} (+{Math.round(getInvestmentLevelBonus(item.id,level) * 100)}%)
                 </span>
               )}
             </div>
@@ -417,7 +417,11 @@ function NodeDetailSheet({
               )}
               {level < 5 ? (
                 <Button fullWidth variant="secondary" onClick={() => { setScreen('portfolio'); onClose() }}>
-                  ⬆️ Améliorer → {LEVEL_LABELS[level + 1]} (+{Math.round(getLevelReturnBonus(level + 1) * 100)}%)
+                  {(() => {
+                    const gain = getInvestmentLevelBonus(item.id, level + 1) - getInvestmentLevelBonus(item.id, level)
+                    const gainStr = (gain * 100) % 1 === 0 ? `${gain * 100}` : `${(gain * 100).toFixed(1)}`
+                    return `⬆️ ${getUpgradeLabel(item.id)} → ${LEVEL_LABELS[level + 1]} (+${gainStr}%/an)`
+                  })()}
                 </Button>
               ) : (
                 <div className="text-center py-2 text-sm font-bold text-violet-600">⚜️ Niveau Maître atteint</div>

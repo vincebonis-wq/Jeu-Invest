@@ -1,5 +1,5 @@
 import { INVESTMENT_CATALOG } from '../data/investments'
-import { getLevelReturnBonus } from '../data/upgradeTiers'
+import { getInvestmentLevelBonus } from '../data/upgradeTiers'
 import { calcNetWorth } from '../utils/calculations'
 import type { GameState, InvestmentCatalogItem } from '../types'
 
@@ -56,7 +56,7 @@ export function computeBetaNodes(game: GameState): BetaNode[] {
         upgradeReadyAtReal,
         hasActiveSearch: !!search && !search.candidates,
         searchReady: !!search?.candidates,
-        returnRate: item.baseAnnualReturn * (1 + (isOwned ? getLevelReturnBonus(level) : 0)),
+        returnRate: item.baseAnnualReturn * (1 + (isOwned ? getInvestmentLevelBonus(item.id, level) : 0)),
       }
     })
 }
