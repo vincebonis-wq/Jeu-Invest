@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Check, Clock, Droplets, GraduationCap, Lock, Search, TrendingUp } from 'lucide-react'
 import { INVESTMENT_CATALOG } from '../../data/investments'
 import { SKILL_BY_ID } from '../../data/skills'
-import { getInvestmentLevelBonus, getUpgradeLabel, LEVEL_LABELS } from '../../data/upgradeTiers'
+import { getInvestmentLevelBonus, getUpgradeCost, getUpgradeLabel, LEVEL_LABELS, TIER_LABELS } from '../../data/upgradeTiers'
 import { useGameStore } from '../../store/gameStore'
 import { calcNetWorth } from '../../utils/calculations'
 import { Icon } from '../ui/Icon'
@@ -236,10 +236,11 @@ function NodeDetailSheet({
 }) {
   const game = useGameStore((s) => s.game)!
   const startImmoSearch = useGameStore((s) => s.startImmoSearch)
-  const setScreen = useGameStore((s) => s.setScreen)
+  const upgradeInvestment = useGameStore((s) => s.upgradeInvestment)
   const netWorth = calcNetWorth(game)
   const learned = game.player.learnedSkillIds || []
   const [now, setNow] = useState(Date.now())
+  const [upgradeMsg, setUpgradeMsg] = useState<{ text: string; ok: boolean } | null>(null)
 
   const skillOk = !item.skillRequired || learned.includes(item.skillRequired)
   const wealthOk = netWorth >= item.unlockThreshold
@@ -259,11 +260,16 @@ function NodeDetailSheet({
     : undefined
   const searchReady = !!activeSearch?.candidates
 
+  const upgradeReadyAtReal = ownedInv?.upgradeReadyAtReal
+  const isUpgradingNow = !!upgradeReadyAtReal && upgradeReadyAtReal > now
+
   useEffect(() => {
-    if (!activeSearch || searchReady) return
+    const needsTimer = (activeSearch && !searchReady) || isUpgradingNow
+    if (!needsTimer) return
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [activeSearch, searchReady])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSearch, searchReady, upgradeReadyAtReal])
 
   function fmtTime(target: number): string {
     const ms = Math.max(0, target - now)
@@ -416,13 +422,56 @@ function NodeDetailSheet({
                 </Button>
               )}
               {level < 5 ? (
-                <Button fullWidth variant="secondary" onClick={() => { setScreen('portfolio'); onClose() }}>
-                  {(() => {
-                    const gain = getInvestmentLevelBonus(item.id, level + 1) - getInvestmentLevelBonus(item.id, level)
-                    const gainStr = (gain * 100) % 1 === 0 ? `${gain * 100}` : `${(gain * 100).toFixed(1)}`
-                    return `⬆️ ${getUpgradeLabel(item.id)} → ${LEVEL_LABELS[level + 1]} (+${gainStr}%/an)`
-                  })()}
-                </Button>
+                isUpgradingNow ? (
+                  <div className="rounded-2xl bg-violet-50 border border-violet-100 p-3 space-y-1.5">
+                    <div className="text-xs font-bold text-violet-700 flex items-center gap-1.5">
+                      <span className="animate-pulse">⚡</span>
+                      {getUpgradeLabel(item.id)} → {LEVEL_LABELS[level + 1]} en cours…
+                    </div>
+                    <div className="h-1.5 bg-white rounded-full overflow-hidden">
+                      <div className="h-full bg-violet-400 rounded-full animate-pulse w-3/4" />
+                    </div>
+                    <div className="text-xs text-center text-violet-600 font-semibold">
+                      ⏱ {fmtTime(upgradeReadyAtReal!)} restants
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {(() => {
+                      const targetLevel = level + 1
+                      const cost = getUpgradeCost(item.minAmount, targetLevel)
+                      const gain = getInvestmentLevelBonus(item.id, targetLevel) - getInvestmentLevelBonus(item.id, level)
+                      const gainStr = (gain * 100) % 1 === 0 ? `${gain * 100}` : `${(gain * 100).toFixed(1)}`
+                      const duration = TIER_LABELS[targetLevel]
+                      const canAfford = game.cashBalance >= cost
+                      return (
+                        <Button
+                          fullWidth
+                          variant="secondary"
+                          disabled={!canAfford}
+                          onClick={() => {
+                            const res = upgradeInvestment(ownedInv!.instanceId)
+                            setUpgradeMsg({ text: res.message, ok: res.success })
+                            if (res.success) setTimeout(() => setUpgradeMsg(null), 2500)
+                          }}
+                        >
+                          ⬆️ {getUpgradeLabel(item.id)} → Niv.{targetLevel}
+                          <span className="ml-1 text-[10px] opacity-70">
+                            {formatEuro(cost)} · +{gainStr}%/an · {duration}
+                          </span>
+                        </Button>
+                      )
+                    })()}
+                    {upgradeMsg && (
+                      <div className={cn(
+                        'text-xs text-center font-semibold py-1',
+                        upgradeMsg.ok ? 'text-emerald-600' : 'text-amber-600',
+                      )}>
+                        {upgradeMsg.text}
+                      </div>
+                    )}
+                  </>
+                )
               ) : (
                 <div className="text-center py-2 text-sm font-bold text-violet-600">⚜️ Niveau Maître atteint</div>
               )}

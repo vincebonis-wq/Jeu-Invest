@@ -232,8 +232,10 @@ export interface GoalProgress {
   monthsRemaining: number
   deadlineMonths: number
   onTrack: boolean
-  /** Patrimoine requis pour être « dans les temps » à ce stade. */
+  /** Patrimoine requis pour être « dans les temps » à ce stade (courbe quadratique). */
   expectedNetWorth: number
+  /** Conseil personnalisé pour l'objectif. */
+  coachTip: string
 }
 
 export function calcGoalProgress(state: GameState): GoalProgress {
@@ -253,14 +255,41 @@ export function calcGoalProgress(state: GameState): GoalProgress {
       deadlineMonths: 0,
       onTrack: true,
       expectedNetWorth: 0,
+      coachTip: '',
     }
   }
   const start = state.player.goalStartMonthIndex ?? 0
   const monthsElapsed = Math.max(0, (state.monthIndex ?? 0) - start)
   const monthsRemaining = Math.max(0, goal.deadlineMonths - monthsElapsed)
   const progressPct = Math.min(100, (netWorth / goal.targetNetWorth) * 100)
-  const expectedNetWorth = (monthsElapsed / goal.deadlineMonths) * goal.targetNetWorth
-  const onTrack = netWorth >= expectedNetWorth * 0.9
+
+  // Quadratic expected curve: early months are forgiving (compound growth is slow at first,
+  // then accelerates — linear expectations are always too harsh early on).
+  const t = goal.deadlineMonths > 0 ? monthsElapsed / goal.deadlineMonths : 0
+  const expectedNetWorth = t * t * goal.targetNetWorth
+  const onTrack = netWorth >= expectedNetWorth * 0.85
+
+  const timeRatio = t
+  let coachTip = ''
+  if (progressPct >= 100) {
+    coachTip = '🎉 Objectif atteint ! Envisage de viser plus grand.'
+  } else if (!onTrack) {
+    if (timeRatio < 0.25) {
+      coachTip = 'Le début est toujours lent. Chaque euro investi maintenant compte double grâce aux intérêts composés.'
+    } else if (timeRatio < 0.6) {
+      coachTip = 'Phase critique : augmente ton épargne mensuelle ou ajoute un actif à rendement plus élevé.'
+    } else {
+      coachTip = 'L\'échéance approche. Privilégie des actifs dynamiques et réduis tes dépenses non essentielles.'
+    }
+  } else {
+    if (timeRatio < 0.3) {
+      coachTip = 'Bon départ ! Continue d\'investir régulièrement pour bénéficier des intérêts composés.'
+    } else if (timeRatio < 0.7) {
+      coachTip = 'Tu es dans les temps. Diversifie pour protéger tes gains en cas de choc de marché.'
+    } else {
+      coachTip = 'La ligne d\'arrivée est proche. Sécurise progressivement tes investissements.'
+    }
+  }
 
   return {
     hasGoal: true,
@@ -275,6 +304,7 @@ export function calcGoalProgress(state: GameState): GoalProgress {
     deadlineMonths: goal.deadlineMonths,
     onTrack,
     expectedNetWorth,
+    coachTip,
   }
 }
 

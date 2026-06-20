@@ -66,6 +66,15 @@ export function LifeGoalCard({ game }: { game: GameState }) {
           </span>
         )}
       </div>
+
+      {goal.coachTip && !achieved && (
+        <div className={cn(
+          'mt-3 p-2.5 rounded-xl text-xs leading-snug',
+          goal.onTrack ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700',
+        )}>
+          {goal.coachTip}
+        </div>
+      )}
     </Card>
   )
 }
