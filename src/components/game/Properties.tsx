@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Building2, MapPin, TrendingUp, TrendingDown, Users, Zap, AlertCircle, Tag, X } from 'lucide-react'
+import { Building2, MapPin, TrendingUp, TrendingDown, Users, Zap, AlertCircle, Tag, X, CreditCard, Calendar, Banknote } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { getCatalogItem } from '../../data/investments'
 import { BUSINESS_DECISION_BY_ID } from '../../data/businessDecisions'
-import type { Investment, SaleOffer } from '../../types'
+import type { Investment, SaleOffer, Mortgage } from '../../types'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
@@ -246,40 +246,55 @@ function EarlyRepayModal({
 // ============================================================================
 
 function SaleModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
+  const game = useGameStore((s) => s.game)!
   const listPropertyForSale = useGameStore((s) => s.listPropertyForSale)
   const cancelSaleListing = useGameStore((s) => s.cancelSaleListing)
   const respondToSaleOffer = useGameStore((s) => s.respondToSaleOffer)
+  const earlyRepayMortgage = useGameStore((s) => s.earlyRepayMortgage)
   const [listingPrice, setListingPrice] = useState(inv.saleListingPrice ?? Math.round(inv.currentValue))
   const [offerResult, setOfferResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [repayResult, setRepayResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const currentValue = inv.currentValue
   const minPrice = Math.round(currentValue * 0.85)
   const maxPrice = Math.round(currentValue * 1.15)
-
   const pendingOffers = inv.pendingOffers ?? []
   const isListed = !!inv.saleListingPrice
+
+  const mortgage: Mortgage | null = inv.mortgageId
+    ? (game.mortgages.find((m) => m.id === inv.mortgageId) ?? null)
+    : null
 
   function handleList() {
     listPropertyForSale(inv.instanceId, listingPrice)
     onClose()
   }
-
   function handleCancel() {
     cancelSaleListing(inv.instanceId)
     onClose()
   }
-
   function handleOffer(offer: SaleOffer, accept: boolean) {
     const res = respondToSaleOffer(inv.instanceId, offer.id, accept)
     setOfferResult(res)
-    if (res.success && accept) {
-      setTimeout(onClose, 1800)
-    }
+    if (res.success && accept) setTimeout(onClose, 1800)
   }
+  function handleEarlyRepay() {
+    if (!mortgage) return
+    const res = earlyRepayMortgage(mortgage.id)
+    setRepayResult(res)
+    if (res.success) setTimeout(() => setRepayResult(null), 3000)
+  }
+
+  const years = mortgage ? Math.floor(mortgage.remainingMonths / 12) : 0
+  const months = mortgage ? mortgage.remainingMonths % 12 : 0
+  const remainingLabel = mortgage
+    ? [years > 0 ? `${years} an${years > 1 ? 's' : ''}` : '', months > 0 ? `${months} mois` : ''].filter(Boolean).join(' ') || '< 1 mois'
+    : ''
 
   return (
     <Modal open onClose={onClose} title={isListed ? 'Bien en vente' : 'Mettre en vente'} size="md">
       <div className="space-y-4">
+        {/* Identité du bien */}
         <div className="rounded-xl bg-slate-50 p-3">
           <div className="font-bold text-sm text-slate-700">{inv.name}</div>
           <div className="text-xs text-slate-400">Valeur actuelle : {formatEuro(currentValue)}</div>
@@ -290,44 +305,43 @@ function SaleModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
             <div className="rounded-2xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
               <div className="font-bold mb-0.5">Bien en vente</div>
               <div>Prix affiché : <strong>{formatEuro(inv.saleListingPrice!)}</strong></div>
+              {mortgage && (
+                <div className="text-xs text-amber-600 mt-1">
+                  Crédit restant : {formatEuro(mortgage.outstandingBalance)} — net perçu à la vente : {formatEuro(inv.saleListingPrice! - mortgage.outstandingBalance)}
+                </div>
+              )}
             </div>
 
             {pendingOffers.length > 0 ? (
               <div className="space-y-2">
                 <div className="text-sm font-semibold text-slate-600">Offres reçues :</div>
                 {pendingOffers.map((offer) => {
-                  const mortgage = inv.mortgageId
-                    ? /* We need game for this but can show note */ null
-                    : null
-                  void mortgage
+                  const net = mortgage
+                    ? offer.offeredPrice - mortgage.outstandingBalance
+                    : offer.offeredPrice
+                  const pct = Math.round((offer.offeredPrice / inv.saleListingPrice! - 1) * 100)
                   return (
                     <div key={offer.id} className="rounded-2xl border border-slate-100 p-3.5">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-1">
                         <span className="font-display font-bold text-slate-800 text-base">
                           {formatEuro(offer.offeredPrice)}
                         </span>
-                        <span className="text-xs text-slate-400">
-                          {offer.offeredPrice > inv.saleListingPrice!
-                            ? `+${Math.round((offer.offeredPrice / inv.saleListingPrice! - 1) * 100)}% du prix`
-                            : `${Math.round((offer.offeredPrice / inv.saleListingPrice! - 1) * 100)}% du prix`}
+                        <span className={cn('text-xs font-semibold', pct >= 0 ? 'text-emerald-600' : 'text-red-500')}>
+                          {pct >= 0 ? '+' : ''}{pct}% du prix affiché
                         </span>
                       </div>
+                      {mortgage && (
+                        <div className="text-xs text-slate-400 mb-2.5 flex items-center gap-1">
+                          <CreditCard size={11} />
+                          Après remboursement crédit : <strong className={cn(net >= 0 ? 'text-emerald-600' : 'text-red-500')}>{formatEuro(net)} nets</strong>
+                        </div>
+                      )}
                       <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          fullWidth
-                          onClick={() => handleOffer(offer, false)}
-                        >
+                        <Button size="sm" variant="secondary" fullWidth onClick={() => handleOffer(offer, false)}>
                           <X size={13} /> Refuser
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          fullWidth
-                          onClick={() => handleOffer(offer, true)}
-                        >
-                          <TrendingUp size={13} /> Accepter
+                        <Button size="sm" variant="primary" fullWidth onClick={() => handleOffer(offer, true)}>
+                          <TrendingUp size={13} /> Accepter {formatEuro(net)}
                         </Button>
                       </div>
                     </div>
@@ -336,15 +350,12 @@ function SaleModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
               </div>
             ) : (
               <div className="text-sm text-slate-500 text-center py-2">
-                En attente d'offres... (prochaine dans quelques heures)
+                En attente d'offres… (prochaine dans quelques heures)
               </div>
             )}
 
             {offerResult && (
-              <div className={cn(
-                'text-sm rounded-xl p-3',
-                offerResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
-              )}>
+              <div className={cn('text-sm rounded-xl p-3', offerResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600')}>
                 {offerResult.message}
               </div>
             )}
@@ -355,6 +366,47 @@ function SaleModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
           </>
         ) : (
           <>
+            {/* Crédit en cours */}
+            {mortgage && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-bold text-amber-800">
+                  <CreditCard size={14} /> Crédit immobilier en cours
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <MortgageStat icon={<Banknote size={13} />} label="Solde restant" value={formatEuro(mortgage.outstandingBalance)} highlight />
+                  <MortgageStat icon={<Calendar size={13} />} label="Durée restante" value={remainingLabel} />
+                  <MortgageStat icon={<TrendingDown size={13} />} label="Mensualité" value={`${formatEuro(mortgage.monthlyPayment)}/m`} />
+                </div>
+                <div className="flex items-center justify-between text-xs rounded-xl bg-white/70 border border-amber-100 px-3 py-2">
+                  <span className="text-amber-700">Net à ce prix de vente</span>
+                  <span className={cn('font-bold', listingPrice - mortgage.outstandingBalance >= 0 ? 'text-emerald-700' : 'text-red-600')}>
+                    {formatEuro(listingPrice - mortgage.outstandingBalance)}
+                  </span>
+                </div>
+                <p className="text-xs text-amber-600">
+                  Le crédit est automatiquement soldé lors de l'acceptation d'une offre.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  fullWidth
+                  onClick={handleEarlyRepay}
+                  disabled={game.cashBalance < mortgage.outstandingBalance * 1.02}
+                >
+                  Rembourser maintenant{' '}
+                  <span className="text-slate-400 font-normal">
+                    ({formatEuro(Math.round(mortgage.outstandingBalance * 1.02))} · 2% pénalité)
+                  </span>
+                </Button>
+                {repayResult && (
+                  <div className={cn('text-xs rounded-xl p-2 text-center', repayResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600')}>
+                    {repayResult.message}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Slider prix */}
             <div>
               <label className="flex justify-between text-sm font-semibold text-slate-600 mb-1.5">
                 <span>Prix de vente</span>
@@ -371,13 +423,13 @@ function SaleModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
               />
               <div className="flex justify-between text-xs text-slate-400 mt-1">
                 <span>−15% ({formatEuro(minPrice)})</span>
-                <span className="text-center">valeur: {formatEuroCompact(currentValue)}</span>
+                <span>valeur : {formatEuroCompact(currentValue)}</span>
                 <span>+15% ({formatEuro(maxPrice)})</span>
               </div>
             </div>
 
             <div className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 space-y-1">
-              <p>Une fois mis en vente, des acheteurs potentiels feront des offres toutes les ~4 heures.</p>
+              <p>Des acheteurs feront des offres toutes les ~4 heures.</p>
               <p>Vous pourrez accepter ou refuser chaque offre.</p>
             </div>
 
@@ -391,6 +443,18 @@ function SaleModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
         )}
       </div>
     </Modal>
+  )
+}
+
+function MortgageStat({ icon, label, value, highlight }: { icon: React.ReactNode; label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className="rounded-xl bg-white/70 border border-amber-100 p-2.5 text-center">
+      <div className={cn('flex items-center justify-center gap-1 text-amber-500 mb-1', highlight && 'text-amber-700')}>
+        {icon}
+      </div>
+      <div className="text-[10px] text-amber-500 uppercase tracking-wide">{label}</div>
+      <div className={cn('text-xs font-bold mt-0.5', highlight ? 'text-amber-800' : 'text-amber-700')}>{value}</div>
+    </div>
   )
 }
 

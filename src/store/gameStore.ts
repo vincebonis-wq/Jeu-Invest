@@ -348,7 +348,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (wcState) {
         const updatedCh = wcState.challenges.map((ch) => {
           if (ch.completed) return ch
-          if (ch.id.startsWith('earn_passive_week') || ch.id.startsWith('passive_500')) {
+          if (ch.id.startsWith('earn_passive_day') || ch.id.startsWith('passive_500')) {
             const p = Math.min(ch.target, passiveNow)
             return { ...ch, progress: p, completed: p >= ch.target }
           }
@@ -357,13 +357,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
             const p = Math.min(ch.target, nw)
             return { ...ch, progress: p, completed: p >= ch.target }
           }
-          if (ch.id.startsWith('hold_week')) {
+          if (ch.id.startsWith('hold_day')) {
             const lastSell = newGame.behavior?.lastSellMonthIndex ?? 0
             const currentMonth = newGame.monthIndex ?? 0
-            if (lastSell < currentMonth) {
-              const p = Math.min(ch.target, ch.progress + 1)
-              return { ...ch, progress: p, completed: p >= ch.target }
-            }
+            const p = lastSell < currentMonth ? ch.target : 0
+            return { ...ch, progress: p, completed: p >= ch.target }
           }
           return ch
         })
@@ -861,9 +859,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const updated = wc.challenges.map((ch) => {
           if (ch.completed) return ch
           let progress = ch.progress
-          if (ch.id.startsWith('invest_week')) {
+          if (ch.id.startsWith('invest_day')) {
             progress = Math.min(ch.target, ch.progress + amount)
-          } else if (ch.id.startsWith('buy_3_investments')) {
+          } else if (ch.id.startsWith('buy_investments_day')) {
             progress = Math.min(ch.target, ch.progress + 1)
           } else if (ch.id.startsWith('diversify')) {
             const classes = new Set(newInvs.map((i: Investment) => {
