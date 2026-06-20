@@ -90,7 +90,7 @@ const CLASSIQUE_PROFILES: Profile[] = [
 ]
 
 /**
- * Génère exactement 5 candidats immobiliers avec des profils et conditions de paiement distincts.
+ * Génère exactement 4 candidats immobiliers avec des profils et conditions de paiement distincts.
  */
 export function generatePropertyCandidates(
   catalogId: 'parking' | 'lmnp' | 'immo_classique',
@@ -98,10 +98,11 @@ export function generatePropertyCandidates(
 ): PropertyCandidate[] {
   const now = Date.now()
 
-  const profiles =
+  const profiles = (
     catalogId === 'parking' ? PARKING_PROFILES
     : catalogId === 'lmnp'  ? LMNP_PROFILES
     : CLASSIQUE_PROFILES
+  ).slice(0, 4)
 
   const basePriceRange =
     catalogId === 'parking'      ? { min: 10000, max: 22000, baseYield: 0.07, baseCharges: 20  }
