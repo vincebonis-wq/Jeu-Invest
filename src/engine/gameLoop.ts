@@ -281,8 +281,11 @@ export function checkRealTimeProgress(input: GameState): AdvanceResult {
   if (state.player.activeTraining) {
     const training = state.player.activeTraining
     const skill = SKILL_BY_ID[training.skillId]
-    const monthsDone = training.monthsCompleted ?? 0
-    if (skill && monthsDone >= skill.trainingMonths) {
+    // Complétion basée sur le temps réel (realDurationMs), indépendant de la vitesse de jeu.
+    // Skills avec realDurationMs === 0 ou trainingMonths === 0 se terminent immédiatement.
+    const realElapsed = now - (training.startedAtReal ?? now)
+    const realDone = skill && (skill.realDurationMs === 0 || realElapsed >= skill.realDurationMs)
+    if (realDone) {
       const newSkills = [...(state.player.learnedSkillIds || []), skill.id]
       let player = { ...state.player, learnedSkillIds: newSkills, activeTraining: undefined }
       const monthlyExpenses = { ...state.monthlyExpenses }

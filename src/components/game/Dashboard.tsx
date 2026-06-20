@@ -47,6 +47,7 @@ import {
   formatEuroCompact,
   formatEuroSigned,
   formatMonthShort,
+  formatDuration,
   cn,
 } from '../../utils/formatting'
 import type { AssetBreakdown, GameState } from '../../types'
@@ -677,14 +678,13 @@ function CopiloteCard({
     if (game.player.activeTraining) {
       const skill = SKILL_BY_ID[game.player.activeTraining.skillId]
       if (skill) {
-        const monthsDone = game.player.activeTraining.monthsCompleted ?? 0
-        const totalMonths = skill.trainingMonths
-        if (totalMonths > 0) {
-          const pct = Math.round(Math.min(100, (monthsDone / totalMonths) * 100))
-          const monthsLeft = Math.max(0, totalMonths - monthsDone)
+        const elapsed = Date.now() - (game.player.activeTraining.startedAtReal ?? Date.now())
+        const remaining = Math.max(0, skill.realDurationMs - elapsed)
+        if (remaining > 0) {
+          const pct = Math.round(Math.min(99, (elapsed / skill.realDurationMs) * 100))
           result.push({
             level: 'info', icon: '🎓',
-            text: `"${skill.name}" en cours — ${pct} % (encore ${monthsLeft} mois de jeu). Effet : ${skill.benefits[0]}.`,
+            text: `"${skill.name}" en cours — ${pct} % (encore ${formatDuration(remaining)}). Effet : ${skill.benefits[0]}.`,
             ctaLabel: 'Carrière →', ctaScreen: 'skills',
           })
         } else {
@@ -703,7 +703,7 @@ function CopiloteCard({
         return prereqsMet && wealthMet
       })
       if (next) {
-        const durationLabel = next.trainingMonths > 0 ? `${next.trainingMonths} mois de jeu` : 'instantané'
+        const durationLabel = next.realDurationMs > 0 ? formatDuration(next.realDurationMs) : 'instantané'
         result.push({
           level: 'info', icon: '📚',
           text: `Formation disponible : "${next.name}" (${durationLabel}) → ${next.benefits[0]}`,
