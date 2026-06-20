@@ -1,6 +1,6 @@
 import type { WeeklyChallenge, WeeklyChallengesState } from '../types'
 
-// Seeded random for consistent leaderboard per week
+// Seeded random for consistent leaderboard per day
 function seededRand(seed: number): () => number {
   let s = seed
   return function () {
@@ -9,45 +9,40 @@ function seededRand(seed: number): () => number {
   }
 }
 
-function getWeekISO(): string {
-  const d = new Date()
-  const day = d.getUTCDay()
-  const diff = (day === 0 ? -6 : 1) - day
-  const monday = new Date(d)
-  monday.setUTCDate(d.getUTCDate() + diff)
-  return monday.toISOString().split('T')[0]
+function getTodayISO(): string {
+  return new Date().toISOString().split('T')[0]
 }
 
-function weekSeed(weekISO: string): number {
-  return weekISO.split('-').reduce((acc, n) => acc * 100 + parseInt(n), 0)
+function daySeed(dateISO: string): number {
+  return dateISO.split('-').reduce((acc, n) => acc * 100 + parseInt(n), 0)
 }
 
 const CHALLENGE_TEMPLATES = [
   {
-    id: 'invest_week_1',
-    label: 'Investisseur actif',
-    description: 'Investis {target}€ de nouveau capital cette semaine',
-    baseTarget: 1000,
+    id: 'invest_day_1',
+    label: 'Investisseur du jour',
+    description: 'Investis {target}€ de nouveau capital aujourd\'hui',
+    baseTarget: 500,
     targetScale: 'net_worth',
     rewardType: 'cash_bonus' as const,
-    rewardValue: 500,
-    rewardLabel: '+500€ cash',
+    rewardValue: 300,
+    rewardLabel: '+300€ cash',
   },
   {
-    id: 'invest_week_2',
+    id: 'invest_day_2',
     label: 'Grand investissement',
-    description: 'Investis {target}€ de nouveau capital cette semaine',
-    baseTarget: 5000,
+    description: 'Investis {target}€ de nouveau capital aujourd\'hui',
+    baseTarget: 2000,
     targetScale: 'net_worth',
     rewardType: 'cash_bonus' as const,
-    rewardValue: 2000,
-    rewardLabel: '+2 000€ cash',
+    rewardValue: 800,
+    rewardLabel: '+800€ cash',
   },
   {
-    id: 'earn_passive_week',
+    id: 'earn_passive_day',
     label: 'Machine à cash',
-    description: 'Génère {target}€ de revenus passifs ce mois de jeu',
-    baseTarget: 200,
+    description: 'Génère {target}€ de revenus passifs aujourd\'hui',
+    baseTarget: 100,
     targetScale: 'passive',
     rewardType: 'return_bonus' as const,
     rewardValue: 0.1,
@@ -64,10 +59,10 @@ const CHALLENGE_TEMPLATES = [
     rewardLabel: '+1 000€ cash',
   },
   {
-    id: 'buy_3_investments',
-    label: 'Collectionneur',
-    description: 'Réalise 3 achats d\'investissements cette semaine',
-    baseTarget: 3,
+    id: 'buy_investments_day',
+    label: 'Acheteur actif',
+    description: "Réalise 2 achats d'investissements aujourd'hui",
+    baseTarget: 2,
     targetScale: 'none',
     rewardType: 'return_bonus' as const,
     rewardValue: 0.05,
@@ -84,14 +79,14 @@ const CHALLENGE_TEMPLATES = [
     rewardLabel: '+800€ cash',
   },
   {
-    id: 'hold_week',
-    label: 'Investisseur serein',
-    description: 'Ne vends aucun actif pendant 7 jours de jeu',
-    baseTarget: 7,
+    id: 'hold_day',
+    label: 'Investisseur zen',
+    description: "Ne vends aucun actif aujourd'hui",
+    baseTarget: 1,
     targetScale: 'none',
     rewardType: 'cash_bonus' as const,
-    rewardValue: 300,
-    rewardLabel: '+300€ cash',
+    rewardValue: 200,
+    rewardLabel: '+200€ cash',
   },
   {
     id: 'passive_500',
@@ -106,8 +101,8 @@ const CHALLENGE_TEMPLATES = [
 ]
 
 export function generateWeeklyChallenges(netWorth: number, passiveIncome: number): WeeklyChallengesState {
-  const weekISO = getWeekISO()
-  const rand = seededRand(weekSeed(weekISO) + Math.floor(netWorth / 10000))
+  const dateISO = getTodayISO()
+  const rand = seededRand(daySeed(dateISO) + Math.floor(netWorth / 10000))
 
   // Pick 3 unique templates
   const shuffled = [...CHALLENGE_TEMPLATES].sort(() => rand() - 0.5)
@@ -116,15 +111,15 @@ export function generateWeeklyChallenges(netWorth: number, passiveIncome: number
   const challenges: WeeklyChallenge[] = picked.map((tpl) => {
     let target = tpl.baseTarget
     if (tpl.targetScale === 'net_worth') {
-      target = Math.max(tpl.baseTarget, Math.round(netWorth * 0.02 / 500) * 500)
+      target = Math.max(tpl.baseTarget, Math.round(netWorth * 0.003 / 100) * 100)
     } else if (tpl.targetScale === 'passive') {
-      target = Math.max(tpl.baseTarget, Math.round(passiveIncome * 0.3 / 50) * 50)
+      target = Math.max(tpl.baseTarget, Math.round(passiveIncome * 0.05 / 10) * 10)
     } else if (tpl.targetScale === 'milestone') {
       target = Math.max(tpl.baseTarget, Math.round(netWorth * 0.1 / 1000) * 1000)
     }
 
     return {
-      id: `${tpl.id}_${weekISO}`,
+      id: `${tpl.id}_${dateISO}`,
       label: tpl.label,
       description: tpl.description.replace('{target}', target.toLocaleString('fr-FR')),
       target,
@@ -136,11 +131,11 @@ export function generateWeeklyChallenges(netWorth: number, passiveIncome: number
     }
   })
 
-  return { weekISO, challenges, allClaimedBonus: false, claimedChallengeIds: [] }
+  return { weekISO: dateISO, challenges, allClaimedBonus: false, claimedChallengeIds: [] }
 }
 
 export function getCurrentWeekISO(): string {
-  return getWeekISO()
+  return getTodayISO()
 }
 
 const FAKE_NAMES = [
@@ -148,8 +143,8 @@ const FAKE_NAMES = [
   'Antoine C.', 'Camille F.', 'Jules P.', 'Léa V.', 'Hugo N.',
 ]
 
-export function getSimulatedLeaderboard(playerNetWorth: number, weekISO: string): Array<{name: string, netWorth: number, isPlayer: boolean}> {
-  const rand = seededRand(weekSeed(weekISO))
+export function getSimulatedLeaderboard(playerNetWorth: number, dateISO: string): Array<{name: string, netWorth: number, isPlayer: boolean}> {
+  const rand = seededRand(daySeed(dateISO))
   const base = Math.max(playerNetWorth * 0.5, 10000)
 
   const fakeEntries = FAKE_NAMES.map((name) => ({
@@ -165,3 +160,4 @@ export function getSimulatedLeaderboard(playerNetWorth: number, weekISO: string)
 
   return allEntries
 }
+

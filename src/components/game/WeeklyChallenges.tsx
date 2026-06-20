@@ -52,8 +52,8 @@ export function WeeklyChallenges() {
     <div className="space-y-4 animate-screen-in">
       {/* Header */}
       <div>
-        <h1 className="font-display font-extrabold text-2xl text-slate-800">Défis de la semaine</h1>
-        <p className="text-slate-500 text-sm">Réinitialisés chaque lundi</p>
+        <h1 className="font-display font-extrabold text-2xl text-slate-800">Défis du jour</h1>
+        <p className="text-slate-500 text-sm">Réinitialisés chaque jour à minuit</p>
       </div>
 
       {/* Bonus actif */}
@@ -126,7 +126,7 @@ export function WeeklyChallenges() {
             <Trophy size={24} className="text-yellow-500" />
             <div>
               <div className="font-display font-bold text-slate-800">3/3 Complétés — Bonus spécial !</div>
-              <div className="text-sm text-slate-600">Tu as relevé tous les défis de la semaine. Champion !</div>
+              <div className="text-sm text-slate-600">Tu as relevé tous les défis du jour. Champion !</div>
             </div>
           </div>
         </Card>
@@ -134,7 +134,7 @@ export function WeeklyChallenges() {
 
       {/* Leaderboard */}
       <Card className="p-5">
-        <CardHeader title="Classement cette semaine" subtitle="Joueurs simulés basés sur ton patrimoine" icon={<Trophy size={18} />} />
+        <CardHeader title="Classement du jour" subtitle="Joueurs simulés basés sur ton patrimoine" icon={<Trophy size={18} />} />
         <div className="space-y-2 mt-3">
           {leaderboard.map((entry, idx) => (
             <div
