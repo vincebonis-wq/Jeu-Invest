@@ -480,13 +480,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (saved.hasReachedFreedom === undefined) saved.hasReachedFreedom = false
       if (saved.player.dependents === undefined) saved.player.dependents = 0
       saved.pendingFreedom = false // ne pas ré-afficher au chargement
-      saved.investments = saved.investments.map((inv) => ({
-        ...inv,
-        level: inv.level ?? 1,
-        saleListingPrice: inv.saleListingPrice ?? undefined,
-        pendingOffers: inv.pendingOffers ?? undefined,
-        nextOfferAtReal: inv.nextOfferAtReal ?? undefined,
-      }))
+      saved.investments = saved.investments.map((inv) => {
+        const cat = getCatalogItem(inv.catalogId)
+        // Repair corrupted annualReturnRate: old code permanently wrote level bonuses
+        // into the stored rate. Cap to catalog base + variance to sanitize.
+        const maxLegitRate = cat.baseAnnualReturn + cat.returnVariance + 0.01
+        return {
+          ...inv,
+          level: inv.level ?? 1,
+          saleListingPrice: inv.saleListingPrice ?? undefined,
+          pendingOffers: inv.pendingOffers ?? undefined,
+          nextOfferAtReal: inv.nextOfferAtReal ?? undefined,
+          annualReturnRate: inv.annualReturnRate > maxLegitRate ? cat.baseAnnualReturn : inv.annualReturnRate,
+        }
+      })
 
       // Backward compat : champs de rétention manquants
       if (!saved.badges) saved.badges = []

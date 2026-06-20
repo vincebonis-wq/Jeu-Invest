@@ -11,6 +11,7 @@ import {
 import { Lock, PiggyBank, TrendingDown, TrendingUp, Wallet, Calendar, BarChart2, Banknote } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { getCatalogItem } from '../../data/investments'
+import { getInvestmentLevelBonus } from '../../data/upgradeTiers'
 import type { Investment } from '../../types'
 import { getAVFiscalDetails } from '../../engine/fiscal'
 import type { AVFiscalDetails } from '../../engine/fiscal'
@@ -238,7 +239,7 @@ function InvestmentRow({ inv, onClick, onSell }: { inv: Investment; onClick: () 
           <>
             <span className="text-slate-400">Rendement annuel estimé</span>
             <span className="font-semibold text-emerald-600">
-              ~+{formatEuro(Math.round(inv.currentValue * inv.annualReturnRate))} / an
+              ~+{formatEuro(Math.round(inv.currentValue * (inv.annualReturnRate + getInvestmentLevelBonus(inv.catalogId, inv.level ?? 1))))} / an
             </span>
           </>
         )}
@@ -363,7 +364,8 @@ function InvestmentDetailModal({
   const chartMin = chartData.length > 0 ? Math.min(...chartData.map((d) => d.value)) * 0.97 : 0
   const chartMax = chartData.length > 0 ? Math.max(...chartData.map((d) => d.value)) * 1.03 : 0
 
-  const annualYieldEur = Math.round(inv.currentValue * inv.annualReturnRate)
+  const effectiveReturnRate = inv.annualReturnRate + getInvestmentLevelBonus(inv.catalogId, inv.level ?? 1)
+  const annualYieldEur = Math.round(inv.currentValue * effectiveReturnRate)
 
   return (
     <Modal open onClose={onClose} size="lg">
@@ -459,7 +461,7 @@ function InvestmentDetailModal({
         {/* Détails du placement */}
         <div className="rounded-2xl bg-slate-50 p-4 space-y-2 text-sm">
           <div className="font-bold text-slate-700 mb-2">Détails du placement</div>
-          <DetailRow label="Taux annuel effectif" value={formatPercent(inv.annualReturnRate)} />
+          <DetailRow label="Taux annuel effectif" value={formatPercent(effectiveReturnRate)} />
           {item.yieldMode === 'income' && inv.monthlyIncome !== 0 ? (
             <DetailRow
               label="Revenu mensuel net"

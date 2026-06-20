@@ -386,9 +386,9 @@ export function checkRealTimeProgress(input: GameState): AdvanceResult {
     )
     let changed = activeOffers.length !== (inv.pendingOffers ?? []).length
 
-    // Spawner une nouvelle offre si le moment est venu
+    // Spawner une nouvelle offre si le moment est venu (max 3 en attente)
     const nextOfferAt = inv.nextOfferAtReal ?? 0
-    if (now >= nextOfferAt && inv.saleListingPrice) {
+    if (now >= nextOfferAt && inv.saleListingPrice && activeOffers.length < 3) {
       const offerFactor = 0.85 + Math.random() * 0.30 // 85–115% du prix affiché
       const offeredPrice = Math.round(inv.saleListingPrice * offerFactor)
       const newOffer: SaleOffer = {
