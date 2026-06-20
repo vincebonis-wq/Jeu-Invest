@@ -60,16 +60,24 @@ export interface LifeGoal {
 
 export type StrategicStance = 'secure' | 'growth' | 'income'
 
+export type QuarterlyVerdict = 'excellent' | 'good' | 'neutral' | 'bad'
+
 export interface QuarterlyReview {
-  quarter: number       // 1-4
+  quarter: number
   year: number
   monthIndex: number
   netWorthDelta: number
   netWorthDeltaPct: number
   cashflow: number
   passiveIncome: number
-  highlight: string     // fait marquant du trimestre
-  inflationLost: number // cash grignoté par l'inflation ce trimestre
+  salary: number
+  highlight: string            // compat legacy (fallback si highlights absent)
+  highlights: string[]         // observations contextualisées (2-4 items)
+  coachTip: string             // conseil personnalisé basé sur la posture
+  verdict: QuarterlyVerdict
+  passiveRatio: number         // passiveIncome / salary (0→∞)
+  marketPhase: string
+  inflationLost: number
 }
 
 // ----------------------------------------------------------------------------

@@ -754,19 +754,108 @@ function processMonth(ctx: MonthContext) {
 
   // 12. Bilan trimestriel : tous les 3 mois de jeu, on impose une réflexion.
   if (monthIndex > 0 && monthIndex % 3 === 0 && !pendingReview) {
-    // Compare au snapshot d'il y a ~3 mois.
     const prevSnap = stats.length >= 4 ? stats[stats.length - 4] : stats[0]
     const nwDelta = Math.round(netWorthNow - (prevSnap?.netWorth ?? netWorthNow))
     const nwDeltaPct = prevSnap && prevSnap.netWorth > 0
       ? nwDelta / prevSnap.netWorth
       : 0
     const cashflow = Math.round(player.salary + passiveIncome - monthlyExpenses.total - mortgagePaid)
-    // Fait marquant : dernier événement bad/good du trimestre.
+    const inflationThisQuarter = Math.round(inflationCost * 3)
+    const date = ctx.gameDate
+    const qPassiveIncome = Math.round(passiveIncome)
+    const qSalary = Math.round(player.salary)
+    const passiveRatio = qSalary > 0 ? qPassiveIncome / qSalary : 0
+
+    // Verdict basé sur l'évolution trimestrielle du patrimoine
+    const verdict: import('../types').QuarterlyVerdict =
+      nwDeltaPct > 0.05 ? 'excellent' :
+      nwDeltaPct > 0.01 ? 'good' :
+      nwDeltaPct > -0.01 ? 'neutral' : 'bad'
+
+    // Observations contextualisées (2-4 points précis)
+    const hs: string[] = []
+    const pct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`
+    const fmtK = (v: number) =>
+      Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)}k€` : `${Math.round(v)} €`
+
+    if (Math.abs(nwDeltaPct) >= 0.001 && prevSnap && prevSnap.netWorth > 0) {
+      if (nwDeltaPct > 0.10) {
+        hs.push(`Ton patrimoine a bondi de ${pct(nwDeltaPct)} en 3 mois — un rythme remarquable.`)
+      } else if (nwDeltaPct > 0.02) {
+        hs.push(`Bonne progression : ${pct(nwDeltaPct)} de patrimoine ce trimestre (${fmtK(nwDelta)}).`)
+      } else if (nwDeltaPct < -0.03) {
+        hs.push(`Recul de ${pct(Math.abs(nwDeltaPct))} — surveille tes actifs à risque.`)
+      } else if (nwDeltaPct < 0) {
+        hs.push(`Légère érosion du patrimoine (${pct(nwDeltaPct)}) — trimestre à surveiller.`)
+      } else {
+        hs.push(`Patrimoine stable (+${fmtK(nwDelta)}) — solide mais sans accélération.`)
+      }
+    }
+
+    if (cashflow < 0) {
+      hs.push(`⚠️ Cashflow négatif (${fmtK(cashflow)}/m) : tu dépenses plus que tu n'encaisses.`)
+    } else {
+      const savingsRate = qSalary + qPassiveIncome > 0
+        ? cashflow / (qSalary + qPassiveIncome)
+        : 0
+      if (savingsRate > 0.3) {
+        hs.push(`Excellente épargne : ${Math.round(savingsRate * 100)}% de tes revenus réinvestissables.`)
+      }
+    }
+
+    const prevPassiveIncome = prevSnap?.passiveIncome ?? 0
+    if (qPassiveIncome >= qSalary && prevPassiveIncome < qSalary && qSalary > 0) {
+      hs.push(`🎯 Jalon historique : tes revenus passifs (${fmtK(qPassiveIncome)}/m) dépassent ton salaire !`)
+    } else if (qPassiveIncome > 0) {
+      const passivePct = Math.round(passiveRatio * 100)
+      hs.push(`Revenus passifs : ${fmtK(qPassiveIncome)}/m soit ${passivePct}% de ton salaire.`)
+    }
+
+    const phase = economy.marketPhase
+    if (phase === 'crash') {
+      hs.push(`💥 Krach boursier ce trimestre — tes actifs immobiliers ont amorti le choc.`)
+    } else if (phase === 'bull') {
+      hs.push(`📈 Marché haussier : tes ETF et actions ont profité de la tendance.`)
+    } else if (phase === 'bear') {
+      hs.push(`📉 Phase baissière : les marchés ont sous-performé sur la période.`)
+    }
+
     const recentNotable = [...events].reverse().find(
       (e) => (e.severity === 'bad' || e.severity === 'good') && e.category !== 'milestone',
     )
-    const inflationThisQuarter = Math.round(inflationCost * 3) // ~3 mois d'inflation sur le cash
-    const date = ctx.gameDate
+    if (recentNotable && hs.length < 4) {
+      hs.push(recentNotable.severity === 'bad'
+        ? `Choc subi : "${recentNotable.title}".`
+        : `Bonne nouvelle : "${recentNotable.title}".`)
+    }
+
+    if (hs.length === 0) {
+      hs.push('Un trimestre calme — un bon moment pour consolider ta stratégie.')
+    }
+
+    // Conseil personnalisé selon posture + situation réelle
+    const stance = ctx.stance
+    let coachTip: string
+    if (cashflow < 0) {
+      coachTip = 'Priorité absolue : rétablis un cashflow positif avant tout nouvel investissement.'
+    } else if (investments.length === 0) {
+      coachTip = 'Commence par le Livret A (sans risque), puis diversifie vers les ETF dès 1 000 €.'
+    } else if (investments.length === 1) {
+      coachTip = 'Un seul actif = concentration risquée. Vise au moins 2 catégories différentes.'
+    } else if (stance === 'growth' && passiveRatio < 0.1) {
+      coachTip = 'Pour la croissance, les ETF world sont ton meilleur moteur à ce stade du jeu.'
+    } else if (stance === 'income' && passiveRatio < 0.5) {
+      coachTip = `Il te manque encore ${fmtK(qSalary * 0.5 - qPassiveIncome)}/m de revenus passifs pour atteindre 50% d'autonomie.`
+    } else if (stance === 'secure' && cashflow > qSalary * 0.5) {
+      coachTip = 'Ta sécurité est solide — tu peux prendre un peu plus de risque sur une poche croissance.'
+    } else if (passiveRatio > 1) {
+      coachTip = 'Liberté financière atteinte ! Pense à optimiser ta fiscalité sur tes revenus passifs.'
+    } else if (inflationThisQuarter > 200) {
+      coachTip = 'Ton cash dort et perd de la valeur. Déploie l\'excès en Livret A ou ETF.'
+    } else {
+      coachTip = 'La régularité prime sur le timing : alimente tes investissements chaque mois.'
+    }
+
     pendingReview = {
       quarter: Math.floor(date.getUTCMonth() / 3) + 1,
       year: date.getUTCFullYear(),
@@ -774,10 +863,14 @@ function processMonth(ctx: MonthContext) {
       netWorthDelta: nwDelta,
       netWorthDeltaPct: nwDeltaPct,
       cashflow,
-      passiveIncome: Math.round(passiveIncome),
-      highlight: recentNotable
-        ? recentNotable.title
-        : 'Un trimestre calme, sans événement majeur.',
+      passiveIncome: qPassiveIncome,
+      salary: qSalary,
+      highlight: hs[0] ?? 'Un trimestre calme.',
+      highlights: hs,
+      verdict,
+      passiveRatio,
+      coachTip,
+      marketPhase: phase,
       inflationLost: inflationThisQuarter,
     }
   }
