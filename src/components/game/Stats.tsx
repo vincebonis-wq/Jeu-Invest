@@ -45,24 +45,63 @@ const tooltipStyle = {
   boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
 }
 
+const BADGE_PLAYER_PCT: Record<string, number> = {
+  first_investment: 91, speed_investor: 62, livret_full: 43, first_etf: 54,
+  first_real_estate: 29, first_business: 16, diversified_4: 22, survived_crash: 37,
+  crypto_survivor: 13, passive_income_500: 24, passive_income_salary: 11,
+  net_worth_10k: 72, net_worth_50k: 48, net_worth_100k: 33, net_worth_500k: 12,
+  millionnaire: 7, no_debt: 19, streak_7: 51, streak_30: 15,
+  buy_in_crash: 27, prestige_1: 9, prestige_3: 3, prestige_5: 1,
+}
+
 function BadgesPanel({ game }: { game: GameState }) {
-  const earned = new Set((game.badges ?? []).map((b) => b.id))
+  const earnedSet = new Set((game.badges ?? []).map((b) => b.id))
+  const [activeTab, setActiveTab] = useState<'all' | 'earned' | 'locked'>('all')
   const categories = ['special', 'milestone', 'behavior', 'market'] as const
   const catLabels = { special: '⭐ Spéciaux', milestone: '🏆 Paliers', behavior: '🧠 Comportement', market: '📊 Marchés' }
 
+  const filteredBadges = (cat: typeof categories[number]) =>
+    BADGES.filter((b) => b.category === cat).filter((b) => {
+      if (activeTab === 'earned') return earnedSet.has(b.id)
+      if (activeTab === 'locked') return !earnedSet.has(b.id)
+      return true
+    })
+
   return (
     <Card className="p-5">
-      <CardHeader title="Trophées" subtitle={`${earned.size} / ${BADGES.length} débloqués`} icon={<Trophy size={18} />} />
-      <div className="space-y-4 mt-3">
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <CardHeader
+          title="Trophées"
+          subtitle={`${earnedSet.size} / ${BADGES.length} débloqués`}
+          icon={<Trophy size={18} />}
+        />
+        <div className="flex gap-1 text-xs shrink-0">
+          {(['all', 'earned', 'locked'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                'px-2 py-1 rounded-lg font-semibold transition-colors',
+                activeTab === tab ? 'bg-brand-100 text-brand-700' : 'text-slate-400 hover:text-slate-600',
+              )}
+            >
+              {tab === 'all' ? 'Tous' : tab === 'earned' ? 'Obtenus' : 'À débloquer'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-5">
         {categories.map((cat) => {
-          const inCat = BADGES.filter((b) => b.category === cat)
+          const inCat = filteredBadges(cat)
+          if (inCat.length === 0) return null
           return (
             <div key={cat}>
               <div className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">{catLabels[cat]}</div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {inCat.map((badge) => {
-                  const isEarned = earned.has(badge.id)
+                  const isEarned = earnedSet.has(badge.id)
                   const earnedBadge = (game.badges ?? []).find((b) => b.id === badge.id)
+                  const pct = BADGE_PLAYER_PCT[badge.id] ?? 50
                   return (
                     <div
                       key={badge.id}
@@ -72,22 +111,35 @@ function BadgesPanel({ game }: { game: GameState }) {
                           ? badge.category === 'special'
                             ? 'bg-gradient-to-br from-violet-50 to-purple-50 border-violet-200'
                             : 'bg-slate-50 border-slate-200'
-                          : 'bg-white border-dashed border-slate-200 opacity-40',
+                          : 'bg-white border-dashed border-slate-200',
                       )}
                     >
-                      <span className={cn('text-2xl shrink-0 leading-none', !isEarned && 'grayscale')}>
+                      <span className={cn('text-2xl shrink-0 leading-none mt-0.5', !isEarned && 'grayscale opacity-40')}>
                         {badge.emoji}
                       </span>
-                      <div className="min-w-0">
-                        <div className={cn('text-xs font-bold truncate', isEarned ? 'text-slate-800' : 'text-slate-400')}>
-                          {badge.name}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1 mb-0.5">
+                          <div className={cn('text-xs font-bold truncate', isEarned ? 'text-slate-800' : 'text-slate-400')}>
+                            {badge.name}
+                          </div>
+                          <div className={cn('text-[10px] font-semibold shrink-0', isEarned ? 'text-slate-400' : 'text-slate-300')}>
+                            {pct}% joueurs
+                          </div>
                         </div>
-                        <div className="text-[11px] text-slate-400 leading-tight mt-0.5 line-clamp-2">
-                          {isEarned ? badge.description : '???'}
+                        <div className="text-[11px] text-slate-400 leading-tight line-clamp-2">
+                          {badge.description}
                         </div>
-                        {earnedBadge && (
-                          <div className="text-[10px] text-slate-300 mt-1">
-                            Mois {earnedBadge.earnedAtMonthIndex}
+                        {isEarned && earnedBadge && (
+                          <div className="text-[10px] text-emerald-500 font-semibold mt-1">
+                            ✓ Obtenu au mois {earnedBadge.earnedAtMonthIndex}
+                          </div>
+                        )}
+                        {!isEarned && (
+                          <div className="mt-1.5 h-1 rounded-full bg-slate-100">
+                            <div
+                              className="h-1 rounded-full bg-slate-200"
+                              style={{ width: `${pct}%` }}
+                            />
                           </div>
                         )}
                       </div>

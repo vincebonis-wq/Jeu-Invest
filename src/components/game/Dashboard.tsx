@@ -14,6 +14,7 @@ import {
 import {
   ArrowDownRight,
   ArrowUpRight,
+  CheckCircle2,
   ChevronDown,
   Flame,
   TrendingUp,
@@ -28,6 +29,8 @@ import {
   calcNetWorth,
   totalMortgagePayments,
   MILESTONE_INFO,
+  milestoneRank,
+  MILESTONE_ORDER_EXPORTED,
 } from '../../utils/calculations'
 import { PHASE_LABEL } from '../../engine/economy'
 import type { Screen } from '../../types'
@@ -77,10 +80,6 @@ export function Dashboard() {
   const netWorth = calcNetWorth(game)
   const passiveIncome = calcMonthlyPassiveIncome(game)
   const cashflow = calcMonthlyCashflow(game)
-  const milestone = MILESTONE_INFO[game.player.milestone]
-  const progress = milestone.progress(game)
-  const progressPct = (progress.current / progress.target) * 100
-
   const breakdown = useMemo(() => calcAssetBreakdown(game), [game])
   const allocationData = useMemo(
     () =>
@@ -193,39 +192,8 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Progression vers le prochain palier */}
-      <Card className="p-5">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: `${milestone.color}20`, color: milestone.color }}
-            >
-              <Icon name={milestone.icon} size={18} />
-            </div>
-            <div>
-              <div className="font-display font-bold text-slate-800 text-sm">
-                Palier : {milestone.label}
-              </div>
-              <div className="text-xs text-slate-400">
-                {game.player.milestone === 'multimillionnaire'
-                  ? 'Tu as atteint le sommet !'
-                  : game.player.milestone === 'rentier_partiel'
-                    ? `Revenus passifs : ${formatEuroCompact(progress.current)} / ${formatEuroCompact(progress.target)} (salaire)`
-                    : `Prochain objectif : ${formatEuroCompact(progress.target)}`}
-              </div>
-            </div>
-          </div>
-          <span className="font-display font-bold text-brand-600">
-            {Math.min(100, Math.round(progressPct))}%
-          </span>
-        </div>
-        <ProgressBar
-          value={progressPct}
-          shimmer
-          barClassName="bg-gradient-to-r from-gold-400 to-gold-600"
-        />
-      </Card>
+      {/* Roadmap des paliers */}
+      <MilestoneRoadmapCard game={game} />
 
       {/* Objectif de vie */}
       <LifeGoalCard game={game} />
@@ -396,6 +364,105 @@ const tooltipStyle = {
   border: '1px solid #e2e8f0',
   fontSize: 12,
   boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+}
+
+function MilestoneRoadmapCard({ game }: { game: GameState }) {
+  const currentMilestone = game.player.milestone
+  const currentRank = milestoneRank(currentMilestone)
+  const currentInfo = MILESTONE_INFO[currentMilestone]
+  const progress = currentInfo.progress(game)
+  const pct = Math.min(100, Math.round((progress.current / Math.max(1, progress.target)) * 100))
+  const nextLevel = MILESTONE_ORDER_EXPORTED[currentRank + 1]
+  const nextInfo = nextLevel ? MILESTONE_INFO[nextLevel] : null
+
+  return (
+    <Card className="p-5">
+      {/* Titre */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="font-display font-bold text-slate-800 text-sm">Ton parcours</div>
+        <div className="flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-lg"
+          style={{ backgroundColor: `${currentInfo.color}18`, color: currentInfo.color }}>
+          <Icon name={currentInfo.icon} size={12} />
+          {currentInfo.label}
+        </div>
+      </div>
+
+      {/* Timeline horizontale scrollable */}
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div className="flex items-start min-w-max gap-0">
+          {MILESTONE_ORDER_EXPORTED.map((level, idx) => {
+            const info = MILESTONE_INFO[level]
+            const rank = milestoneRank(level)
+            const isPast = rank < currentRank
+            const isCurrent = rank === currentRank
+            const isConnectorFilled = rank <= currentRank
+            return (
+              <div key={level} className="flex items-start">
+                {/* Connecteur */}
+                {idx > 0 && (
+                  <div className="w-7 h-0.5 mt-[17px] relative flex-shrink-0">
+                    <div className="absolute inset-0 bg-slate-200 rounded-full" />
+                    {isConnectorFilled && (
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full transition-all"
+                        style={{ width: isCurrent ? `${pct}%` : '100%', backgroundColor: info.color }}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* Noeud */}
+                <div className="flex flex-col items-center gap-1.5 w-[52px] flex-shrink-0">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
+                    style={{
+                      backgroundColor: (isPast || isCurrent) ? info.color : '#e2e8f0',
+                      color: (isPast || isCurrent) ? '#fff' : '#94a3b8',
+                      outline: isCurrent ? `2px solid ${info.color}` : 'none',
+                      outlineOffset: '2px',
+                      boxShadow: isCurrent ? `0 0 12px ${info.color}55` : 'none',
+                    }}
+                  >
+                    {isPast ? (
+                      <CheckCircle2 size={15} />
+                    ) : (
+                      <Icon name={info.icon} size={14} />
+                    )}
+                  </div>
+                  <div
+                    className="text-[9px] font-semibold text-center leading-tight max-w-[48px]"
+                    style={{ color: isCurrent ? info.color : isPast ? '#64748b' : '#cbd5e1' }}
+                  >
+                    {info.label}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Progrès vers le prochain */}
+      {nextInfo && (
+        <div className="mt-4 pt-3 border-t border-slate-100">
+          <div className="flex justify-between text-xs text-slate-500 mb-1.5">
+            <span>
+              {currentMilestone === 'rentier_partiel'
+                ? `Revenus passifs : ${formatEuroCompact(progress.current)} / ${formatEuroCompact(progress.target)}/mois`
+                : `Vers ${nextInfo.label} — ${formatEuroCompact(progress.current)} / ${formatEuroCompact(progress.target)}`}
+            </span>
+            <span className="font-bold" style={{ color: currentInfo.color }}>{pct}%</span>
+          </div>
+          <ProgressBar value={pct} shimmer barClassName="bg-gradient-to-r from-gold-400 to-gold-600" />
+        </div>
+      )}
+      {!nextInfo && (
+        <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-center text-amber-600 font-semibold">
+          🏆 Tu as atteint le sommet de la richesse !
+        </div>
+      )}
+    </Card>
+  )
 }
 
 function SectionDisclosure({ label, children }: { label: string; children: ReactNode }) {

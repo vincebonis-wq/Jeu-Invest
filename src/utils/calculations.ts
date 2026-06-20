@@ -178,6 +178,10 @@ export function milestoneRank(level: MilestoneLevel): number {
   return MILESTONE_ORDER.indexOf(level)
 }
 
+export const MILESTONE_ORDER_EXPORTED: MilestoneLevel[] = [
+  'debutant', 'epargnant', 'investisseur', 'rentier_partiel', 'rentier', 'millionnaire', 'multimillionnaire',
+]
+
 /**
  * Taux d'endettement = mensualités crédit / (salaire + revenus passifs).
  * La réglementation française plafonne à 35 %.

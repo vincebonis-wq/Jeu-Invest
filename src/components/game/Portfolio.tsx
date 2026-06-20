@@ -8,11 +8,11 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Lock, PiggyBank, TrendingDown, TrendingUp, Wallet, Calendar, BarChart2, Banknote } from 'lucide-react'
+import { Lock, PiggyBank, Lightbulb, TrendingDown, TrendingUp, Wallet, Calendar, BarChart2, Banknote } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { getCatalogItem } from '../../data/investments'
 import { getInvestmentLevelBonus } from '../../data/upgradeTiers'
-import type { Investment } from '../../types'
+import type { Investment, GameState } from '../../types'
 import { getAVFiscalDetails } from '../../engine/fiscal'
 import type { AVFiscalDetails } from '../../engine/fiscal'
 import { Card } from '../ui/Card'
@@ -82,6 +82,9 @@ export function Portfolio() {
           />
         </div>
       </Card>
+
+      {/* Et si... — opportunité cash idle */}
+      <IdleCashCard game={game} onInvest={() => setScreen('marketplace')} />
 
       {/* Liste */}
       <div className="space-y-2.5">
@@ -934,5 +937,67 @@ function SummaryStat({
         {value}
       </div>
     </div>
+  )
+}
+
+// ── Et si... ────────────────────────────────────────────────────────────────
+
+function IdleCashCard({ game, onInvest }: { game: GameState; onInvest: () => void }) {
+  const cash = game.cashBalance
+  const MIN_CASH = 1500
+  if (cash < MIN_CASH || game.investments.length === 0) return null
+
+  const sortedByDate = [...game.investments].sort(
+    (a, b) => new Date(b.purchaseDateISO).getTime() - new Date(a.purchaseDateISO).getTime(),
+  )
+  const lastDateISO = sortedByDate[0]?.purchaseDateISO ?? game.gameDateISO
+  const currentDate = new Date(game.gameDateISO)
+  const lastDate = new Date(lastDateISO)
+  const monthsIdle = Math.max(0, Math.round(
+    (currentDate.getFullYear() - lastDate.getFullYear()) * 12 +
+    (currentDate.getMonth() - lastDate.getMonth()),
+  ))
+
+  const horizon = Math.max(12, monthsIdle)
+  const etfGain = Math.round(cash * (Math.pow(1.08, horizon / 12) - 1))
+  const livretGain = Math.round(cash * (Math.pow(1.015, horizon / 12) - 1))
+  const monthlyOpportunityCost = Math.round(cash * 0.08 / 12)
+
+  return (
+    <Card className="p-4 border-amber-200 bg-amber-50/60">
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
+          <Lightbulb size={16} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-display font-bold text-slate-800 text-sm mb-0.5">
+            Et si tu investissais tes {formatEuroCompact(cash)} de cash ?
+          </div>
+          <p className="text-xs text-slate-500 mb-3">
+            {monthsIdle > 0
+              ? `En ${monthsIdle} mois sans achat, tu aurais généré ~${formatEuroCompact(monthsIdle * monthlyOpportunityCost)} de plus en ETF.`
+              : `Ce cash peut générer jusqu'à ${formatEuroCompact(monthlyOpportunityCost)}/mois investi en ETF.`}
+          </p>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="rounded-xl bg-white p-3 border border-slate-200">
+              <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">📈 ETF (8%/an)</div>
+              <div className="font-display font-bold text-emerald-600 text-sm">+{formatEuroCompact(etfGain)}</div>
+              <div className="text-[10px] text-slate-400">sur {horizon} mois</div>
+            </div>
+            <div className="rounded-xl bg-white p-3 border border-slate-200">
+              <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">🏦 Livret A (1.5%/an)</div>
+              <div className="font-display font-bold text-sky-600 text-sm">+{formatEuroCompact(livretGain)}</div>
+              <div className="text-[10px] text-slate-400">sur {horizon} mois</div>
+            </div>
+          </div>
+          <button
+            onClick={onInvest}
+            className="text-xs font-bold text-amber-700 hover:text-amber-800 transition-colors"
+          >
+            Investir maintenant →
+          </button>
+        </div>
+      </div>
+    </Card>
   )
 }
