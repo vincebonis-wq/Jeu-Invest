@@ -236,6 +236,8 @@ export interface BusinessDecision {
 
 export interface PropertyCandidate {
   id: string
+  label: string
+  suggestedDownPct: number
   address: string
   city: string
   squareMeters: number

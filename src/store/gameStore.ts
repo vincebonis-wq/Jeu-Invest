@@ -113,6 +113,7 @@ interface GameStore {
 
   // Recherche immobilière
   startImmoSearch: (catalogId: 'parking' | 'lmnp' | 'immo_classique') => { success: boolean; message: string }
+  dismissImmoSearch: (searchId: string) => void
   selectPropertyAndBuy: (searchId: string, candidateId: string, downPaymentPct: number, termMonths: number) => BuyResult
 
   // Remboursement anticipé
@@ -1163,10 +1164,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
 
-    // Vérifier qu'il n'y a pas déjà une recherche active pour ce type
-    const existing = (game.immoSearches ?? []).find((s) => s.catalogId === catalogId && !s.candidates)
+    // Bloquer si une recherche existe déjà (en cours OU complétée non résolue)
+    const existing = (game.immoSearches ?? []).find((s) => s.catalogId === catalogId)
     if (existing) {
-      return { success: false, message: 'Une recherche est déjà en cours pour ce type de bien.' }
+      return existing.candidates
+        ? { success: false, message: 'Des biens ont déjà été trouvés. Achetez ou écartez les résultats avant de relancer.' }
+        : { success: false, message: 'Une recherche est déjà en cours pour ce type de bien.' }
     }
 
     const now = Date.now()
@@ -1187,6 +1190,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }))
     get().saveGame()
     return { success: true, message: `Recherche lancée pour ${item.name}. Résultats dans quelques heures.` }
+  },
+
+  dismissImmoSearch: (searchId) => {
+    set((s) => ({
+      game: s.game
+        ? { ...s.game, immoSearches: (s.game.immoSearches ?? []).filter((sr) => sr.id !== searchId) }
+        : s.game,
+    }))
+    get().saveGame()
   },
 
   selectPropertyAndBuy: (searchId, candidateId, downPaymentPct, termMonths) => {

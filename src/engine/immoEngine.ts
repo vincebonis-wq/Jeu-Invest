@@ -55,109 +55,103 @@ function randBetween(min: number, max: number, salt: number): number {
   return min + norm * (max - min)
 }
 
+// Profils fixes par type — 5 offres aux conditions de paiement distinctes
+type Profile = {
+  label: string
+  priceFactor: number
+  yieldBonus: number
+  chargeFactor: number
+  condition: 'neuf' | 'bon' | 'à rénover'
+  suggestedDownPct: number
+}
+
+const PARKING_PROFILES: Profile[] = [
+  { label: 'Affaire à saisir',    priceFactor: 0.70, yieldBonus:  0.016, chargeFactor: 1.6, condition: 'à rénover', suggestedDownPct: 1.00 },
+  { label: 'Box abordable',       priceFactor: 0.85, yieldBonus:  0.006, chargeFactor: 1.1, condition: 'bon',        suggestedDownPct: 0.50 },
+  { label: 'Parking résidentiel', priceFactor: 1.00, yieldBonus:  0.000, chargeFactor: 1.0, condition: 'bon',        suggestedDownPct: 0.30 },
+  { label: 'Box sécurisé',        priceFactor: 1.22, yieldBonus: -0.005, chargeFactor: 0.8, condition: 'neuf',       suggestedDownPct: 0.20 },
+  { label: 'Emplacement premium', priceFactor: 1.50, yieldBonus: -0.012, chargeFactor: 0.6, condition: 'neuf',       suggestedDownPct: 0.10 },
+]
+
+const LMNP_PROFILES: Profile[] = [
+  { label: 'Studio à rénover',    priceFactor: 0.72, yieldBonus:  0.015, chargeFactor: 1.5, condition: 'à rénover', suggestedDownPct: 1.00 },
+  { label: 'Studio meublé',       priceFactor: 0.88, yieldBonus:  0.006, chargeFactor: 1.1, condition: 'bon',        suggestedDownPct: 0.30 },
+  { label: 'T2 résidentiel',      priceFactor: 1.00, yieldBonus:  0.000, chargeFactor: 1.0, condition: 'bon',        suggestedDownPct: 0.20 },
+  { label: 'T2 neuf Pinel',       priceFactor: 1.20, yieldBonus: -0.005, chargeFactor: 0.7, condition: 'neuf',       suggestedDownPct: 0.15 },
+  { label: 'Résidence services',  priceFactor: 1.45, yieldBonus: -0.010, chargeFactor: 0.5, condition: 'neuf',       suggestedDownPct: 0.10 },
+]
+
+const CLASSIQUE_PROFILES: Profile[] = [
+  { label: 'Bien à rénover',      priceFactor: 0.70, yieldBonus:  0.018, chargeFactor: 1.7, condition: 'à rénover', suggestedDownPct: 1.00 },
+  { label: 'T2 accessible',       priceFactor: 0.85, yieldBonus:  0.007, chargeFactor: 1.2, condition: 'bon',        suggestedDownPct: 0.20 },
+  { label: 'T3 équilibré',        priceFactor: 1.00, yieldBonus:  0.000, chargeFactor: 1.0, condition: 'bon',        suggestedDownPct: 0.15 },
+  { label: 'T4 familial neuf',    priceFactor: 1.25, yieldBonus: -0.006, chargeFactor: 0.7, condition: 'neuf',       suggestedDownPct: 0.10 },
+  { label: 'Maison avec jardin',  priceFactor: 1.55, yieldBonus: -0.012, chargeFactor: 0.6, condition: 'neuf',       suggestedDownPct: 0.10 },
+]
+
 /**
- * Génère 3-4 candidats immobiliers réalistes selon le type
+ * Génère exactement 5 candidats immobiliers avec des profils et conditions de paiement distincts.
  */
 export function generatePropertyCandidates(
   catalogId: 'parking' | 'lmnp' | 'immo_classique',
   economy: EconomyState,
 ): PropertyCandidate[] {
   const now = Date.now()
-  const count = 3 + (Math.random() > 0.5 ? 1 : 0)
-  const candidates: PropertyCandidate[] = []
 
-  for (let i = 0; i < count; i++) {
-    const seed = now + i * 1000
+  const profiles =
+    catalogId === 'parking' ? PARKING_PROFILES
+    : catalogId === 'lmnp'  ? LMNP_PROFILES
+    : CLASSIQUE_PROFILES
 
-    if (catalogId === 'parking') {
-      const price = Math.round(randBetween(8000, 25000, seed) * economy.realEstateIndex)
-      const monthlyRent = Math.round(price * randBetween(0.06, 0.08, seed + 1) / 12)
-      const monthlyCharges = Math.round(15 + randBetween(0, 20, seed + 2))
-      const grossYieldPct = (monthlyRent * 12) / price
-      const netYieldPct = ((monthlyRent - monthlyCharges) * 12) / price
-      const sqm = Math.round(randBetween(12, 20, seed + 3))
-      const cityIdx = Math.floor(randBetween(0, FRENCH_CITIES.length - 0.01, seed + 4))
-      const streetIdx = Math.floor(randBetween(0, STREET_NAMES.length - 0.01, seed + 5))
-      const num = Math.round(randBetween(1, 120, seed + 6))
-      const conditions: Array<'neuf' | 'bon' | 'à rénover'> = ['neuf', 'bon', 'à rénover']
-      const cond = pick(conditions, Math.floor(randBetween(0, 2.99, seed + 7)))
-      const types: Array<'parking' | 'box'> = ['parking', 'box']
-      const pType = pick(types, Math.floor(randBetween(0, 1.99, seed + 8)))
+  const basePriceRange =
+    catalogId === 'parking'      ? { min: 10000, max: 22000, baseYield: 0.07, baseCharges: 20  }
+    : catalogId === 'lmnp'       ? { min: 80000, max: 190000, baseYield: 0.05, baseCharges: 110 }
+    : /* immo_classique */         { min: 110000, max: 340000, baseYield: 0.04, baseCharges: 160 }
 
-      candidates.push({
-        id: uid(),
-        address: `${num} ${STREET_NAMES[streetIdx]}`,
-        city: FRENCH_CITIES[cityIdx],
-        squareMeters: sqm,
-        price,
-        monthlyRent,
-        monthlyCharges,
-        grossYieldPct,
-        netYieldPct,
-        propertyType: pType,
-        condition: cond,
-      })
-    } else if (catalogId === 'lmnp') {
-      const price = Math.round(randBetween(80000, 200000, seed) * economy.realEstateIndex)
-      const monthlyRent = Math.round(price * randBetween(0.04, 0.06, seed + 1) / 12)
-      const monthlyCharges = Math.round(80 + randBetween(0, 120, seed + 2))
-      const grossYieldPct = (monthlyRent * 12) / price
-      const netYieldPct = ((monthlyRent - monthlyCharges) * 12) / price
-      const sqm = Math.round(randBetween(20, 55, seed + 3))
-      const cityIdx = Math.floor(randBetween(0, FRENCH_CITIES.length - 0.01, seed + 4))
-      const streetIdx = Math.floor(randBetween(0, STREET_NAMES.length - 0.01, seed + 5))
-      const num = Math.round(randBetween(1, 120, seed + 6))
-      const conditions: Array<'neuf' | 'bon' | 'à rénover'> = ['neuf', 'bon', 'à rénover']
-      const cond = pick(conditions, Math.floor(randBetween(0, 2.99, seed + 7)))
-      const types: Array<'studio' | 'T2'> = ['studio', 'T2']
-      const pType = pick(types, Math.floor(randBetween(0, 1.99, seed + 8)))
-
-      candidates.push({
-        id: uid(),
-        address: `${num} ${STREET_NAMES[streetIdx]}`,
-        city: FRENCH_CITIES[cityIdx],
-        squareMeters: sqm,
-        price,
-        monthlyRent,
-        monthlyCharges,
-        grossYieldPct,
-        netYieldPct,
-        propertyType: pType,
-        condition: cond,
-      })
-    } else {
-      // immo_classique
-      const price = Math.round(randBetween(100000, 350000, seed) * economy.realEstateIndex)
-      const monthlyRent = Math.round(price * randBetween(0.03, 0.05, seed + 1) / 12)
-      const monthlyCharges = Math.round(100 + randBetween(0, 200, seed + 2))
-      const grossYieldPct = (monthlyRent * 12) / price
-      const netYieldPct = ((monthlyRent - monthlyCharges) * 12) / price
-      const sqm = Math.round(randBetween(35, 90, seed + 3))
-      const cityIdx = Math.floor(randBetween(0, FRENCH_CITIES.length - 0.01, seed + 4))
-      const streetIdx = Math.floor(randBetween(0, STREET_NAMES.length - 0.01, seed + 5))
-      const num = Math.round(randBetween(1, 120, seed + 6))
-      const conditions: Array<'neuf' | 'bon' | 'à rénover'> = ['neuf', 'bon', 'à rénover']
-      const cond = pick(conditions, Math.floor(randBetween(0, 2.99, seed + 7)))
-      const types: Array<'T2' | 'T3' | 'T4' | 'maison'> = ['T2', 'T3', 'T4', 'maison']
-      const pType = pick(types, Math.floor(randBetween(0, 3.99, seed + 8)))
-
-      candidates.push({
-        id: uid(),
-        address: `${num} ${STREET_NAMES[streetIdx]}`,
-        city: FRENCH_CITIES[cityIdx],
-        squareMeters: sqm,
-        price,
-        monthlyRent,
-        monthlyCharges,
-        grossYieldPct,
-        netYieldPct,
-        propertyType: pType,
-        condition: cond,
-      })
-    }
+  const basePropertyTypes: Record<string, Array<'studio' | 'T2' | 'T3' | 'T4' | 'maison' | 'parking' | 'box'>> = {
+    parking:      ['parking', 'box'],
+    lmnp:         ['studio', 'T2'],
+    immo_classique: ['T2', 'T3', 'T4', 'maison'],
   }
 
-  return candidates
+  return profiles.map((profile, i) => {
+    const seed = now + i * 7919  // prime to avoid repeating decimals
+
+    const basePrice = randBetween(basePriceRange.min, basePriceRange.max, seed)
+    const price = Math.round(basePrice * profile.priceFactor * economy.realEstateIndex)
+    const yieldRate = Math.max(0.03, basePriceRange.baseYield + profile.yieldBonus)
+    const monthlyRent = Math.round((price * yieldRate) / 12)
+    const monthlyCharges = Math.round(basePriceRange.baseCharges * profile.chargeFactor * (0.8 + 0.4 * ((Math.sin(seed) + 1) / 2)))
+    const grossYieldPct = (monthlyRent * 12) / price
+    const netYieldPct = ((monthlyRent - monthlyCharges) * 12) / price
+
+    const sqmRange =
+      catalogId === 'parking' ? [10, 22]
+      : catalogId === 'lmnp'  ? [18, 52]
+      : [32, 95]
+    const sqm = Math.round(randBetween(sqmRange[0], sqmRange[1], seed + 1))
+    const cityIdx = Math.floor(randBetween(0, FRENCH_CITIES.length - 0.01, seed + 2))
+    const streetIdx = Math.floor(randBetween(0, STREET_NAMES.length - 0.01, seed + 3))
+    const num = Math.round(randBetween(1, 120, seed + 4))
+    const types = basePropertyTypes[catalogId]
+    const pType = pick(types, i)
+
+    return {
+      id: uid(),
+      label: profile.label,
+      suggestedDownPct: profile.suggestedDownPct,
+      address: `${num} ${STREET_NAMES[streetIdx]}`,
+      city: FRENCH_CITIES[cityIdx],
+      squareMeters: sqm,
+      price,
+      monthlyRent,
+      monthlyCharges,
+      grossYieldPct,
+      netYieldPct,
+      propertyType: pType,
+      condition: profile.condition,
+    }
+  })
 }
 
 export interface AmortizationRow {

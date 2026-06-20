@@ -232,8 +232,9 @@ function PropertyComparisonModal({
   onClose: () => void
   onSelect: (candidate: PropertyCandidate) => void
 }) {
+  const dismissImmoSearch = useGameStore((s) => s.dismissImmoSearch)
   const candidates = search.candidates ?? []
-  const typeLabel = search.catalogId === 'parking' ? 'Parking' : search.catalogId === 'lmnp' ? 'LMNP' : 'Locatif Classique'
+  const typeLabel = search.catalogId === 'parking' ? 'Parking / Box' : search.catalogId === 'lmnp' ? 'LMNP' : 'Locatif Classique'
 
   const conditionColor = (c: PropertyCandidate['condition']) => {
     if (c === 'neuf') return 'text-emerald-600 bg-emerald-50'
@@ -241,59 +242,77 @@ function PropertyComparisonModal({
     return 'text-amber-600 bg-amber-50'
   }
 
+  const downPctLabel = (pct: number) =>
+    pct >= 1 ? 'Comptant conseillé' :
+    pct >= 0.5 ? `Apport 50 % recommandé` :
+    pct >= 0.3 ? `Apport 30 % recommandé` :
+    pct >= 0.2 ? `Apport 20 % — crédit bancaire` :
+    `Apport 10 % — effet de levier max`
+
+  function handleDismiss() {
+    dismissImmoSearch(search.id)
+    onClose()
+  }
+
   return (
-    <Modal open onClose={onClose} title={`Biens disponibles — ${typeLabel}`} size="lg">
+    <Modal open onClose={onClose} title={`${candidates.length} biens disponibles — ${typeLabel}`} size="lg">
       <div className="space-y-3">
         <p className="text-sm text-slate-500">
-          {candidates.length} biens trouvés lors de votre recherche. Sélectionnez celui qui vous convient.
+          Choisissez le bien qui correspond à votre budget et votre stratégie.
         </p>
-        <div className="grid gap-3">
+        <div className="space-y-2">
           {candidates.map((candidate) => (
             <button
               key={candidate.id}
               onClick={() => onSelect(candidate)}
-              className="w-full text-left rounded-2xl border-2 border-slate-100 hover:border-brand-300 hover:shadow-md transition-all p-4"
+              className="w-full text-left rounded-2xl border-2 border-slate-100 hover:border-brand-300 hover:shadow-md transition-all p-3.5"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <div className="font-display font-bold text-slate-800 mb-0.5">
-                    {candidate.address}, {candidate.city}
-                  </div>
-                  <div className="text-xs text-slate-400 mb-2">
-                    {candidate.squareMeters} m² · {candidate.propertyType}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <div className="text-xs text-slate-400">Prix</div>
-                      <div className="font-bold text-slate-800">{formatEuro(candidate.price)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-slate-400">Loyer brut</div>
-                      <div className="font-bold text-slate-800">{formatEuro(candidate.monthlyRent)}/mois</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-slate-400">Rendement brut</div>
-                      <div className="font-bold text-emerald-600">{formatPercent(candidate.grossYieldPct)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-slate-400">Rendement net</div>
-                      <div className="font-bold text-emerald-700">{formatPercent(candidate.netYieldPct)}</div>
-                    </div>
-                  </div>
+              {/* Header: label + condition */}
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-display font-bold text-slate-800 text-sm">{candidate.label}</span>
+                <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', conditionColor(candidate.condition))}>
+                  {candidate.condition}
+                </span>
+              </div>
+              {/* Address */}
+              <div className="text-xs text-slate-400 mb-2">
+                {candidate.address}, {candidate.city} · {candidate.squareMeters} m²
+              </div>
+              {/* Key numbers */}
+              <div className="grid grid-cols-4 gap-2 text-center mb-2">
+                <div className="rounded-lg bg-slate-50 p-1.5">
+                  <div className="text-[10px] text-slate-400">Prix</div>
+                  <div className="font-bold text-slate-800 text-xs">{formatEuroCompact(candidate.price)}</div>
                 </div>
-                <div className="shrink-0 space-y-1.5">
-                  <span className={cn('block text-xs font-semibold px-2 py-0.5 rounded-full', conditionColor(candidate.condition))}>
-                    {candidate.condition}
-                  </span>
-                  <span className="block text-xs text-slate-400 text-right">
-                    Charges: {formatEuro(candidate.monthlyCharges)}/mois
-                  </span>
+                <div className="rounded-lg bg-slate-50 p-1.5">
+                  <div className="text-[10px] text-slate-400">Loyer/mois</div>
+                  <div className="font-bold text-slate-800 text-xs">{formatEuro(candidate.monthlyRent)}</div>
                 </div>
+                <div className="rounded-lg bg-emerald-50 p-1.5">
+                  <div className="text-[10px] text-emerald-500">Rendement brut</div>
+                  <div className="font-bold text-emerald-700 text-xs">{formatPercent(candidate.grossYieldPct)}</div>
+                </div>
+                <div className="rounded-lg bg-emerald-50 p-1.5">
+                  <div className="text-[10px] text-emerald-500">Rendement net</div>
+                  <div className="font-bold text-emerald-700 text-xs">{formatPercent(candidate.netYieldPct)}</div>
+                </div>
+              </div>
+              {/* Payment condition */}
+              <div className="flex items-center gap-1.5 text-xs text-brand-600 font-semibold">
+                <span>💳</span>
+                <span>{downPctLabel(candidate.suggestedDownPct)}</span>
               </div>
             </button>
           ))}
         </div>
-        <Button variant="secondary" fullWidth onClick={onClose}>Annuler</Button>
+        <div className="flex gap-2 pt-1">
+          <Button variant="secondary" fullWidth onClick={handleDismiss}>
+            Écarter ces résultats
+          </Button>
+          <Button variant="secondary" fullWidth onClick={onClose}>
+            Fermer
+          </Button>
+        </div>
       </div>
     </Modal>
   )
@@ -319,7 +338,11 @@ function CreditSimulationModal({
 }) {
   const game = useGameStore((s) => s.game)!
   const selectPropertyAndBuy = useGameStore((s) => s.selectPropertyAndBuy)
-  const [downPct, setDownPct] = useState(0.20)
+  const suggestedDown = candidate.suggestedDownPct >= 1 ? 0.50 : candidate.suggestedDownPct
+  const [downPct, setDownPct] = useState(() => {
+    const opts = DOWN_PAYMENT_OPTIONS
+    return opts.reduce((prev, cur) => Math.abs(cur - suggestedDown) < Math.abs(prev - suggestedDown) ? cur : prev)
+  })
   const [termMonths, setTermMonths] = useState(20 * 12)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
 
