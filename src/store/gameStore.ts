@@ -138,6 +138,7 @@ interface GameStore {
   claimChallengeReward: (challengeId: string) => void
   upgradeInvestment: (instanceId: string) => { success: boolean; message: string }
   depositToInvestment: (instanceId: string, amount: number) => BuyResult
+  renovateProperty: (instanceId: string) => BuyResult
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -1072,8 +1073,25 @@ export const useGameStore = create<GameStore>((set, get) => ({
     } else if (action.effect === 'half_heritage') {
       cashDelta += 6000
     } else if (action.effect === 'enjoy_heritage') {
-      // 3 mois de charges réduites, simplifié : encaisse une partie
       cashDelta += 3000
+    } else if (action.effect === 'dpe_now') {
+      // Isolation anticipée : boost loyer +6% + valeur +4% sur le premier bien immo
+      const prop = investments.find((i) => i.propertyDetails)
+      if (prop) {
+        investments = investments.map((i) =>
+          i.instanceId === prop.instanceId
+            ? {
+                ...i,
+                currentValue: Math.round(i.currentValue * 1.04),
+                propertyDetails: {
+                  ...i.propertyDetails!,
+                  monthlyRent: Math.round(i.propertyDetails!.monthlyRent * 1.06),
+                  baseMonthlyRent: Math.round((i.propertyDetails!.baseMonthlyRent ?? i.propertyDetails!.monthlyRent) * 1.06),
+                },
+              }
+            : i,
+        )
+      }
     }
 
     set((s) => ({
@@ -1641,6 +1659,56 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }))
     get().saveGame()
     return { success: true, message: `${amount.toLocaleString('fr-FR')} € versés dans ${inv.name}.` }
+  },
+
+  renovateProperty: (instanceId) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+
+    const inv = game.investments.find((i) => i.instanceId === instanceId)
+    if (!inv?.propertyDetails) return { success: false, message: 'Bien introuvable.' }
+
+    const prop = inv.propertyDetails
+    const level = prop.renovationLevel ?? 0
+    if (level >= 3) return { success: false, message: 'Ce bien est déjà au niveau de rénovation maximum (3/3).' }
+
+    const monthsSinceLast = (game.monthIndex ?? 0) - (prop.lastRenovationMonthIndex ?? -999)
+    if (prop.lastRenovationMonthIndex !== undefined && monthsSinceLast < 12) {
+      return { success: false, message: `Attends encore ${12 - monthsSinceLast} mois avant la prochaine rénovation.` }
+    }
+
+    const cost = Math.max(3000, Math.round(inv.currentValue * 0.12))
+    if (game.cashBalance < cost) {
+      return { success: false, message: `Il te faut ${cost.toLocaleString('fr-FR')} € pour rénover ce bien.` }
+    }
+
+    const newRent = Math.round(prop.monthlyRent * 1.10)
+    const newBase = Math.round((prop.baseMonthlyRent ?? prop.monthlyRent) * 1.10)
+    const newValue = Math.round(inv.currentValue * 1.08)
+
+    set((s) => ({
+      game: {
+        ...s.game!,
+        cashBalance: s.game!.cashBalance - cost,
+        investments: s.game!.investments.map((i) =>
+          i.instanceId === instanceId
+            ? {
+                ...i,
+                currentValue: newValue,
+                propertyDetails: {
+                  ...i.propertyDetails!,
+                  monthlyRent: newRent,
+                  baseMonthlyRent: newBase,
+                  renovationLevel: level + 1,
+                  lastRenovationMonthIndex: s.game!.monthIndex,
+                },
+              }
+            : i,
+        ),
+      },
+    }))
+    get().saveGame()
+    return { success: true, message: `Rénovation terminée ! Loyer +10 %, valeur +8 %.` }
   },
 
   earlyRepayMortgage: (mortgageId) => {

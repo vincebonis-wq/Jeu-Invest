@@ -289,6 +289,52 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     cooldownMonths: 36,
   },
 
+  // ----- LOCATIF NARRATIF -----
+  {
+    id: 'loyer_impaye',
+    category: 'property',
+    severity: 'bad',
+    title: 'Loyer impayé ce mois 😰',
+    description:
+      'Ton locataire n\'a pas réglé son loyer ce mois-ci. Il dit traverser une période difficile. Que fais-tu ?',
+    monthlyProbability: 0.03,
+    conditions: [{ type: 'hasRealEstate', value: 1 }],
+    impactRange: [0, 0],
+    cooldownMonths: 10,
+    actionOptions: [
+      { label: 'Lui laisser du temps (perte ce mois)', cost: 0, effect: 'accept_vacancy' },
+      { label: 'Relance officielle (risque de conflit)', cost: 0, effect: 'no_effect' },
+    ],
+  },
+  {
+    id: 'travaux_copropriete',
+    category: 'property',
+    severity: 'warning',
+    title: 'Travaux de copropriété votés 🏗️',
+    description:
+      'L\'assemblée générale a voté des travaux de ravalement de façade. Ta quote-part obligatoire est prélevée. En contrepartie, la valeur du bâtiment progresse.',
+    monthlyProbability: 0.025,
+    conditions: [{ type: 'hasRealEstate', value: 1 }],
+    impactRange: [-4500, -1500],
+    cooldownMonths: 18,
+  },
+  {
+    id: 'dpe_renovation',
+    category: 'property',
+    severity: 'warning',
+    title: 'DPE F/G — obligation de travaux 🌡️',
+    description:
+      'Ton bien est classé F ou G. La loi imposera des travaux d\'isolation dans les prochaines années. Anticiper coûte moins cher et booste le loyer. Attendre, c\'est prendre un risque légal.',
+    monthlyProbability: 0.02,
+    conditions: [{ type: 'hasRealEstate', value: 1 }],
+    impactRange: [0, 0],
+    cooldownMonths: 24,
+    actionOptions: [
+      { label: 'Anticiper les travaux maintenant (2 500 €)', cost: 2500, effect: 'dpe_now' },
+      { label: 'Attendre la mise en demeure', cost: 0, effect: 'no_effect' },
+    ],
+  },
+
   // ----- ÉVÉNEMENTS INTERACTIFS -----
   {
     id: 'rupture_conventionnelle',

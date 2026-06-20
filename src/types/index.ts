@@ -200,6 +200,8 @@ export interface PropertyDetails {
   vacancyMonthsLeft: number
   maintenanceCostYearly: number
   depreciationBaseBuilding: number // LMNP : 70% du prix
+  renovationLevel?: number          // 0-3 : nombre de rénovations effectuées
+  lastRenovationMonthIndex?: number // cooldown de 12 mois entre rénovations
 }
 
 export interface BusinessDetails {

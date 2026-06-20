@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Building2, MapPin, TrendingUp, TrendingDown, Users, Zap, AlertCircle, Tag, X, CreditCard, Calendar, Banknote } from 'lucide-react'
+import { Building2, MapPin, TrendingUp, TrendingDown, Users, Zap, AlertCircle, Tag, X, CreditCard, Calendar, Banknote, Wrench } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { getCatalogItem } from '../../data/investments'
 import { BUSINESS_DECISION_BY_ID } from '../../data/businessDecisions'
@@ -80,6 +80,7 @@ export function Properties() {
   const [decisionTarget, setDecisionTarget] = useState<Investment | null>(null)
   const [earlyRepayTarget, setEarlyRepayTarget] = useState<string | null>(null) // mortgageId
   const [saleTarget, setSaleTarget] = useState<Investment | null>(null)
+  const [renovTarget, setRenovTarget] = useState<Investment | null>(null)
 
   const properties = game.investments.filter((i) => i.propertyDetails)
   const businesses = game.investments.filter((i) => i.businessDetails)
@@ -121,6 +122,7 @@ export function Properties() {
                 onManageTenant={() => setTenantTarget(p)}
                 onEarlyRepay={p.mortgageId ? () => setEarlyRepayTarget(p.mortgageId!) : undefined}
                 onSale={() => setSaleTarget(p)}
+                onRenovate={() => setRenovTarget(p)}
               />
             ))}
           </div>
@@ -179,6 +181,13 @@ export function Properties() {
         <SaleModal
           inv={saleTarget}
           onClose={() => setSaleTarget(null)}
+        />
+      )}
+
+      {renovTarget && (
+        <RenovationModal
+          inv={renovTarget}
+          onClose={() => setRenovTarget(null)}
         />
       )}
     </div>
@@ -462,16 +471,123 @@ function MortgageStat({ icon, label, value, highlight }: { icon: React.ReactNode
 // PropertyCard
 // ============================================================================
 
+// ============================================================================
+// RenovationModal
+// ============================================================================
+
+function RenovationModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
+  const game = useGameStore((s) => s.game)!
+  const renovateProperty = useGameStore((s) => s.renovateProperty)
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  const prop = inv.propertyDetails!
+  const level = prop.renovationLevel ?? 0
+  const cost = Math.max(3000, Math.round(inv.currentValue * 0.12))
+  const canAfford = game.cashBalance >= cost
+  const monthsSinceLast = (game.monthIndex ?? 0) - (prop.lastRenovationMonthIndex ?? -999)
+  const onCooldown = prop.lastRenovationMonthIndex !== undefined && monthsSinceLast < 12
+  const blocked = level >= 3 || onCooldown
+
+  const RENOV_LABELS = ['Origine', 'Rénové', 'Bien entretenu', 'Excellent état']
+
+  function handleRenovate() {
+    const res = renovateProperty(inv.instanceId)
+    setResult(res)
+    if (res.success) setTimeout(onClose, 1800)
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Rénover — ${inv.name}`} size="sm">
+      <div className="space-y-4">
+        {/* Niveau actuel */}
+        <div className="rounded-2xl bg-amber-50 border border-amber-100 p-4">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm font-semibold text-amber-800">Niveau actuel</span>
+            <span className="text-sm font-bold text-amber-700">{RENOV_LABELS[level]}</span>
+          </div>
+          <div className="flex gap-1">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className={cn('flex-1 h-2 rounded-full', i < level ? 'bg-amber-500' : 'bg-amber-200')} />
+            ))}
+          </div>
+          {level < 3 && <p className="text-xs text-amber-600 mt-1.5">{level}/3 rénovations effectuées</p>}
+        </div>
+
+        {level < 3 ? (
+          <>
+            <div className="rounded-2xl bg-slate-50 p-4 space-y-2 text-sm">
+              <div className="font-semibold text-slate-700 mb-1">Effets de la rénovation</div>
+              <div className="flex justify-between text-slate-600">
+                <span>Loyer mensuel</span>
+                <span className="font-semibold text-emerald-600">
+                  {formatEuro(prop.monthlyRent)} → {formatEuro(Math.round(prop.monthlyRent * 1.10))} (+10%)
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Valeur du bien</span>
+                <span className="font-semibold text-emerald-600">+8%</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 pt-2 font-semibold text-slate-700">
+                <span>Coût des travaux</span>
+                <span className={canAfford ? 'text-slate-800' : 'text-red-600'}>{formatEuro(cost)}</span>
+              </div>
+            </div>
+
+            {onCooldown && (
+              <div className="text-sm text-amber-700 bg-amber-50 rounded-xl p-3">
+                ⏳ Prochain chantier dans {12 - monthsSinceLast} mois — le bien doit se stabiliser.
+              </div>
+            )}
+            {!canAfford && !onCooldown && (
+              <div className="text-sm text-red-600 bg-red-50 rounded-xl p-3">
+                Cash insuffisant ({formatEuro(game.cashBalance)} disponible).
+              </div>
+            )}
+
+            {result && (
+              <div className={cn('text-sm rounded-xl p-3 text-center font-semibold', result.success ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
+                {result.message}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button variant="secondary" fullWidth onClick={onClose}>Annuler</Button>
+              <Button
+                variant="gold"
+                fullWidth
+                disabled={blocked || !canAfford}
+                onClick={handleRenovate}
+              >
+                <Wrench size={14} /> Lancer les travaux
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="text-center py-4 text-sm text-slate-500">
+            Ce bien est au maximum de ses rénovations. Il est en excellent état ! ✨
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+// ============================================================================
+// PropertyCard
+// ============================================================================
+
 function PropertyCard({
   inv,
   onManageTenant,
   onEarlyRepay,
   onSale,
+  onRenovate,
 }: {
   inv: Investment
   onManageTenant: () => void
   onEarlyRepay?: () => void
   onSale: () => void
+  onRenovate: () => void
 }) {
   const item = getCatalogItem(inv.catalogId)
   const prop = inv.propertyDetails!
@@ -481,6 +597,8 @@ function PropertyCard({
   const currentProfile = TENANT_PROFILES.find((p) => p.id === prop.tenantProfile) ?? TENANT_PROFILES[0]
   const isForSale = !!inv.saleListingPrice
   const offerCount = (inv.pendingOffers ?? []).length
+  const renovLevel = prop.renovationLevel ?? 0
+  const RENOV_STARS = ['', '✨', '✨✨', '✨✨✨']
 
   return (
     <Card className="overflow-hidden">
@@ -497,6 +615,9 @@ function PropertyCard({
             <Badge tone="warning">
               {offerCount > 0 ? `${offerCount} offre${offerCount > 1 ? 's' : ''}` : 'En vente'}
             </Badge>
+          )}
+          {renovLevel > 0 && (
+            <Badge tone="brand">{RENOV_STARS[renovLevel]} Rénov. {renovLevel}/3</Badge>
           )}
         </div>
       </div>
@@ -567,6 +688,13 @@ function PropertyCard({
               onClick={onEarlyRepay}
             >
               Rembourser par anticipation
+            </Button>
+          )}
+
+          {/* Bouton rénovation */}
+          {renovLevel < 3 && (
+            <Button variant="secondary" size="sm" fullWidth onClick={onRenovate}>
+              <Wrench size={13} /> {renovLevel === 0 ? 'Rénover le bien' : `Rénover (${renovLevel}/3)`}
             </Button>
           )}
 
