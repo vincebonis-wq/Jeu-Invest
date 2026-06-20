@@ -15,7 +15,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { RotateCcw, Receipt, Trophy, Share2 } from 'lucide-react'
+import { RotateCcw, Receipt, Trophy, Share2, Download, Upload } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import {
   MILESTONE_INFO,
@@ -381,6 +381,9 @@ export function Stats() {
         </Button>
       </Card>
 
+      {/* Export / Import */}
+      <SaveBackupCard />
+
       {/* Prestige */}
       {(game.player.milestone === 'millionnaire' || game.player.milestone === 'multimillionnaire') && (
         <Card className="p-5">
@@ -443,6 +446,82 @@ export function Stats() {
   )
 }
 
+function SaveBackupCard() {
+  const [importing, setImporting] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  function handleExport() {
+    const raw = localStorage.getItem('jeu-invest-save-v1')
+    if (!raw) { setMsg({ ok: false, text: 'Aucune sauvegarde trouvée.' }); return }
+    const blob = new Blob([raw], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `jeu-invest-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setMsg({ ok: true, text: 'Sauvegarde exportée !' })
+    setTimeout(() => setMsg(null), 3000)
+  }
+
+  function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const text = ev.target?.result as string
+        const parsed = JSON.parse(text)
+        if (!parsed?.game?.player || !parsed?.game?.investments) throw new Error('Format invalide')
+        localStorage.setItem('jeu-invest-save-v1', text)
+        setMsg({ ok: true, text: 'Sauvegarde importée ! Rechargement…' })
+        setTimeout(() => window.location.reload(), 1200)
+      } catch {
+        setMsg({ ok: false, text: 'Fichier invalide ou corrompu.' })
+      } finally {
+        setImporting(false)
+        e.target.value = ''
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  return (
+    <Card className="p-5">
+      <CardHeader
+        title="Sauvegarde & restauration"
+        subtitle="Exporte ou importe ta progression"
+        icon={<Download size={18} />}
+      />
+      <p className="text-sm text-slate-500 mb-4">
+        Conserve une copie de ta partie sur ton appareil ou transfère-la vers un autre navigateur.
+      </p>
+      <div className="flex flex-wrap gap-3">
+        <Button variant="secondary" onClick={handleExport}>
+          <Download size={15} /> Exporter (.json)
+        </Button>
+        <label className={cn(
+          'inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-sm cursor-pointer transition-colors',
+          importing ? 'bg-slate-100 text-slate-400' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+        )}>
+          <Upload size={15} />
+          {importing ? 'Importation…' : 'Importer un fichier'}
+          <input type="file" accept=".json" className="hidden" onChange={handleImport} disabled={importing} />
+        </label>
+      </div>
+      {msg && (
+        <div className={cn(
+          'mt-3 text-sm font-semibold px-3 py-2 rounded-xl',
+          msg.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600',
+        )}>
+          {msg.text}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 function KpiTile({
   label,
   value,
@@ -467,3 +546,4 @@ function KpiTile({
     </Card>
   )
 }
+

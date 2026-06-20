@@ -488,6 +488,23 @@ export interface GameState {
   prestige?: PrestigeRecord
   weeklyChallenges?: WeeklyChallengesState
   questProgress?: QuestChainProgress[]
+  pendingYearRecap?: AnnualRecap
+}
+
+// ----------------------------------------------------------------------------
+// Récap annuel
+// ----------------------------------------------------------------------------
+
+export interface AnnualRecap {
+  year: number
+  netWorthStart: number
+  netWorthEnd: number
+  passiveIncomeStart: number
+  passiveIncomeEnd: number
+  totalTaxPaid: number
+  investmentCount: number
+  milestone: MilestoneLevel
+  gainPct: number
 }
 
 export type SpeedMultiplier = 1 | 5 | 10 | 50

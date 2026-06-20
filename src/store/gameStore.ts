@@ -140,6 +140,7 @@ interface GameStore {
   claimChallengeReward: (challengeId: string) => void
   claimComboBonus: () => void
   claimQuestStepReward: (chainId: string, stepIndex: number) => void
+  dismissYearRecap: () => void
   upgradeInvestment: (instanceId: string) => { success: boolean; message: string }
   depositToInvestment: (instanceId: string, amount: number) => BuyResult
   renovateProperty: (instanceId: string) => BuyResult
@@ -374,11 +375,37 @@ export const useGameStore = create<GameStore>((set, get) => ({
       accumulator -= wholeDays
       if (wholeDays > MAX_CATCHUP_DAYS) wholeDays = MAX_CATCHUP_DAYS
 
+      const prevYear = new Date(game.gameDateISO).getUTCFullYear()
       const { state: rawGame, toasts } = advanceDays(game, wholeDays)
+      const newYear = new Date(rawGame.gameDateISO).getUTCFullYear()
 
       // Badges gagnés pendant le tick
       const tickBadgeIds = checkBadges(rawGame)
       let newGame = tickBadgeIds.length > 0 ? awardBadges(rawGame, tickBadgeIds) : rawGame
+
+      // Récap annuel au passage de l'année (uniquement si pas déjà un recap en attente)
+      if (newYear !== prevYear && !newGame.pendingYearRecap) {
+        const prevSnap = newGame.stats.length >= 13 ? newGame.stats[newGame.stats.length - 13] : newGame.stats[0]
+        const lastSnap = newGame.stats.length > 0 ? newGame.stats[newGame.stats.length - 1] : null
+        const nwStart = prevSnap?.netWorth ?? 0
+        const nwEnd = lastSnap?.netWorth ?? calcNetWorth(newGame)
+        const passiveStart = prevSnap?.passiveIncome ?? 0
+        const passiveEnd = lastSnap?.passiveIncome ?? calcMonthlyPassiveIncome(newGame)
+        newGame = {
+          ...newGame,
+          pendingYearRecap: {
+            year: prevYear,
+            netWorthStart: nwStart,
+            netWorthEnd: nwEnd,
+            passiveIncomeStart: passiveStart,
+            passiveIncomeEnd: passiveEnd,
+            totalTaxPaid: newGame.totalTaxPaid ?? 0,
+            investmentCount: newGame.investments.length,
+            milestone: newGame.player.milestone,
+            gainPct: nwStart > 0 ? Math.round(((nwEnd - nwStart) / nwStart) * 1000) / 10 : 0,
+          },
+        }
+      }
 
       // Update passive income & net worth challenges each tick
       const passiveNow = calcMonthlyPassiveIncome(newGame)
@@ -1200,6 +1227,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
             : i,
         )
       }
+    } else if (action.effect === 'crypto_hodl') {
+      // HODL crypto : valeur chute de 55% mais on tient
+      investments = investments.map((i) =>
+        i.catalogId === 'crypto'
+          ? { ...i, currentValue: Math.round(i.currentValue * 0.45) }
+          : i,
+      )
+    } else if (action.effect === 'crypto_sell_crash') {
+      // Vente en catastrophe : -60% valeur mais on récupère le cash restant
+      const cryptos = investments.filter((i) => i.catalogId === 'crypto')
+      const crashedValue = cryptos.reduce((s, i) => s + Math.round(i.currentValue * 0.40), 0)
+      cashDelta += crashedValue
+      investments = investments.filter((i) => i.catalogId !== 'crypto')
+    } else if (action.effect === 'crypto_hodl_halving') {
+      // Halving — rien à faire, le jeu applique naturellement les gains
     }
 
     set((s) => ({
@@ -1712,6 +1754,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
         },
       }
     })
+    get().saveGame()
+  },
+
+  dismissYearRecap: () => {
+    set((s) => s.game ? { game: { ...s.game, pendingYearRecap: undefined } } : s)
     get().saveGame()
   },
 

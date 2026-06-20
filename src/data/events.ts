@@ -435,6 +435,48 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
       { label: 'Profiter — réduire les charges 3 mois', cost: 0, effect: 'enjoy_heritage' },
     ],
   },
+
+  // ----- CRYPTO -----
+  {
+    id: 'crypto_crash',
+    category: 'market',
+    severity: 'bad',
+    title: 'Crypto : effondrement brutal 🔴',
+    description:
+      'Le marché des cryptos s\'effondre — BTC plonge de 60% en quelques heures. Panique généralisée. Vendre en catastrophe ou tenir la position ?',
+    monthlyProbability: 0.04,
+    conditions: [{ type: 'hasCategory', value: 'crypto' }],
+    impactRange: [0, 0],
+    cooldownMonths: 18,
+    actionOptions: [
+      { label: 'HODL — tenir la position (perte latente ~60%)', cost: 0, effect: 'crypto_hodl' },
+      { label: 'Vendre maintenant — limiter les dégâts', cost: 0, effect: 'crypto_sell_crash' },
+    ],
+  },
+  {
+    id: 'crypto_halving',
+    category: 'market',
+    severity: 'good',
+    title: 'Bitcoin Halving 📈',
+    description:
+      'Le halving Bitcoin vient de se produire — l\'émission est divisée par 2. Historiquement, cette réduction d\'offre déclenche un bull run de 12 à 18 mois.',
+    monthlyProbability: 0.015,
+    conditions: [{ type: 'hasCategory', value: 'crypto' }],
+    impactRange: [0, 0],
+    cooldownMonths: 48,
+  },
+  {
+    id: 'crypto_regulation',
+    category: 'market',
+    severity: 'warning',
+    title: 'Régulation crypto — taxation renforcée 📋',
+    description:
+      'L\'UE annonce un durcissement de la fiscalité sur les plus-values crypto : taux effectif rehaussé à 37%. À prendre en compte dans ta stratégie d\'allocation.',
+    monthlyProbability: 0.025,
+    conditions: [{ type: 'hasCategory', value: 'crypto' }],
+    impactRange: [-1200, -600],
+    cooldownMonths: 24,
+  },
 ]
 
 export const TEMPLATE_BY_ID: Record<string, EventTemplate> =

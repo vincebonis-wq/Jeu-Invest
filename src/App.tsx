@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useGameStore, selectPendingAction } from './store/gameStore'
 import { CharacterCreation } from './components/game/CharacterCreation'
 import { Header } from './components/layout/Header'
+import { MarketTicker } from './components/layout/MarketTicker'
 import { Sidebar } from './components/layout/Sidebar'
 import { Toaster } from './components/layout/Toaster'
 import { Dashboard } from './components/game/Dashboard'
@@ -19,6 +20,7 @@ import { FreedomModal } from './components/game/FreedomModal'
 import { ReturnModal } from './components/game/ReturnModal'
 import { BadgeNotification } from './components/game/BadgeNotification'
 import { FirstInvestModal } from './components/game/FirstInvestModal'
+import { YearRecapModal } from './components/game/YearRecapModal'
 import { Modal } from './components/ui/Modal'
 import { Button } from './components/ui/Button'
 import { formatEuroSigned } from './utils/formatting'
@@ -91,6 +93,7 @@ export default function App() {
       <ReturnModal />
       <BadgeNotification />
       <FirstInvestModal />
+      <YearRecapModal />
 
       {/* Bascule entre l'app actuelle et les betas */}
       <BetaModeSwitcher />
@@ -116,6 +119,7 @@ function ClassicShell() {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
+        <MarketTicker />
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 lg:pb-6">
           <div className="max-w-5xl mx-auto">
             <h1 className="font-display font-extrabold text-2xl text-slate-800 mb-4 hidden lg:block">

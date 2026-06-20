@@ -131,3 +131,12 @@
 
 /* Évite le flash de surbrillance sur mobile */
 * { -webkit-tap-highlight-color: transparent; }
+
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-ticker {
+  display: inline-block;
+  animation: ticker linear infinite;
+}

@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Flame,
+  Timer,
   TrendingUp,
   Zap,
 } from 'lucide-react'
@@ -194,6 +195,9 @@ export function Dashboard() {
 
       {/* Roadmap des paliers */}
       <MilestoneRoadmapCard game={game} />
+
+      {/* Compte à rebours liberté financière */}
+      <FreedomCountdownCard game={game} passiveIncome={passiveIncome} />
 
       {/* Objectif de vie */}
       <LifeGoalCard game={game} />
@@ -462,6 +466,77 @@ function MilestoneRoadmapCard({ game }: { game: GameState }) {
         </div>
       )}
     </Card>
+  )
+}
+
+function FreedomCountdownCard({ game, passiveIncome }: { game: GameState; passiveIncome: number }) {
+  const salary = game.player.salary
+
+  const monthsToFreedom = useMemo(() => {
+    if (passiveIncome >= salary) return 0
+    const recentStats = game.stats.slice(-6)
+    if (recentStats.length < 2) return null
+
+    const oldest = recentStats[0].passiveIncome ?? 0
+    const newest = recentStats[recentStats.length - 1].passiveIncome ?? 0
+    const monthsElapsed = Math.max(1, recentStats.length - 1)
+    const monthlyGrowth = (newest - oldest) / monthsElapsed
+
+    if (monthlyGrowth <= 0) return null
+
+    const remaining = salary - passiveIncome
+    return Math.ceil(remaining / monthlyGrowth)
+  }, [game.stats, passiveIncome, salary])
+
+  if (passiveIncome >= salary) {
+    return (
+      <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white">
+        <div className="text-2xl shrink-0">🎉</div>
+        <div>
+          <div className="font-display font-bold text-base">Liberté financière atteinte !</div>
+          <div className="text-xs text-white/80">Tes revenus passifs ({formatEuroCompact(passiveIncome)}/mois) dépassent ton salaire.</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (monthsToFreedom === null || monthsToFreedom > 600) {
+    return null
+  }
+
+  const years = Math.floor(monthsToFreedom / 12)
+  const months = monthsToFreedom % 12
+  const label = years > 0
+    ? `~${years} an${years > 1 ? 's' : ''}${months > 0 ? ` ${months} mois` : ''}`
+    : `~${monthsToFreedom} mois`
+
+  const pct = Math.min(99, Math.round((passiveIncome / salary) * 100))
+
+  return (
+    <div className="rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 p-4">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+          <Timer size={18} />
+        </div>
+        <div>
+          <div className="font-display font-bold text-slate-800 text-sm">Liberté financière</div>
+          <div className="text-xs text-slate-500">Au rythme actuel : <span className="font-bold text-indigo-700">{label}</span></div>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <div className="flex justify-between text-xs text-slate-500">
+          <span>Revenus passifs : {formatEuroCompact(passiveIncome)}/mois</span>
+          <span className="font-bold text-indigo-700">{pct}%</span>
+        </div>
+        <div className="h-2 rounded-full bg-indigo-100 overflow-hidden">
+          <div
+            className="h-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <div className="text-[10px] text-slate-400 text-right">Objectif : {formatEuroCompact(salary)}/mois</div>
+      </div>
+    </div>
   )
 }
 
