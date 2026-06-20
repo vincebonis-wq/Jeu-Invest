@@ -24,6 +24,7 @@ import { advanceDays, checkRealTimeProgress, createInitialBehavior } from '../en
 import { checkBadges, awardBadges } from '../engine/badges'
 import {
   capitalGainsTax,
+  getAVFiscalDetails,
 } from '../engine/fiscal'
 import {
   createInvestment,
@@ -87,6 +88,7 @@ interface GameStore {
   // Investissements
   buyInvestment: (catalogId: InvestmentCategory, amount: number, useMortgage: boolean) => BuyResult
   sellInvestment: (instanceId: string) => BuyResult
+  partialSellInvestment: (instanceId: string, sellAmount: number) => BuyResult
   getMortgageQuoteFor: (catalogId: InvestmentCategory, price: number) => MortgageQuote
   changeJob: (jobId: string) => { success: boolean; message: string }
   startSkillTraining: (skillId: string) => { success: boolean; message: string }
@@ -921,6 +923,61 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return {
       success: true,
       message: `Vendu pour ${Math.round(proceeds).toLocaleString('fr-FR')} € net${tax > 0 ? ` (impôt : ${Math.round(tax).toLocaleString('fr-FR')} €)` : ''}.`,
+    }
+  },
+
+  partialSellInvestment: (instanceId, sellAmount) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+    const inv = game.investments.find((i) => i.instanceId === instanceId)
+    if (!inv) return { success: false, message: 'Investissement introuvable.' }
+    if (inv.isLocked) {
+      return {
+        success: false,
+        message: `Bloqué jusqu'au ${inv.unlockDateISO ? new Date(inv.unlockDateISO).toLocaleDateString('fr-FR') : '...'}.`,
+      }
+    }
+    if (sellAmount <= 0) return { success: false, message: 'Montant invalide.' }
+    // Full sale — déléguer à sellInvestment
+    if (sellAmount >= inv.currentValue) return get().sellInvestment(instanceId)
+
+    const fraction = sellAmount / inv.currentValue
+    const gain = Math.max(0, inv.currentValue - inv.totalInvested)
+    const gainPortion = fraction * gain
+    const investedPortion = fraction * inv.totalInvested
+
+    let tax = 0
+    const item = getCatalogItem(inv.catalogId)
+    if (inv.catalogId === 'assurance_vie') {
+      const avDetails = getAVFiscalDetails(inv, game.gameDateISO)
+      tax = Math.round(gainPortion * avDetails.taxRate)
+    } else if (item.taxRegime !== 'exonere') {
+      tax = Math.round(gainPortion * 0.3)
+    }
+
+    const net = Math.round(sellAmount - tax)
+
+    set((s) => ({
+      game: {
+        ...s.game!,
+        cashBalance: s.game!.cashBalance + net,
+        investments: s.game!.investments.map((i) =>
+          i.instanceId === instanceId
+            ? {
+                ...i,
+                currentValue: Math.round((i.currentValue - sellAmount) * 100) / 100,
+                totalInvested: Math.max(0, Math.round((i.totalInvested - investedPortion) * 100) / 100),
+                realizedReturn: Math.round((i.realizedReturn ?? 0) + Math.max(0, gainPortion - tax)),
+              }
+            : i,
+        ),
+        behavior: recordSell(s.game!),
+      },
+    }))
+    get().saveGame()
+    return {
+      success: true,
+      message: `${Math.round(sellAmount).toLocaleString('fr-FR')} € cédés — net : ${net.toLocaleString('fr-FR')} €${tax > 0 ? ` (impôt : ${tax.toLocaleString('fr-FR')} €)` : ''}.`,
     }
   },
 

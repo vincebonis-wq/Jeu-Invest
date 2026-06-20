@@ -643,151 +643,199 @@ function DetailRow({
 // SellModal
 // ============================================================================
 
+const SELL_PRESETS = [25, 50, 75, 100] as const
+
 function SellModal({ inv, onClose }: { inv: Investment; onClose: () => void }) {
   const sellInvestment = useGameStore((s) => s.sellInvestment)
+  const partialSellInvestment = useGameStore((s) => s.partialSellInvestment)
   const game = useGameStore((s) => s.game)!
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
 
-  const mortgage = inv.mortgageId
-    ? game.mortgages.find((m) => m.id === inv.mortgageId)
-    : null
-  const debt = mortgage?.outstandingBalance ?? 0
-  const item = getCatalogItem(inv.catalogId)
-  const gain = Math.max(0, inv.currentValue - inv.totalInvested)
+  const isRealEstate = !!inv.propertyDetails
+  const isBusiness = !!inv.businessDetails
+  const canPartialSell = !isRealEstate && !isBusiness
 
-  // Fiscal details
-  let taxAmount = 0
+  const maxSell = inv.currentValue
+  const [sellAmount, setSellAmount] = useState(maxSell)
+
+  const fraction = maxSell > 0 ? Math.min(1, sellAmount / maxSell) : 1
+  const isFullSale = fraction >= 0.9999
+
+  const mortgage = inv.mortgageId ? game.mortgages.find((m) => m.id === inv.mortgageId) : null
+  const debt = isFullSale ? (mortgage?.outstandingBalance ?? 0) : 0
+
+  const item = getCatalogItem(inv.catalogId)
+  const totalGain = Math.max(0, inv.currentValue - inv.totalInvested)
+  const gainPortion = fraction * totalGain
+
   let avDetails: AVFiscalDetails | null = null
+  let taxRate = 0
+  let taxAmount = 0
   if (inv.catalogId === 'assurance_vie') {
     avDetails = getAVFiscalDetails(inv, game.gameDateISO)
-    taxAmount = avDetails.tax
+    taxRate = avDetails.taxRate
+    taxAmount = Math.round(gainPortion * taxRate)
   } else if (item.taxRegime !== 'exonere') {
-    if (item.isRealEstate) {
-      taxAmount = gain * 0.3 * 0.5
-    } else {
-      taxAmount = gain * 0.3
-    }
+    taxRate = 0.3
+    taxAmount = Math.round(gainPortion * taxRate)
   }
 
-  const proceeds = Math.max(0, inv.currentValue - debt - taxAmount)
+  const net = Math.max(0, Math.round(sellAmount) - taxAmount - debt)
+
+  const actionLabel = inv.catalogId === 'livret' ? 'Retirer' : 'Vendre'
 
   function handleSell() {
-    const res = sellInvestment(inv.instanceId)
+    const res = isFullSale || !canPartialSell
+      ? sellInvestment(inv.instanceId)
+      : partialSellInvestment(inv.instanceId, Math.round(sellAmount))
     setResult(res)
     if (res.success) setTimeout(onClose, 1400)
   }
 
   return (
-    <Modal open onClose={onClose} title={`Vendre — ${inv.name}`} size="md">
+    <Modal open onClose={onClose} title={`${actionLabel} — ${inv.name}`} size="md">
       {result?.success ? (
-        <div className="py-6 text-center animate-pop-in">
-          <p className="font-display font-bold text-emerald-600">{result.message}</p>
+        <div className="py-8 text-center animate-pop-in space-y-2">
+          <div className="text-4xl">✅</div>
+          <p className="font-display font-bold text-emerald-600 text-lg">{result.message}</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Résumé de la vente */}
-          <div className="rounded-2xl bg-slate-50 p-4 text-sm space-y-2">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Valeur actuelle</span>
-              <span className="font-semibold">{formatEuro(inv.currentValue)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Capital investi</span>
-              <span className="font-semibold">{formatEuro(inv.totalInvested)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className={gain >= 0 ? 'text-emerald-600' : 'text-red-500'}>Plus-value</span>
-              <span className={`font-semibold ${gain >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                {gain >= 0 ? '+' : ''}{formatEuro(gain)}
-              </span>
-            </div>
-            {debt > 0 && (
-              <div className="flex justify-between">
-                <span className="text-slate-500">Crédit restant</span>
-                <span className="font-semibold text-red-500">-{formatEuro(debt)}</span>
-              </div>
-            )}
+          {/* Résumé actif */}
+          <div className="rounded-2xl bg-slate-50 p-3 flex items-center justify-between">
+            <div className="text-sm text-slate-500">Valeur totale</div>
+            <div className="font-display font-bold text-slate-800">{formatEuro(inv.currentValue)}</div>
           </div>
 
-          {/* Fiscalité */}
-          {inv.catalogId === 'assurance_vie' && avDetails ? (
-            <div className={`rounded-2xl p-4 text-sm space-y-2 ${avDetails.isFavorable ? 'bg-emerald-50 border border-emerald-100' : 'bg-amber-50 border border-amber-100'}`}>
-              <div className="font-semibold text-slate-700 mb-2">
-                {avDetails.isFavorable ? '✅' : '⏳'} Fiscalité Assurance Vie
+          {/* Sélection du montant */}
+          {canPartialSell ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <span>Montant à {actionLabel.toLowerCase()}</span>
+                <span className="text-xs text-slate-400 font-normal ml-auto">
+                  {Math.round(fraction * 100)}% du portefeuille
+                </span>
               </div>
-              <div className="text-xs text-slate-500 mb-2">{avDetails.regime}</div>
+
+              {/* Presets */}
+              <div className="flex gap-2">
+                {SELL_PRESETS.map((pct) => (
+                  <button
+                    key={pct}
+                    onClick={() => setSellAmount(Math.round(maxSell * pct / 100))}
+                    className={cn(
+                      'flex-1 py-1.5 rounded-xl text-xs font-bold border-2 transition-all',
+                      Math.round(fraction * 100) === pct
+                        ? 'border-brand-400 bg-brand-50 text-brand-700'
+                        : 'border-slate-200 text-slate-500 hover:border-slate-300',
+                    )}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+
+              {/* Slider */}
+              <div>
+                <input
+                  type="range"
+                  min={0}
+                  max={maxSell}
+                  step={Math.max(1, Math.round(maxSell / 200))}
+                  value={sellAmount}
+                  onChange={(e) => setSellAmount(Number(e.target.value))}
+                  className="w-full accent-brand-600"
+                />
+                <div className="flex justify-between text-xs text-slate-400 mt-1">
+                  <span>0 €</span>
+                  <span className="font-bold text-brand-600 text-sm">{formatEuro(sellAmount)}</span>
+                  <span>{formatEuro(maxSell)}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-500 space-y-1">
               <div className="flex justify-between">
-                <span className="text-slate-500">Détenue depuis</span>
-                <span className="font-semibold">{avDetails.yearsHeld} ans {avDetails.monthsHeld % 12} mois</span>
+                <span>Capital investi</span>
+                <span className="font-semibold text-slate-700">{formatEuro(inv.totalInvested)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className={totalGain >= 0 ? 'text-emerald-600' : 'text-red-500'}>Plus-value</span>
+                <span className={`font-semibold ${totalGain >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {totalGain >= 0 ? '+' : ''}{formatEuro(totalGain)}
+                </span>
+              </div>
+              {debt > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Crédit restant dû</span>
+                  <span className="font-semibold text-red-500">−{formatEuro(debt)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Détail fiscal */}
+          {inv.catalogId === 'assurance_vie' && avDetails ? (
+            <div className={cn(
+              'rounded-2xl p-3.5 text-sm space-y-1.5',
+              avDetails.isFavorable ? 'bg-emerald-50 border border-emerald-100' : 'bg-amber-50 border border-amber-100',
+            )}>
+              <div className="font-semibold text-slate-700 text-xs uppercase tracking-wide mb-2">
+                {avDetails.isFavorable ? '✅' : '⏳'} Fiscalité Assurance Vie · {avDetails.regime}
               </div>
               {!avDetails.isFavorable && (
-                <div className="flex justify-between text-amber-700">
+                <div className="flex justify-between text-amber-700 text-xs">
                   <span>Avantage fiscal dans</span>
                   <span className="font-semibold">{avDetails.yearsToFavorable.toFixed(1)} ans</span>
                 </div>
               )}
-              {avDetails.allowance > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Abattement</span>
-                  <span className="font-semibold text-emerald-600">-{formatEuro(avDetails.allowance)}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-slate-500">Base imposable</span>
-                <span className="font-semibold">{formatEuro(avDetails.taxableGain)}</span>
+              <div className="flex justify-between border-t border-slate-200/60 pt-1.5">
+                <span className="text-slate-500">Impôt ({Math.round(taxRate * 100)}% × gain {formatEuro(gainPortion)})</span>
+                <span className="font-bold text-red-500">−{formatEuro(taxAmount)}</span>
               </div>
-              <div className="flex justify-between border-t border-slate-200 pt-2">
-                <span className="font-semibold text-slate-600">Impôt estimé ({Math.round(avDetails.taxRate * 100)}%)</span>
-                <span className="font-bold text-red-500">-{formatEuro(avDetails.tax)}</span>
-              </div>
-              {!avDetails.isFavorable && gain > 0 && (
-                <p className="text-xs text-amber-700 mt-2 font-medium">
-                  💡 Attendre {avDetails.yearsToFavorable.toFixed(1)} ans économiserait environ {formatEuro(avDetails.tax - Math.max(0, gain - avDetails.allowance) * avDetails.taxRate * 0.8)} d'impôts.
-                </p>
-              )}
             </div>
           ) : taxAmount > 0 ? (
-            <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 text-sm space-y-2">
-              <div className="font-semibold text-slate-700 mb-1">Fiscalité</div>
-              <div className="text-xs text-slate-500 mb-2">
-                {item.taxRegime === 'exonere' ? 'Exonéré' :
-                 item.isRealEstate ? 'Plus-value immobilière (taux réduit après abattement)' :
-                 'PFU 30% (Flat Tax)'}
-              </div>
+            <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3 text-sm space-y-1">
               <div className="flex justify-between">
-                <span className="text-slate-500">Plus-value imposable</span>
-                <span className="font-semibold">{formatEuro(gain)}</span>
-              </div>
-              <div className="flex justify-between border-t border-slate-200 pt-2">
-                <span className="font-semibold text-slate-600">Impôt estimé</span>
-                <span className="font-bold text-red-500">-{formatEuro(taxAmount)}</span>
+                <span className="text-slate-500">PFU 30% sur plus-value ({formatEuro(gainPortion)})</span>
+                <span className="font-bold text-red-500">−{formatEuro(taxAmount)}</span>
               </div>
             </div>
           ) : item.taxRegime === 'exonere' ? (
-            <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-3 text-sm text-emerald-700 font-semibold">
-              ✅ Exonéré d'impôt (Livret A)
+            <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2 text-xs text-emerald-700 font-semibold">
+              ✅ Exonéré d'impôt
             </div>
           ) : null}
 
           {/* Net à récupérer */}
-          <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/50 border border-emerald-200 p-4">
-            <div className="flex items-center justify-between">
-              <span className="font-display font-bold text-slate-700">Tu récupères</span>
-              <span className="font-display font-extrabold text-2xl text-emerald-600">
-                {formatEuro(proceeds)}
-              </span>
+          <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 p-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs text-emerald-600 font-semibold uppercase tracking-wide">Tu récupères</div>
+              {canPartialSell && !isFullSale && (
+                <div className="text-xs text-slate-400">
+                  Reste : {formatEuro(Math.round(maxSell - sellAmount))}
+                </div>
+              )}
             </div>
+            <span className="font-display font-extrabold text-2xl text-emerald-600">
+              {formatEuro(net)}
+            </span>
           </div>
 
           {result && !result.success && (
-            <div className="text-sm text-red-600 bg-red-50 rounded-xl p-3">
-              {result.message}
-            </div>
+            <div className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{result.message}</div>
           )}
 
           <div className="flex gap-3">
             <Button variant="secondary" fullWidth onClick={onClose}>Annuler</Button>
-            <Button variant="danger" fullWidth onClick={handleSell}>Confirmer la vente</Button>
+            <Button
+              variant="danger"
+              fullWidth
+              onClick={handleSell}
+              disabled={sellAmount <= 0}
+            >
+              {actionLabel} {formatEuro(Math.round(sellAmount))}
+            </Button>
           </div>
         </div>
       )}
