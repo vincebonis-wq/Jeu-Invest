@@ -288,6 +288,107 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     impactRange: [-8000, -2000],
     cooldownMonths: 36,
   },
+
+  // ----- ÉVÉNEMENTS INTERACTIFS -----
+  {
+    id: 'rupture_conventionnelle',
+    category: 'job',
+    severity: 'warning',
+    title: 'Proposition de rupture conventionnelle',
+    description:
+      'Ton employeur te propose une rupture conventionnelle à l\'amiable avec une indemnité de départ. C\'est une opportunité : prendre l\'argent et rebondir, ou rester en poste ?',
+    monthlyProbability: 0.012,
+    conditions: [{ type: 'isEmployed', value: 1 }, { type: 'minNetWorth', value: 15000 }],
+    impactRange: [0, 0],
+    cooldownMonths: 30,
+    actionOptions: [
+      { label: 'Accepter (indemnité 4 mois de salaire)', cost: 0, effect: 'accept_severance' },
+      { label: 'Refuser et rester en poste', cost: 0, effect: 'no_effect' },
+    ],
+  },
+  {
+    id: 'rachat_business',
+    category: 'business',
+    severity: 'good',
+    title: 'Offre de rachat de ton business 💼',
+    description:
+      'Un groupe industriel a repéré ton business automatisé et propose de le racheter. L\'offre est solide. Vendre maintenant ou continuer à encaisser les revenus ?',
+    monthlyProbability: 0.015,
+    conditions: [{ type: 'hasBusiness', value: 1 }, { type: 'minNetWorth', value: 30000 }],
+    impactRange: [0, 0],
+    cooldownMonths: 24,
+    actionOptions: [
+      { label: 'Vendre le business (×1,5 valeur actuelle)', cost: 0, effect: 'sell_business' },
+      { label: 'Refuser — les revenus récurrents valent plus', cost: 0, effect: 'no_effect' },
+    ],
+  },
+  {
+    id: 'co_investissement_ami',
+    category: 'market',
+    severity: 'warning',
+    title: 'Ton ami te propose un co-investissement 🤝',
+    description:
+      'Un ami de confiance a repéré une opportunité spéculative. Les chiffres sont séduisants mais le risque est réel. Mise petite, mise grande, ou décline ?',
+    monthlyProbability: 0.018,
+    conditions: [{ type: 'minNetWorth', value: 8000 }],
+    impactRange: [0, 0],
+    cooldownMonths: 10,
+    actionOptions: [
+      { label: 'Investir 3 000 € (risque élevé, gain potentiel ×2)', cost: 3000, effect: 'speculative_big' },
+      { label: 'Investir 1 000 € (risque modéré)', cost: 1000, effect: 'speculative_small' },
+      { label: 'Décliner poliment', cost: 0, effect: 'no_effect' },
+    ],
+  },
+  {
+    id: 'renegociation_loyer',
+    category: 'property',
+    severity: 'warning',
+    title: 'Ton locataire veut renégocier 🏠',
+    description:
+      'Ton locataire te demande une baisse de loyer de 8%, menaçant de partir sinon. Tu as un candidat en attente mais une vacance de 2 mois serait inévitable.',
+    monthlyProbability: 0.04,
+    conditions: [{ type: 'hasRealEstate', value: 1 }],
+    impactRange: [0, 0],
+    cooldownMonths: 12,
+    actionOptions: [
+      { label: 'Accepter −8% (zéro vacance)', cost: 0, effect: 'renegotiate_rent' },
+      { label: 'Refuser — il part, tu reloues dans 2 mois', cost: 0, effect: 'accept_vacancy' },
+    ],
+  },
+  {
+    id: 'dip_marche',
+    category: 'market',
+    severity: 'warning',
+    title: 'Correction de marché — occasion ou piège ?',
+    description:
+      'Les marchés ont corrigé de 15% ce mois-ci. Certains y voient le début d\'un krach, d\'autres une fenêtre d\'achat historique. Ton instinct dit quoi ?',
+    monthlyProbability: 0.025,
+    conditions: [{ type: 'minNetWorth', value: 5000 }],
+    impactRange: [0, 0],
+    cooldownMonths: 8,
+    actionOptions: [
+      { label: 'Acheter le creux — injecter 3 000 €', cost: 3000, effect: 'buy_the_dip' },
+      { label: 'Attendre et observer', cost: 0, effect: 'no_effect' },
+      { label: 'Sécuriser — vendre 10% de mes ETF', cost: 0, effect: 'panic_sell' },
+    ],
+  },
+  {
+    id: 'heritage_choix',
+    category: 'personal',
+    severity: 'good',
+    title: 'Héritage — investir ou profiter ? 💌',
+    description:
+      'Tu reçois un héritage de 12 000 €. Deux options : tout investir immédiatement pour maximiser les intérêts composés, ou en profiter pour améliorer ton cadre de vie.',
+    monthlyProbability: 0.005,
+    conditions: [],
+    impactRange: [0, 0],
+    cooldownMonths: 48,
+    actionOptions: [
+      { label: 'Tout investir (12 000 € en portefeuille)', cost: 0, effect: 'invest_heritage' },
+      { label: 'Moitié investie, moitié plaisir (6 000 €)', cost: 0, effect: 'half_heritage' },
+      { label: 'Profiter — réduire les charges 3 mois', cost: 0, effect: 'enjoy_heritage' },
+    ],
+  },
 ]
 
 export const TEMPLATE_BY_ID: Record<string, EventTemplate> =

@@ -8,6 +8,8 @@ import {
   CartesianGrid,
   Legend,
   Line,
+  LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,7 +17,13 @@ import {
 } from 'recharts'
 import { RotateCcw, Receipt, Trophy, Share2 } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
-import { MILESTONE_INFO, milestoneRank } from '../../utils/calculations'
+import {
+  MILESTONE_INFO,
+  milestoneRank,
+  calcNetWorth,
+  calcMonthlyCashflow,
+} from '../../utils/calculations'
+import { getInvestmentLevelBonus } from '../../data/upgradeTiers'
 import type { GameState, MilestoneLevel } from '../../types'
 import { Card, CardHeader } from '../ui/Card'
 import { Button } from '../ui/Button'
@@ -117,6 +125,37 @@ export function Stats() {
 
   const currentRank = milestoneRank(game.player.milestone)
 
+  const projectionData = useMemo(() => {
+    const currentNW = calcNetWorth(game)
+    const monthlySavings = Math.max(0, calcMonthlyCashflow(game))
+
+    // Taux annuel moyen pondéré par la valeur des investissements
+    const totalVal = game.investments.reduce((s, inv) => s + inv.currentValue, 0)
+    const avgRate = totalVal > 0
+      ? game.investments.reduce((s, inv) => {
+          const eff = inv.annualReturnRate + getInvestmentLevelBonus(inv.catalogId, inv.level ?? 1)
+          return s + eff * inv.currentValue
+        }, 0) / totalVal
+      : 0.05
+
+    function project(nw: number, annualRate: number, monthlyContrib: number, years: number): number {
+      if (years === 0) return nw
+      let val = nw
+      const mr = Math.pow(1 + Math.max(0, annualRate), 1 / 12) - 1
+      for (let m = 0; m < years * 12; m++) {
+        val = val * (1 + mr) + monthlyContrib
+      }
+      return Math.round(val)
+    }
+
+    return [0, 3, 5, 10, 15, 20].map((y) => ({
+      label: y === 0 ? 'Auj.' : `+${y}a`,
+      base: project(currentNW, avgRate, monthlySavings, y),
+      optimiste: project(currentNW, avgRate + 0.03, monthlySavings, y),
+      prudent: project(currentNW, Math.max(0.01, avgRate - 0.03), monthlySavings, y),
+    }))
+  }, [game])
+
   return (
     <div className="space-y-4 animate-screen-in">
       {/* Tuiles clés */}
@@ -206,6 +245,43 @@ export function Stats() {
           Les statistiques détaillées apparaîtront après quelques mois de jeu.
         </Card>
       )}
+
+      {/* Projection long terme */}
+      <Card className="p-5">
+        <CardHeader
+          title="Projection sur 20 ans"
+          subtitle="Si tu continues à ce rythme (taux actuel ±3%)"
+        />
+        <ResponsiveContainer width="100%" height={230}>
+          <LineChart data={projectionData} margin={{ left: -8, right: 8 }}>
+            <defs>
+              <linearGradient id="projBase" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#1c84f5" stopOpacity={0.2} />
+                <stop offset="100%" stopColor="#1c84f5" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} tickFormatter={(v) => formatEuroCompact(v)} width={56} />
+            <Tooltip
+              formatter={(v, name) => [
+                formatEuro(Number(v)),
+                name === 'base' ? 'Scénario actuel' : name === 'optimiste' ? 'Optimiste (+3%)' : 'Prudent (−3%)',
+              ]}
+              contentStyle={tooltipStyle}
+            />
+            <ReferenceLine y={projectionData[0]?.base ?? 0} stroke="#94a3b8" strokeDasharray="4 4" />
+            <Line type="monotone" dataKey="prudent" name="prudent" stroke="#f97316" strokeWidth={1.5} dot={false} strokeDasharray="5 3" />
+            <Line type="monotone" dataKey="base" name="base" stroke="#1c84f5" strokeWidth={2.5} dot={{ fill: '#1c84f5', r: 4 }} />
+            <Line type="monotone" dataKey="optimiste" name="optimiste" stroke="#22c55e" strokeWidth={1.5} dot={false} strokeDasharray="5 3" />
+          </LineChart>
+        </ResponsiveContainer>
+        <div className="flex gap-4 mt-2 text-xs justify-center">
+          <span className="flex items-center gap-1 text-emerald-600"><span className="w-4 h-0.5 bg-emerald-500 inline-block" /> Optimiste</span>
+          <span className="flex items-center gap-1 text-brand-600 font-semibold"><span className="w-4 h-0.5 bg-brand-500 inline-block" /> Actuel</span>
+          <span className="flex items-center gap-1 text-orange-500"><span className="w-4 h-0.5 bg-orange-400 inline-block" /> Prudent</span>
+        </div>
+      </Card>
 
       {/* Parcours des paliers */}
       <Card className="p-5">

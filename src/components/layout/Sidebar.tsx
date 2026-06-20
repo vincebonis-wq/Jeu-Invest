@@ -35,6 +35,7 @@ export function Sidebar() {
   const unread = useGameStore(selectUnreadCount)
   const challengeCount = useGameStore(selectCompletedChallenges)
   const activeTraining = useGameStore((s) => s.game?.player.activeTraining)
+  const upgradingCount = useGameStore((s) => (s.game?.investments ?? []).filter((inv) => !!inv.upgradeReadyAtReal).length)
   const reopenOnboarding = useGameStore((s) => s.reopenOnboarding)
 
   return (
@@ -68,6 +69,7 @@ export function Sidebar() {
               active={screen === item.screen || (item.screen === 'marketplace' && (screen === 'portfolio')) || (item.screen === 'skills' && screen === 'job')}
               badge={item.screen === 'events' ? unread : item.screen === 'challenges' ? challengeCount : 0}
               pulse={item.screen === 'skills' && !!activeTraining}
+              upgradePulse={item.screen === 'marketplace' && upgradingCount > 0}
               onClick={() => setScreen(item.screen)}
             />
           ))}
@@ -110,6 +112,9 @@ export function Sidebar() {
                   {challengeCount > 9 ? '9+' : challengeCount}
                 </span>
               )}
+              {item.screen === 'marketplace' && upgradingCount > 0 && (
+                <span className="absolute top-0 right-1 text-amber-500 text-[11px] animate-pulse">⚡</span>
+              )}
             </button>
           )
         })}
@@ -123,12 +128,14 @@ function NavButton({
   active,
   badge,
   pulse,
+  upgradePulse,
   onClick,
 }: {
   item: NavItem
   active: boolean
   badge: number
   pulse?: boolean
+  upgradePulse?: boolean
   onClick: () => void
 }) {
   const Icon = item.icon
@@ -149,7 +156,10 @@ function NavButton({
           {badge > 9 ? '9+' : badge}
         </span>
       )}
-      {pulse && badge === 0 && (
+      {upgradePulse && badge === 0 && (
+        <span className="ml-auto text-amber-400 animate-pulse text-sm">⚡</span>
+      )}
+      {pulse && badge === 0 && !upgradePulse && (
         <span className="ml-auto w-2.5 h-2.5 rounded-full bg-brand-400 animate-pulse" />
       )}
     </button>

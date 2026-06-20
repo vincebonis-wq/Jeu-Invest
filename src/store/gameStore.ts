@@ -1001,35 +1001,79 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     // Effets d'action.
     if (action.effect === 'defer_repair') {
-      // Report : le coût (déjà dans financialImpact) est doublé plus tard, ici simplifié : +50%.
       cashDelta += evt.financialImpact * 1.5
     } else if (action.effect === 'pay_repair') {
-      cashDelta += evt.financialImpact // financialImpact négatif = coût
+      cashDelta += evt.financialImpact
     } else if (action.effect === 'business_neglect') {
       investments = investments.map((i) =>
         i.businessDetails
-          ? {
-              ...i,
-              businessDetails: {
-                ...i.businessDetails,
-                monthlyRevenue: Math.round(i.businessDetails.monthlyRevenue * 0.8),
-              },
-            }
+          ? { ...i, businessDetails: { ...i.businessDetails, monthlyRevenue: Math.round(i.businessDetails.monthlyRevenue * 0.8) } }
           : i,
       )
     } else if (action.effect === 'business_boost') {
       investments = investments.map((i) =>
         i.businessDetails
-          ? {
-              ...i,
-              businessDetails: {
-                ...i.businessDetails,
-                monthlyRevenue: Math.round(i.businessDetails.monthlyRevenue * 1.15),
-                attentionMonthsLeft: 5,
-              },
-            }
+          ? { ...i, businessDetails: { ...i.businessDetails, monthlyRevenue: Math.round(i.businessDetails.monthlyRevenue * 1.15), attentionMonthsLeft: 5 } }
           : i,
       )
+    } else if (action.effect === 'no_effect') {
+      // Rien — résolution sans conséquence financière.
+    } else if (action.effect === 'accept_severance') {
+      // Indemnité = 4 mois de salaire
+      cashDelta += game.player.salary * 4
+    } else if (action.effect === 'sell_business') {
+      // Vente du business : encaisse 1,5× la valeur actuelle
+      const biz = investments.find((i) => i.businessDetails)
+      if (biz) {
+        cashDelta += Math.round(biz.currentValue * 1.5)
+        investments = investments.filter((i) => i.instanceId !== biz.instanceId)
+      }
+    } else if (action.effect === 'speculative_big') {
+      // 40% de chance de doubler, 60% de perdre 80%
+      const win = Math.random() < 0.40
+      cashDelta += win ? action.cost * 2 : -Math.round(action.cost * 0.8)
+    } else if (action.effect === 'speculative_small') {
+      // 50% de chance de ×1,6, 50% de perdre 50%
+      const win = Math.random() < 0.50
+      cashDelta += win ? Math.round(action.cost * 0.6) : -Math.round(action.cost * 0.5)
+    } else if (action.effect === 'renegotiate_rent') {
+      // Loyer baisse de 8% sur tous les biens immo loués
+      investments = investments.map((i) =>
+        i.propertyDetails && !i.propertyDetails.isVacant
+          ? { ...i, propertyDetails: { ...i.propertyDetails, monthlyRent: Math.round(i.propertyDetails.monthlyRent * 0.92) } }
+          : i,
+      )
+    } else if (action.effect === 'accept_vacancy') {
+      // Locataire part : vacance de 2 mois sur un bien aléatoire
+      const rentedProp = investments.find((i) => i.propertyDetails && !i.propertyDetails.isVacant)
+      if (rentedProp) {
+        investments = investments.map((i) =>
+          i.instanceId === rentedProp.instanceId
+            ? { ...i, propertyDetails: { ...i.propertyDetails!, isVacant: true, vacancyMonthsLeft: 2 } }
+            : i,
+        )
+      }
+    } else if (action.effect === 'buy_the_dip') {
+      // Achat au creux : boost de 12% sur tous les ETF/bourse
+      investments = investments.map((i) =>
+        i.catalogId === 'bourse_etf'
+          ? { ...i, currentValue: Math.round(i.currentValue * 1.12) }
+          : i,
+      )
+    } else if (action.effect === 'panic_sell') {
+      // Vente panique : -10% valeur ETF
+      investments = investments.map((i) =>
+        i.catalogId === 'bourse_etf'
+          ? { ...i, currentValue: Math.round(i.currentValue * 0.90) }
+          : i,
+      )
+    } else if (action.effect === 'invest_heritage') {
+      cashDelta += 12000
+    } else if (action.effect === 'half_heritage') {
+      cashDelta += 6000
+    } else if (action.effect === 'enjoy_heritage') {
+      // 3 mois de charges réduites, simplifié : encaisse une partie
+      cashDelta += 3000
     }
 
     set((s) => ({
