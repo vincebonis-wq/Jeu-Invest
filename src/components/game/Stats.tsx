@@ -22,7 +22,6 @@ import {
   milestoneRank,
   calcNetWorth,
   calcMonthlyCashflow,
-  calcMonthlyPassiveIncome,
 } from '../../utils/calculations'
 import { getInvestmentLevelBonus } from '../../data/upgradeTiers'
 import type { GameState, MilestoneLevel } from '../../types'
@@ -556,10 +555,8 @@ function KpiTile({
 
 function FrenchBenchmarkCard({ game }: { game: GameState }) {
   const netWorth = calcNetWorth(game)
-  const passiveIncome = calcMonthlyPassiveIncome(game)
-  const annualPassive = passiveIncome * 12
-  const annualSalary = game.player.salary * 12
-  const savingsRatePct = annualSalary > 0 ? Math.round((annualPassive / annualSalary) * 100) : 0
+  const monthlySavings = Math.max(0, game.player.salary - (game.monthlyExpenses?.total ?? 800))
+  const savingsRatePct = game.player.salary > 0 ? Math.round((monthlySavings / game.player.salary) * 100) : 0
   const hasStocks = game.investments.some((i) => i.catalogId === 'bourse_etf')
   const hasProperty = game.investments.some((i) =>
     ['lmnp', 'immo_classique', 'parking'].includes(i.catalogId),
@@ -623,11 +620,15 @@ function FrenchBenchmarkCard({ game }: { game: GameState }) {
                   </span>
                 </div>
               </div>
-              <div className="h-2 rounded-full bg-slate-100 overflow-hidden relative">
-                <div className="h-2 rounded-full bg-slate-300 absolute" style={{ width: `${barRef}%` }} />
+              <div className="h-2 rounded-full bg-slate-100 relative">
                 <div
-                  className={cn('h-2 rounded-full absolute', ahead ? 'bg-emerald-500' : 'bg-orange-400')}
+                  className={cn('h-2 rounded-full absolute left-0', ahead ? 'bg-emerald-500' : 'bg-orange-400')}
                   style={{ width: `${barYours}%` }}
+                />
+                <div
+                  className="absolute top-0 w-0.5 h-4 -translate-y-1 bg-slate-400 z-10 rounded-full"
+                  style={{ left: `${barRef}%` }}
+                  title={`Référence : ${r.format(r.ref)}`}
                 />
               </div>
             </div>

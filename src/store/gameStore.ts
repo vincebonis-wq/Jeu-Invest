@@ -737,13 +737,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       // ── Offline gains à révéler ───────────────────────────────────────
       const newNetWorth = calcNetWorth(game)
-      if (offlineDays >= 1) {
+      const netWorthGainAmount = Math.round(newNetWorth - savedNetWorth)
+      const cashGainAmount = Math.round(game.cashBalance - saved.cashBalance)
+      if (offlineDays >= 1 && (netWorthGainAmount >= 50 || cashGainAmount >= 50)) {
         const elapsedMonths = offlineDays / 30
         const passiveIncomeEarned = Math.round(savedPassiveIncome * elapsedMonths)
         const offlineGains: OfflineGains = {
           daysElapsed: offlineDays,
-          netWorthGain: Math.round(newNetWorth - savedNetWorth),
-          cashGain: Math.round(game.cashBalance - saved.cashBalance),
+          netWorthGain: netWorthGainAmount,
+          cashGain: cashGainAmount,
           passiveIncomeEarned,
           streakContinued,
           streakBroken,
@@ -1783,7 +1785,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const { game } = get()
     if (!game) return
     const nwBefore = calcNetWorth(game)
-    const { state: simGame } = advanceDays(game, 365)
+    const { state: simGame, toasts: simToasts } = advanceDays(game, 365)
     const nwAfter = calcNetWorth(simGame)
     const gainPct = nwBefore > 0 ? Math.round(((nwAfter - nwBefore) / nwBefore) * 100) : 0
     const toast = {
@@ -1792,7 +1794,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       description: `Patrimoine ${gainPct >= 0 ? '+' : ''}${gainPct} % · Revenus passifs : ${Math.round(calcMonthlyPassiveIncome(simGame)).toLocaleString('fr-FR')} €/mois`,
       severity: 'good' as const,
     }
-    set((s) => ({ game: simGame, toasts: [...s.toasts, toast].slice(-5) }))
+    const cleanedGame = { ...simGame, pendingYearRecap: undefined }
+    set((s) => ({ game: cleanedGame, toasts: [...s.toasts, ...simToasts, toast].slice(-5) }))
     get().saveGame()
   },
 
