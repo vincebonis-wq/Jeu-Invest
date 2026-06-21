@@ -10,6 +10,7 @@ import { formatEuroCompact, formatMonthYear } from '../../utils/formatting'
 export function Header() {
   const game = useGameStore((s) => s.game)
   const setScreen = useGameStore((s) => s.setScreen)
+  const simulateYear = useGameStore((s) => s.simulateYear)
   if (!game) return null
 
   const netWorth = calcNetWorth(game)
@@ -76,6 +77,13 @@ export function Header() {
 
         {/* Droite : réglages + horloge */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <button
+            onClick={simulateYear}
+            className="hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
+            title="Simuler 1 an de jeu instantanément"
+          >
+            ⏩ 1 an
+          </button>
           <button
             onClick={() => setScreen('stats')}
             className="hidden md:flex w-9 h-9 rounded-xl items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"

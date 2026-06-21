@@ -24,6 +24,7 @@ import { YearRecapModal } from './components/game/YearRecapModal'
 import { Modal } from './components/ui/Modal'
 import { Button } from './components/ui/Button'
 import { formatEuroSigned } from './utils/formatting'
+import { checkOfflineReminder, scheduleOfflineReminder } from './utils/notifications'
 import { useUiMode } from './beta/uiModeStore'
 import { BetaModeSwitcher } from './beta/BetaModeSwitcher'
 import { BetaBaseView } from './beta/BetaBaseView'
@@ -62,10 +63,17 @@ export default function App() {
   // Chargement initial + sauvegarde sur fermeture/onglet caché.
   useEffect(() => {
     loadGame()
+    checkOfflineReminder()
     const onHide = () => {
-      if (document.visibilityState === 'hidden') saveGame()
+      if (document.visibilityState === 'hidden') {
+        saveGame()
+        scheduleOfflineReminder()
+      }
     }
-    const onUnload = () => saveGame()
+    const onUnload = () => {
+      saveGame()
+      scheduleOfflineReminder()
+    }
     document.addEventListener('visibilitychange', onHide)
     window.addEventListener('beforeunload', onUnload)
     return () => {

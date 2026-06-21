@@ -30,6 +30,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [{ type: 'isEmployed', value: 1 }],
     impactRange: [0, 0],
     cooldownMonths: 10,
+    educationTip: '💡 Astuce : chaque augmentation est une opportunité. Si tu investis la totalité de la hausse dès le début, tu ne remarqueras pas la différence sur ton train de vie — mais ton patrimoine, lui, s\'en souviendra.',
   },
   {
     id: 'layoff',
@@ -42,6 +43,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [{ type: 'isEmployed', value: 1 }],
     impactRange: [0, 0],
     cooldownMonths: 24,
+    educationTip: '💡 Résilience financière : 3 à 6 mois de dépenses en épargne de précaution protègent contre les aléas professionnels. Des revenus passifs couvrant ne serait-ce que 20 % des dépenses réduisent considérablement le stress.',
   },
 
   // ----- MARCHÉ -----
@@ -55,6 +57,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     monthlyProbability: 0.04,
     conditions: [{ type: 'hasCategory', value: 'bourse_etf' }],
     impactRange: [200, 2000],
+    educationTip: '💡 Les ETF World/S&P 500 captent automatiquement la croissance des plus grandes entreprises mondiales. Depuis 1950, le S&P 500 a affiché un rendement annuel moyen de ~10 % (avant inflation).',
   },
   {
     id: 'dividend_special',
@@ -65,6 +68,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     monthlyProbability: 0.03,
     conditions: [{ type: 'hasCategory', value: 'scpi' }],
     impactRange: [100, 800],
+    educationTip: '💡 Les dividendes et revenus SCPI sont imposés à la flat tax de 30 % (PFU : 12,8 % d\'IR + 17,2 % de prélèvements sociaux). L\'option barème peut être plus avantageuse si tu es faiblement imposé.',
   },
 
   // ----- IMMOBILIER -----
@@ -79,6 +83,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [{ type: 'hasRealEstate', value: 1 }],
     impactRange: [0, 0],
     cooldownMonths: 6,
+    educationTip: '💡 La vacance locative est le principal risque de l\'immobilier locatif. Un rendement brut ≥ 6 % permet d\'absorber 1 à 2 mois de vacance par an sans impact négatif sur le cashflow.',
   },
   {
     id: 'repair',
@@ -99,6 +104,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
         effect: 'defer_repair',
       },
     ],
+    educationTip: '💡 En LMNP (Location Meublée Non Professionnelle), les travaux de réparation et d\'entretien sont déductibles des revenus locatifs. Garde toujours tes justificatifs de dépenses.',
   },
   {
     id: 'rent_increase',
@@ -111,6 +117,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [{ type: 'hasRealEstate', value: 1 }],
     impactRange: [0, 0],
     cooldownMonths: 12,
+    educationTip: '💡 La révision annuelle du loyer est encadrée par l\'IRL (Indice de Référence des Loyers), publié trimestriellement par l\'INSEE. En 2023, il était de +3,5 %. Hors IRL, toute hausse est illégale.',
   },
   {
     id: 'property_boom',
@@ -123,6 +130,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [{ type: 'hasRealEstate', value: 1 }],
     impactRange: [0, 0],
     cooldownMonths: 12,
+    educationTip: '💡 La plus-value immobilière est imposée à 36,2 % (19 % d\'IR + 17,2 % de prélèvements sociaux). Des abattements s\'appliquent selon la durée de détention : exonération totale après 22 ans (IR) et 30 ans (PS).',
   },
 
   // ----- BUSINESS -----
@@ -178,6 +186,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [{ type: 'minNetWorth', value: 100000 }],
     impactRange: [-5000, -800],
     cooldownMonths: 24,
+    educationTip: '💡 En cas de contrôle fiscal, la charge de la preuve appartient à l\'administration pour les revenus déclarés. Conserve tous tes justificatifs 6 ans (durée de prescription fiscale en France).',
   },
   {
     id: 'tax_credit',
@@ -190,6 +199,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [{ type: 'minNetWorth', value: 20000 }],
     impactRange: [200, 1500],
     cooldownMonths: 12,
+    educationTip: '💡 Le crédit d\'impôt est une réduction directe de l\'impôt dû (et peut générer un remboursement s\'il dépasse l\'impôt). À ne pas confondre avec la déduction fiscale, qui réduit uniquement la base imposable.',
   },
 
   // ----- PERSONNEL -----
@@ -204,6 +214,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [],
     impactRange: [5000, 40000],
     cooldownMonths: 36,
+    educationTip: '💡 Les héritages entre parents et enfants bénéficient d\'un abattement de 100 000 € tous les 15 ans avant taxation. Stratégie pro : les donations de son vivant permettent de transmettre à moindre coût fiscal.',
   },
   {
     id: 'medical',
@@ -215,6 +226,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [],
     impactRange: [-3000, -500],
     cooldownMonths: 10,
+    educationTip: '💡 Une mutuelle bien calibrée et une épargne de précaution de 3 à 6 mois de dépenses évitent de devoir liquider tes investissements en cas de coup dur. L\'assurance est un outil de gestion du risque, pas un luxe.',
   },
   {
     id: 'big_expense',
@@ -238,6 +250,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [{ type: 'isEmployed', value: 1 }],
     impactRange: [500, 3000],
     cooldownMonths: 11,
+    educationTip: '💡 Les primes sont fiscalisées comme le salaire. Stratégie gagnante : investir immédiatement avant de s\'y habituer (lifestyle creep). +200 €/mois placés à 7 %/an = +100 000 € en 20 ans.',
   },
   {
     id: 'lottery_small',
@@ -305,6 +318,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
       { label: 'Lui laisser du temps (perte ce mois)', cost: 0, effect: 'accept_vacancy' },
       { label: 'Relance officielle (risque de conflit)', cost: 0, effect: 'no_effect' },
     ],
+    educationTip: '💡 La garantie loyers impayés (GLI) coûte 2 à 4 % du loyer annuel mais couvre impayés et dégradations. Alternative : caution simple ou caution solidaire. La GLI se rentabilise dès le premier mois impayé.',
   },
   {
     id: 'travaux_copropriete',
@@ -333,6 +347,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
       { label: 'Anticiper les travaux maintenant (2 500 €)', cost: 2500, effect: 'dpe_now' },
       { label: 'Attendre la mise en demeure', cost: 0, effect: 'no_effect' },
     ],
+    educationTip: '💡 Les biens classés G seront interdits à la location dès 2025, F en 2028. Rénover augmente la valeur du bien et permet une majoration du loyer. MaPrimeRénov\' peut couvrir jusqu\'à 70 % des travaux.',
   },
 
   // ----- ÉVÉNEMENTS INTERACTIFS -----
@@ -452,6 +467,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
       { label: 'HODL — tenir la position (perte latente ~60%)', cost: 0, effect: 'crypto_hodl' },
       { label: 'Vendre maintenant — limiter les dégâts', cost: 0, effect: 'crypto_sell_crash' },
     ],
+    educationTip: '💡 Le Bitcoin a perdu plus de 80 % de sa valeur à trois reprises depuis 2010. Règle de base : n\'investir en crypto que ce qu\'on peut se permettre de perdre intégralement (max 5-10 % du portefeuille).',
   },
   {
     id: 'crypto_halving',
@@ -464,6 +480,7 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [{ type: 'hasCategory', value: 'crypto' }],
     impactRange: [0, 0],
     cooldownMonths: 48,
+    educationTip: '💡 Le halving divise par 2 la récompense des mineurs de Bitcoin, réduisant l\'offre nouvelle. Historiquement, les cours ont progressé dans les 12-18 mois suivants — mais les performances passées ne garantissent pas les performances futures.',
   },
   {
     id: 'crypto_regulation',
@@ -476,6 +493,60 @@ export const EVENT_TEMPLATES: EventTemplate[] = [
     conditions: [{ type: 'hasCategory', value: 'crypto' }],
     impactRange: [-1200, -600],
     cooldownMonths: 24,
+  },
+
+  // ----- SAISONNIERS -----
+  {
+    id: 'tax_declaration',
+    category: 'tax',
+    severity: 'info',
+    title: '📋 Déclaration d\'impôts — c\'est le moment',
+    description: 'Mai arrive : c\'est la saison de la déclaration fiscale. Tous tes revenus de l\'année passée sont à déclarer en ligne avant la date limite.',
+    monthlyProbability: 1.0,
+    conditions: [],
+    impactRange: [0, 0],
+    triggerMonth: 5,
+    cooldownMonths: 11,
+    educationTip: '💡 La déclaration pré-remplie couvre les salaires mais PAS les revenus du capital (dividendes, loyers, plus-values). Vérifier les cases 2DC, 2TR et 3VG te permettra d\'éviter un redressement fiscal.',
+  },
+  {
+    id: 'prime_fin_annee',
+    category: 'job',
+    severity: 'good',
+    title: '🎁 Prime de fin d\'année',
+    description: 'La direction verse une prime exceptionnelle de fin d\'année à l\'ensemble des salariés.',
+    monthlyProbability: 0.7,
+    conditions: [{ type: 'isEmployed', value: 1 }],
+    impactRange: [800, 2500],
+    triggerMonth: 12,
+    cooldownMonths: 11,
+    educationTip: '💡 Stratégie gagnante : investir immédiatement la prime avant de s\'y habituer (lifestyle creep). +1 500 € investis à 7 %/an chaque décembre = +65 000 € en 20 ans.',
+  },
+  {
+    id: 'soldes_hiver',
+    category: 'personal',
+    severity: 'warning',
+    title: '🛍️ Soldes d\'hiver — attention au budget',
+    description: 'Les soldes battent leur plein en janvier. La tentation de dépenser est forte, mais chaque euro non dépensé peut travailler pour toi.',
+    monthlyProbability: 0.8,
+    conditions: [],
+    impactRange: [-500, -100],
+    triggerMonth: 1,
+    cooldownMonths: 11,
+    educationTip: '💡 Le marketing des soldes crée un sentiment d\'urgence artificiel. Règle des 48h : attendre 2 jours avant tout achat non planifié élimine 80 % des achats impulsifs. L\'argent non dépensé s\'investit.',
+  },
+  {
+    id: 'remboursement_impots',
+    category: 'tax',
+    severity: 'good',
+    title: '💰 Remboursement d\'impôts',
+    description: 'L\'administration fiscale te rembourse un trop-perçu suite à ta déclaration. Une belle somme disponible pour investir.',
+    monthlyProbability: 0.6,
+    conditions: [],
+    impactRange: [300, 1500],
+    triggerMonth: 7,
+    cooldownMonths: 11,
+    educationTip: '💡 Un remboursement d\'impôts signifie que tu as trop payé en acomptes tout au long de l\'année. Idéalement, ajuste tes acomptes pour que cet argent soit disponible toute l\'année (et investi).',
   },
 ]
 

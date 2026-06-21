@@ -385,6 +385,7 @@ export interface GameEvent {
   requiresAction: boolean
   resolved: boolean
   actionOptions?: EventAction[]
+  tip?: string // capsule éducative associée à l'événement
 }
 
 export type EventConditionType =
@@ -412,6 +413,8 @@ export interface EventTemplate {
   impactIsPercentOfSalary?: boolean
   actionOptions?: EventAction[]
   cooldownMonths?: number
+  educationTip?: string  // capsule éducative affichée dans l'événement
+  triggerMonth?: number  // 1-12 : déclenche cet événement ce mois de jeu (saisonnier)
 }
 
 // ----------------------------------------------------------------------------

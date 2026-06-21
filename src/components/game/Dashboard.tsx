@@ -862,6 +862,35 @@ function CopiloteCard({
       }
     }
 
+    // ── ALERTES FISCALES ───────────────────────────────────────────────────
+    const hasAV = game.investments.some((i) => i.catalogId === 'assurance_vie')
+    const etfGain = game.investments
+      .filter((i) => i.catalogId === 'bourse_etf')
+      .reduce((s, i) => s + Math.max(0, i.currentValue - i.totalInvested), 0)
+    if (etfGain > 5000 && !hasAV) {
+      result.push({
+        level: 'action', icon: '🧾',
+        text: `Tes ETF ont généré ${formatEuroCompact(etfGain)} de plus-values latentes. Sans Assurance Vie, tu paieras 30 % de flat tax à la vente. Diversifier sur une AV reporte l\'imposition.`,
+        ctaLabel: 'Marketplace →', ctaScreen: 'marketplace',
+      })
+    }
+    const livretTotal = game.investments
+      .filter((i) => i.catalogId === 'livret')
+      .reduce((s, i) => s + i.currentValue, 0)
+    if (livretTotal > 18000 && livretTotal < 22950) {
+      result.push({
+        level: 'info', icon: '🏦',
+        text: `Livret A à ${Math.round((livretTotal / 22950) * 100)} % du plafond (${formatEuroCompact(livretTotal)} / 22 950 €). Prépare un placement alternatif pour les versements excédentaires.`,
+      })
+    }
+    if (hasETF && !hasAV && netWorth > 10000) {
+      result.push({
+        level: 'info', icon: '📋',
+        text: 'Tu investis en ETF mais pas encore en Assurance Vie. L\'AV capitalise sans fiscalité annuelle et offre un abattement de 4 600 €/an après 8 ans.',
+        ctaLabel: 'Découvrir →', ctaScreen: 'marketplace',
+      })
+    }
+
     const order = { urgent: 0, action: 1, info: 2 }
     return result.sort((a, b) => order[a.level] - order[b.level]).slice(0, 3)
   }, [game, netWorth, passiveIncome, cashflow, marketPhase, phaseMonthsElapsed])

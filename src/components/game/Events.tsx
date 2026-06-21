@@ -185,6 +185,11 @@ function EventItem({ evt }: { evt: GameEvent }) {
             )}
           </div>
           <p className="text-sm text-slate-500 mt-0.5">{evt.description}</p>
+          {evt.tip && (
+            <div className="mt-2 p-2.5 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-700 leading-relaxed">
+              {evt.tip}
+            </div>
+          )}
           <div className="text-xs text-slate-300 mt-1">
             {formatGameDate(evt.dateISO)}
           </div>

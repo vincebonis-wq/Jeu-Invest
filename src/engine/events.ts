@@ -50,9 +50,22 @@ export function rollMonthlyEvents(
   netWorth: number,
   gameDateISO: string,
 ): GameEvent[] {
-  const eligible = EVENT_TEMPLATES.filter((t) => isEligible(t, state, netWorth))
+  const currentMonth = new Date(gameDateISO).getMonth() + 1 // 1-12
   const triggered: GameEvent[] = []
 
+  // Événements saisonniers : déclenchement garanti ce mois-ci si éligible
+  for (const t of EVENT_TEMPLATES) {
+    if (t.triggerMonth !== currentMonth) continue
+    if (!isEligible(t, state, netWorth)) continue
+    if (Math.random() < t.monthlyProbability) {
+      triggered.push(instantiate(t, gameDateISO))
+    }
+  }
+
+  // Événements aléatoires normaux (max 2 au total)
+  const eligible = EVENT_TEMPLATES.filter(
+    (t) => !t.triggerMonth && isEligible(t, state, netWorth),
+  )
   for (const t of eligible) {
     if (triggered.length >= 2) break
     if (Math.random() < t.monthlyProbability) {
@@ -80,6 +93,7 @@ function instantiate(t: EventTemplate, gameDateISO: string): GameEvent {
     requiresAction: !!t.actionOptions && t.actionOptions.length > 0,
     resolved: !t.actionOptions,
     actionOptions: t.actionOptions,
+    tip: t.educationTip,
   }
 }
 

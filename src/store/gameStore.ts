@@ -141,6 +141,7 @@ interface GameStore {
   claimComboBonus: () => void
   claimQuestStepReward: (chainId: string, stepIndex: number) => void
   dismissYearRecap: () => void
+  simulateYear: () => void
   upgradeInvestment: (instanceId: string) => { success: boolean; message: string }
   depositToInvestment: (instanceId: string, amount: number) => BuyResult
   renovateProperty: (instanceId: string) => BuyResult
@@ -376,8 +377,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (wholeDays > MAX_CATCHUP_DAYS) wholeDays = MAX_CATCHUP_DAYS
 
       const prevYear = new Date(game.gameDateISO).getUTCFullYear()
+      const prevMonthIndex = game.monthIndex ?? 0
       const { state: rawGame, toasts } = advanceDays(game, wholeDays)
       const newYear = new Date(rawGame.gameDateISO).getUTCFullYear()
+
+      // Toast récap mensuel (discret, après chaque mois de jeu)
+      const newMonthIndex = rawGame.monthIndex ?? 0
+      if (newMonthIndex > prevMonthIndex && newMonthIndex > 1) {
+        const passiveM = calcMonthlyPassiveIncome(rawGame)
+        const gains = rawGame.investments.reduce((s, i) => s + i.monthlyIncome, 0)
+        if (gains > 0) {
+          pendingToasts = [...pendingToasts, {
+            id: `monthly_${newMonthIndex}`,
+            title: `📅 Mois ${newMonthIndex}`,
+            description: `+${Math.round(gains).toLocaleString('fr-FR')} € générés · Passifs : ${Math.round(passiveM).toLocaleString('fr-FR')} €/mois`,
+            severity: 'good' as const,
+          }]
+        }
+      }
 
       // Badges gagnés pendant le tick
       const tickBadgeIds = checkBadges(rawGame)
@@ -1759,6 +1776,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   dismissYearRecap: () => {
     set((s) => s.game ? { game: { ...s.game, pendingYearRecap: undefined } } : s)
+    get().saveGame()
+  },
+
+  simulateYear: () => {
+    const { game } = get()
+    if (!game) return
+    const nwBefore = calcNetWorth(game)
+    const { state: simGame } = advanceDays(game, 365)
+    const nwAfter = calcNetWorth(simGame)
+    const gainPct = nwBefore > 0 ? Math.round(((nwAfter - nwBefore) / nwBefore) * 100) : 0
+    const toast = {
+      id: `simulate_year_${Date.now()}`,
+      title: '⏩ 1 an simulé',
+      description: `Patrimoine ${gainPct >= 0 ? '+' : ''}${gainPct} % · Revenus passifs : ${Math.round(calcMonthlyPassiveIncome(simGame)).toLocaleString('fr-FR')} €/mois`,
+      severity: 'good' as const,
+    }
+    set((s) => ({ game: simGame, toasts: [...s.toasts, toast].slice(-5) }))
     get().saveGame()
   },
 

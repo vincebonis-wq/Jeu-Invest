@@ -22,6 +22,7 @@ import {
   milestoneRank,
   calcNetWorth,
   calcMonthlyCashflow,
+  calcMonthlyPassiveIncome,
 } from '../../utils/calculations'
 import { getInvestmentLevelBonus } from '../../data/upgradeTiers'
 import type { GameState, MilestoneLevel } from '../../types'
@@ -372,6 +373,9 @@ export function Stats() {
       {/* Trophées */}
       <BadgesPanel game={game} />
 
+      {/* Moi vs Français moyen */}
+      <FrenchBenchmarkCard game={game} />
+
       {/* Partager */}
       <Card className="p-5">
         <CardHeader title="Partager ta progression" subtitle="Montre à tes amis où tu en es" icon={<Share2 size={18} />} />
@@ -383,6 +387,9 @@ export function Stats() {
 
       {/* Export / Import */}
       <SaveBackupCard />
+
+      {/* Notifications */}
+      <NotificationToggleCard />
 
       {/* Prestige */}
       {(game.player.milestone === 'millionnaire' || game.player.milestone === 'multimillionnaire') && (
@@ -473,7 +480,7 @@ function SaveBackupCard() {
       try {
         const text = ev.target?.result as string
         const parsed = JSON.parse(text)
-        if (!parsed?.game?.player || !parsed?.game?.investments) throw new Error('Format invalide')
+        if (!parsed?.player || !parsed?.investments) throw new Error('Format invalide')
         localStorage.setItem('jeu-invest-save-v1', text)
         setMsg({ ok: true, text: 'Sauvegarde importée ! Rechargement…' })
         setTimeout(() => window.location.reload(), 1200)
@@ -543,6 +550,127 @@ function KpiTile({
       </div>
       <div className="text-xs text-slate-400">{label}</div>
       <div className="font-display font-bold text-lg text-slate-800">{value}</div>
+    </Card>
+  )
+}
+
+function FrenchBenchmarkCard({ game }: { game: GameState }) {
+  const netWorth = calcNetWorth(game)
+  const passiveIncome = calcMonthlyPassiveIncome(game)
+  const annualPassive = passiveIncome * 12
+  const annualSalary = game.player.salary * 12
+  const savingsRatePct = annualSalary > 0 ? Math.round((annualPassive / annualSalary) * 100) : 0
+  const hasStocks = game.investments.some((i) => i.catalogId === 'bourse_etf')
+  const hasProperty = game.investments.some((i) =>
+    ['lmnp', 'immo_classique', 'parking'].includes(i.catalogId),
+  )
+
+  const rows = [
+    {
+      emoji: '🏛️',
+      label: 'Patrimoine médian',
+      yours: netWorth,
+      ref: 177_200,
+      format: (v: number) => formatEuroCompact(v),
+    },
+    {
+      emoji: '🐷',
+      label: 'Taux d\'épargne annuel',
+      yours: savingsRatePct,
+      ref: 17,
+      format: (v: number) => `${v} %`,
+    },
+    {
+      emoji: '📈',
+      label: 'Investisseurs en bourse',
+      yours: hasStocks ? 100 : 0,
+      ref: 7,
+      format: (v: number) => (v === 100 ? 'Oui ✓' : 'Non'),
+    },
+    {
+      emoji: '🏡',
+      label: 'Propriétaires bailleurs',
+      yours: hasProperty ? 100 : 0,
+      ref: 20,
+      format: (v: number) => (v === 100 ? 'Oui ✓' : 'Non'),
+    },
+  ]
+
+  return (
+    <Card className="p-5">
+      <CardHeader
+        title="Moi vs Français moyen"
+        subtitle="Données INSEE / Banque de France 2023"
+        icon={<span className="text-lg">🇫🇷</span>}
+      />
+      <div className="mt-4 space-y-4">
+        {rows.map((r) => {
+          const ahead = r.yours > r.ref
+          const barYours = r.label.includes('%') || r.label.includes('bourse') || r.label.includes('bailleur')
+            ? Math.min(100, r.yours)
+            : Math.min(100, (r.yours / Math.max(r.ref * 2, 1)) * 100)
+          const barRef = r.label.includes('%') || r.label.includes('bourse') || r.label.includes('bailleur')
+            ? Math.min(100, r.ref)
+            : 50
+          return (
+            <div key={r.label}>
+              <div className="flex justify-between text-xs mb-1.5">
+                <span className="text-slate-500 font-medium">{r.emoji} {r.label}</span>
+                <div className="flex gap-3 text-[11px]">
+                  <span className="text-slate-400">Moy. {r.format(r.ref)}</span>
+                  <span className={cn('font-bold', ahead ? 'text-emerald-600' : 'text-orange-500')}>
+                    Toi : {r.format(r.yours)} {ahead ? '▲' : '▼'}
+                  </span>
+                </div>
+              </div>
+              <div className="h-2 rounded-full bg-slate-100 overflow-hidden relative">
+                <div className="h-2 rounded-full bg-slate-300 absolute" style={{ width: `${barRef}%` }} />
+                <div
+                  className={cn('h-2 rounded-full absolute', ahead ? 'bg-emerald-500' : 'bg-orange-400')}
+                  style={{ width: `${barYours}%` }}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
+
+function NotificationToggleCard() {
+  const [permission, setPermission] = useState<NotificationPermission>(
+    typeof Notification !== 'undefined' ? Notification.permission : 'default',
+  )
+
+  const handleRequest = async () => {
+    const { requestNotificationPermission } = await import('../../utils/notifications')
+    const granted = await requestNotificationPermission()
+    setPermission(granted ? 'granted' : 'denied')
+  }
+
+  return (
+    <Card className="p-5">
+      <CardHeader
+        title="Rappels hors connexion"
+        subtitle="Reçois une notification quand tes investissements ont bien travaillé"
+        icon={<span className="text-lg">🔔</span>}
+      />
+      <div className="mt-3">
+        {permission === 'granted' ? (
+          <div className="flex items-center gap-2 text-sm text-emerald-600 font-semibold">
+            <span>✓</span> Notifications activées — tu seras alerté après 8h d\'absence
+          </div>
+        ) : permission === 'denied' ? (
+          <div className="text-sm text-slate-400">
+            Notifications bloquées dans les réglages du navigateur. Active-les manuellement dans les paramètres du site.
+          </div>
+        ) : (
+          <Button variant="secondary" onClick={handleRequest}>
+            🔔 Activer les rappels
+          </Button>
+        )}
+      </div>
     </Card>
   )
 }

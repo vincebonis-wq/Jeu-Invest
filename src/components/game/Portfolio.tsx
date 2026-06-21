@@ -83,6 +83,9 @@ export function Portfolio() {
         </div>
       </Card>
 
+      {/* Score de risque */}
+      <PortfolioRiskCard game={game} />
+
       {/* Et si... — opportunité cash idle */}
       <IdleCashCard game={game} onInvest={() => setScreen('marketplace')} />
 
@@ -937,6 +940,64 @@ function SummaryStat({
         {value}
       </div>
     </div>
+  )
+}
+
+// ── Score de risque du portefeuille ─────────────────────────────────────────
+
+function PortfolioRiskCard({ game }: { game: GameState }) {
+  const totalValue = game.investments.reduce((s, i) => s + i.currentValue, 0)
+  if (totalValue === 0) return null
+
+  const weightedRisk = game.investments.reduce((s, inv) => {
+    const cat = getCatalogItem(inv.catalogId)
+    const weight = inv.currentValue / totalValue
+    return s + (cat?.riskLevel ?? 3) * weight
+  }, 0)
+  const score = Math.round(weightedRisk * 10) / 10
+
+  const label =
+    score < 1.5 ? 'Très défensif 🛡️'
+    : score < 2.5 ? 'Prudent 🟢'
+    : score < 3.5 ? 'Équilibré ⚖️'
+    : score < 4.5 ? 'Dynamique 🔥'
+    : 'Agressif ⚡'
+
+  const barColor =
+    score < 1.5 ? 'bg-emerald-400'
+    : score < 2.5 ? 'bg-green-400'
+    : score < 3.5 ? 'bg-amber-400'
+    : score < 4.5 ? 'bg-orange-400'
+    : 'bg-red-500'
+
+  const pillColor =
+    score < 1.5 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    : score < 2.5 ? 'bg-green-50 text-green-700 border-green-200'
+    : score < 3.5 ? 'bg-amber-50 text-amber-700 border-amber-200'
+    : score < 4.5 ? 'bg-orange-50 text-orange-700 border-orange-200'
+    : 'bg-red-50 text-red-700 border-red-200'
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <span className="font-semibold text-sm text-slate-700">Score de risque</span>
+        <span className={cn('px-2.5 py-1 rounded-xl text-xs font-bold border', pillColor)}>
+          {label}
+        </span>
+      </div>
+      <div className="flex gap-1 mb-1.5">
+        {[1, 2, 3, 4, 5].map((level) => (
+          <div
+            key={level}
+            className={cn(
+              'flex-1 h-2 rounded-full transition-all',
+              level <= Math.round(score) ? barColor : 'bg-slate-100',
+            )}
+          />
+        ))}
+      </div>
+      <div className="text-[10px] text-slate-400 text-right">Score pondéré : {score} / 5</div>
+    </Card>
   )
 }
 
