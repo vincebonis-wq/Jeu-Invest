@@ -140,3 +140,52 @@
   display: inline-block;
   animation: ticker linear infinite;
 }
+
+/* ============================================================
+   Carte Patrimoine (beta isométrique)
+   ============================================================ */
+
+/* Masquer la scrollbar tout en gardant le scroll */
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Lévitation douce des bâtiments (chaque tuile décale son délai) */
+@keyframes iso-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+.iso-bob { animation: iso-bob 3.4s ease-in-out infinite; }
+
+/* Halo coloré qui respire sous le bâtiment */
+@keyframes iso-glow {
+  0%, 100% { opacity: 0.35; transform: scale(0.92); }
+  50%      { opacity: 0.7;  transform: scale(1.06); }
+}
+.iso-glow { animation: iso-glow 3.4s ease-in-out infinite; }
+
+/* Revenu qui monte et s'efface */
+@keyframes income-float {
+  0%   { opacity: 0; transform: translate(-50%, 0) scale(0.8); }
+  15%  { opacity: 1; transform: translate(-50%, -6px) scale(1); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -34px) scale(0.95); }
+}
+.income-float {
+  animation: income-float 2.6s ease-out forwards;
+}
+
+/* Apparition d'un nouveau bâtiment */
+@keyframes spawn-pop {
+  0%   { opacity: 0; transform: translateY(14px) scale(0.6); }
+  60%  { opacity: 1; transform: translateY(-3px) scale(1.06); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.spawn-pop { animation: spawn-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) both; }
+
+/* Pulsation lumineuse au level-up */
+@keyframes levelup-flash {
+  0%   { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+  40%  { filter: brightness(1.7) drop-shadow(0 0 16px #fde68a); }
+  100% { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+}
+.levelup-flash { animation: levelup-flash 0.9s ease-out; }
