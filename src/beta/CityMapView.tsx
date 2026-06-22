@@ -8,6 +8,7 @@ import { formatEuroCompact } from '../utils/formatting'
 import type { Investment, InvestmentCategory } from '../types'
 import { Icon } from '../components/ui/Icon'
 import { BetaShell, useDrawer } from './BetaShell'
+import { getBuildingSprite } from './buildingSprites'
 
 // ── District definitions ──────────────────────────────────────────────────────
 
@@ -238,6 +239,7 @@ function BuildingTile({
   const level = inv.level ?? 1
   const isUpgrading = !!inv.upgradeReadyAtReal && inv.upgradeReadyAtReal > now
   const rate = inv.annualReturnRate + getInvestmentLevelBonus(inv.catalogId, level)
+  const sprite = getBuildingSprite(inv.catalogId)
 
   useEffect(() => {
     if (!isUpgrading) return
@@ -291,16 +293,25 @@ function BuildingTile({
           ))}
         </div>
 
-        {/* Icon — large */}
-        <div
-          className="w-12 h-12 rounded-xl flex items-center justify-center z-10"
-          style={{
-            background: item.color + '25',
-            boxShadow: `0 0 14px ${item.color}40`,
-          }}
-        >
-          <Icon name={item.icon} size={26} style={{ color: item.color } as React.CSSProperties} />
-        </div>
+        {/* Bâtiment — sprite si dispo, sinon icône */}
+        {sprite ? (
+          <img
+            src={sprite}
+            alt={item.name}
+            className="w-16 h-16 object-contain z-10 drop-shadow-lg"
+            style={{ filter: `drop-shadow(0 0 10px ${item.color}55)` }}
+          />
+        ) : (
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center z-10"
+            style={{
+              background: item.color + '25',
+              boxShadow: `0 0 14px ${item.color}40`,
+            }}
+          >
+            <Icon name={item.icon} size={26} style={{ color: item.color } as React.CSSProperties} />
+          </div>
+        )}
 
         {/* Monthly income badge */}
         {inv.monthlyIncome > 0 && !isUpgrading && (
@@ -452,6 +463,7 @@ function BuildingSheet({
   const item = getCatalogItem(inv.catalogId)
   const level = inv.level ?? 1
   const rate = inv.annualReturnRate + getInvestmentLevelBonus(inv.catalogId, level)
+  const sprite = getBuildingSprite(inv.catalogId)
   const gain = inv.currentValue - inv.purchasePrice
   const gainPct = inv.purchasePrice > 0 ? (gain / inv.purchasePrice) * 100 : 0
 
@@ -473,14 +485,18 @@ function BuildingSheet({
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
             <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center"
+              className="w-14 h-14 rounded-2xl flex items-center justify-center overflow-hidden"
               style={{
                 background: item.color + '20',
                 border: `1.5px solid ${item.color}50`,
                 boxShadow: `0 0 20px ${item.color}30`,
               }}
             >
-              <Icon name={item.icon} size={28} style={{ color: item.color } as React.CSSProperties} />
+              {sprite ? (
+                <img src={sprite} alt={item.name} className="w-12 h-12 object-contain" />
+              ) : (
+                <Icon name={item.icon} size={28} style={{ color: item.color } as React.CSSProperties} />
+              )}
             </div>
             <div>
               <div className="font-extrabold text-white text-base leading-tight">{item.name}</div>
