@@ -4,9 +4,8 @@ import { useUiMode, type UiMode } from './uiModeStore'
 import { cn } from '../utils/formatting'
 
 const MODES: { id: UiMode; emoji: string; label: string; desc: string }[] = [
-  { id: 'classic', emoji: '🏠', label: 'App actuelle', desc: 'Version stable (défaut)' },
-  { id: 'base', emoji: '🏝️', label: 'Beta · Base', desc: 'Île à construire (Boom Beach)' },
-  { id: 'city', emoji: '🏙️', label: 'Beta · Ville', desc: 'Métropole qui grandit' },
+  { id: 'classic', emoji: '🏠', label: 'App classique', desc: 'Version stable (défaut)' },
+  { id: 'citymap', emoji: '🗺️', label: 'Beta · Carte Patrimoine', desc: 'Vue visuelle par zones et slots' },
 ]
 
 export function BetaModeSwitcher() {
@@ -17,7 +16,7 @@ export function BetaModeSwitcher() {
   return (
     <div className="fixed bottom-20 left-3 z-[55] flex flex-col items-start gap-2">
       {open && (
-        <div className="bg-slate-800/95 backdrop-blur border border-white/15 rounded-2xl p-1.5 shadow-2xl animate-pop-in w-56">
+        <div className="bg-slate-800/95 backdrop-blur border border-white/15 rounded-2xl p-1.5 shadow-2xl animate-pop-in w-60">
           {MODES.map((m) => (
             <button
               key={m.id}
@@ -46,7 +45,7 @@ export function BetaModeSwitcher() {
         )}
       >
         <FlaskConical size={15} />
-        {mode === 'classic' ? 'Beta' : mode === 'base' ? '🏝️ Base' : '🏙️ Ville'}
+        {mode === 'classic' ? 'Beta' : '🗺️ Carte'}
       </button>
     </div>
   )

@@ -27,8 +27,7 @@ import { formatEuroSigned } from './utils/formatting'
 import { checkOfflineReminder, scheduleOfflineReminder } from './utils/notifications'
 import { useUiMode } from './beta/uiModeStore'
 import { BetaModeSwitcher } from './beta/BetaModeSwitcher'
-import { BetaBaseView } from './beta/BetaBaseView'
-import { BetaCityView } from './beta/BetaCityView'
+import { CityMapView } from './beta/CityMapView'
 
 const SCREENS = {
   dashboard: Dashboard,
@@ -112,8 +111,7 @@ export default function App() {
 /** Choisit la vue principale selon le mode d'affichage (classic / base / city). */
 function MainView() {
   const mode = useUiMode((s) => s.mode)
-  if (mode === 'base') return <BetaBaseView />
-  if (mode === 'city') return <BetaCityView />
+  if (mode === 'citymap') return <CityMapView />
   return <ClassicShell />
 }
 

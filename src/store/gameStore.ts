@@ -975,7 +975,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }
       }
       // Pass amount (full property price) so createInvestment knows the real value
-      const inv = { ...createInvestment(catalogId, quote.downPayment, game.gameDateISO, null, amount), level: 1 }
+      const _savedLevel = (game.investmentUpgrades ?? {})[catalogId] ?? 1
+      const inv = { ...createInvestment(catalogId, quote.downPayment, game.gameDateISO, null, amount), level: _savedLevel }
       const mortgage = createMortgage(inv.instanceId, quote)
       inv.mortgageId = mortgage.id
       const furnitureCost = inv.propertyDetails?.furnitureCost ?? 0
@@ -1003,7 +1004,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         message: `Cash insuffisant. Disponible : ${Math.round(game.cashBalance).toLocaleString('fr-FR')} €${furnitureCost ? ` (mobilier LMNP : +${furnitureCost} €)` : ''}.`,
       }
     }
-    const inv = { ...createInvestment(catalogId, amount, game.gameDateISO, null), level: 1 }
+    const _savedLevel = (game.investmentUpgrades ?? {})[catalogId] ?? 1
+    const inv = { ...createInvestment(catalogId, amount, game.gameDateISO, null), level: _savedLevel }
     set((s) => {
       if (!s.game) return s
       let nextGame: GameState = {
@@ -1071,6 +1073,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Vente possible mais coûte de l'argent (dette > valeur) — rare.
     }
 
+    const catalogItem = getCatalogItem(inv.catalogId)
+    const prevUpgrades = game.investmentUpgrades ?? {}
+    const upgrades = (!catalogItem.isRealEstate && (inv.level ?? 1) > 1)
+      ? { ...prevUpgrades, [inv.catalogId]: Math.max(inv.level ?? 1, prevUpgrades[inv.catalogId] ?? 1) }
+      : prevUpgrades
+
     set((s) => ({
       game: {
         ...s.game!,
@@ -1078,6 +1086,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         investments: s.game!.investments.filter((i) => i.instanceId !== instanceId),
         mortgages: s.game!.mortgages.filter((m) => m.id !== inv.mortgageId),
         behavior: recordSell(s.game!),
+        investmentUpgrades: upgrades,
       },
       selectedInvestmentId: null,
     }))

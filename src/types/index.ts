@@ -492,6 +492,7 @@ export interface GameState {
   weeklyChallenges?: WeeklyChallengesState
   questProgress?: QuestChainProgress[]
   pendingYearRecap?: AnnualRecap
+  investmentUpgrades?: Record<string, number> // catalogId → highest level ever reached (non-RE assets only)
 }
 
 // ----------------------------------------------------------------------------
