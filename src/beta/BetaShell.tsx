@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { X, TrendingUp, Wallet, Building2, Target, GraduationCap, Bell } from 'lucide-react'
+import { X, TrendingUp, Wallet, Target, Bell, BarChart2 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useGameStore, selectUnreadCount, selectCompletedChallenges } from '../store/gameStore'
 import {
@@ -33,9 +33,9 @@ const DRAWER_SCREENS: Partial<Record<Screen, { title: string; Comp: React.Compon
 const DOCK: { screen: Screen; label: string; icon: typeof TrendingUp }[] = [
   { screen: 'marketplace', label: 'Investir', icon: TrendingUp },
   { screen: 'portfolio', label: 'Patrimoine', icon: Wallet },
-  { screen: 'properties', label: 'Biens', icon: Building2 },
   { screen: 'challenges', label: 'Défis', icon: Target },
-  { screen: 'skills', label: 'Carrière', icon: GraduationCap },
+  { screen: 'stats', label: 'Stats', icon: BarChart2 },
+  { screen: 'events', label: 'Actualités', icon: Bell },
 ]
 
 interface BetaShellProps {
