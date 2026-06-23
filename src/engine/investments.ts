@@ -87,6 +87,8 @@ export function createInvestment(
     mortgageId: mortgage ? mortgage.id : null,
     valueHistory: [Math.round(rawCurrentValue)],
     level: 1,
+    pendingRevenue: 0,
+    lastCollectedAt: Date.now(),
   }
 
   // Détails spécifiques immobilier — rent based on full asset value (before fees).

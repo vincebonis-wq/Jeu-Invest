@@ -1,5 +1,19 @@
+/**
+ * CityMapView — carte de ville prédéfinie style Sim Companies / Boom Beach.
+ *
+ * Architecture :
+ *  • Carte fixe (pas de scroll) avec 5 quartiers et ~20 emplacements bâtiment.
+ *  • Chaque bâtiment accumule ses revenus (pendingRevenue) que le joueur
+ *    récupère en tapant dessus → boucle de rétention quotidienne.
+ *  • Tap bâtiment → modal collect + upgrade.
+ *  • Bouton "Tout collecter" en haut quand des bâtiments sont prêts.
+ */
+
 import { useState, useEffect } from 'react'
-import { Lock, Plus, ArrowUpCircle, Clock, X, ChevronRight, Hammer } from 'lucide-react'
+import {
+  Lock, Plus, ArrowUpCircle, Clock, X, ChevronRight,
+  Hammer, Coins, Sparkles, CheckCircle2,
+} from 'lucide-react'
 import { useGameStore } from '../store/gameStore'
 import { calcNetWorth } from '../utils/calculations'
 import { getCatalogItem } from '../data/investments'
@@ -15,563 +29,392 @@ import { Icon } from '../components/ui/Icon'
 import { BetaShell, useDrawer } from './BetaShell'
 import { getBuildingSprite } from './buildingSprites'
 
-// ─── District data ────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-interface Slot { catalogId: InvestmentCategory; slotIndex: number }
+type DistrictId = 'finance' | 'realestate' | 'business' | 'alternative' | 'savings'
 
-interface DistrictDef {
+interface MapSlot {
   id: string
-  label: string
-  emoji: string
-  hex: string
-  /** Clip-path polygon (% of map canvas) giving the isometric zone shape */
-  clip: string
-  /** Absolute center of the label badge (px, relative to map canvas) */
-  badgeX: number
-  badgeY: number
-  /** Preview buildings shown on the map (first 4 owned/empty/locked) */
-  previewSlots: Slot[]
-  /** Rough xy positions for each preview building inside the zone (0-1 relative) */
-  previewPos: { rx: number; ry: number }[]
-  /** All slots managed in the bottom panel */
-  slots: Slot[]
+  catalogId: InvestmentCategory
+  slotIndex: number       // which instance (0-indexed) of that catalogId
+  district: DistrictId
+  x: number              // % of canvas width (0-100)
+  y: number              // % of canvas height (0-100)
 }
 
-const CITY: DistrictDef[] = [
+interface District {
+  id: DistrictId
+  label: string
+  shortLabel: string
+  emoji: string
+  hex: string
+  // Zone bounding box (% of canvas) — used for colored background
+  zLeft: number; zTop: number; zRight: number; zBottom: number
+}
+
+// ─── Districts ────────────────────────────────────────────────────────────────
+
+const DISTRICTS: District[] = [
   {
-    id: 'finance',
-    label: 'Financial District',
-    emoji: '📈',
-    hex: '#38bdf8',
-    // Top-left diamond zone
-    clip: 'polygon(50% 0%, 95% 20%, 72% 47%, 28% 47%, 5% 20%)',
-    badgeX: 96, badgeY: 48,
-    previewSlots: [
-      { catalogId: 'bourse_etf', slotIndex: 0 },
-      { catalogId: 'bourse_etf', slotIndex: 1 },
-      { catalogId: 'scpi', slotIndex: 0 },
-      { catalogId: 'obligations_etat', slotIndex: 0 },
-    ],
-    previewPos: [
-      { rx: 0.28, ry: 0.38 },
-      { rx: 0.48, ry: 0.26 },
-      { rx: 0.68, ry: 0.38 },
-      { rx: 0.48, ry: 0.55 },
-    ],
-    slots: [
-      { catalogId: 'bourse_etf', slotIndex: 0 },
-      { catalogId: 'bourse_etf', slotIndex: 1 },
-      { catalogId: 'bourse_etf', slotIndex: 2 },
-      { catalogId: 'scpi', slotIndex: 0 },
-      { catalogId: 'scpi', slotIndex: 1 },
-      { catalogId: 'obligations_etat', slotIndex: 0 },
-      { catalogId: 'obligations_etat', slotIndex: 1 },
-      { catalogId: 'produit_structure', slotIndex: 0 },
-    ],
+    id: 'finance',    label: 'Financial District', shortLabel: 'Finance',
+    emoji: '📈', hex: '#38bdf8',
+    zLeft: 0, zTop: 0, zRight: 49, zBottom: 47,
   },
   {
-    id: 'realestate',
-    label: 'Real Estate Quarter',
-    emoji: '🏠',
-    hex: '#fbbf24',
-    // Top-right diamond zone
-    clip: 'polygon(50% 0%, 95% 20%, 72% 47%, 28% 47%, 5% 20%)',
-    badgeX: 288, badgeY: 42,
-    previewSlots: [
-      { catalogId: 'immo_classique', slotIndex: 0 },
-      { catalogId: 'lmnp', slotIndex: 0 },
-      { catalogId: 'parking', slotIndex: 0 },
-      { catalogId: 'parking', slotIndex: 1 },
-    ],
-    previewPos: [
-      { rx: 0.28, ry: 0.38 },
-      { rx: 0.52, ry: 0.26 },
-      { rx: 0.72, ry: 0.38 },
-      { rx: 0.48, ry: 0.55 },
-    ],
-    slots: [
-      { catalogId: 'immo_classique', slotIndex: 0 },
-      { catalogId: 'immo_classique', slotIndex: 1 },
-      { catalogId: 'lmnp', slotIndex: 0 },
-      { catalogId: 'lmnp', slotIndex: 1 },
-      { catalogId: 'parking', slotIndex: 0 },
-      { catalogId: 'parking', slotIndex: 1 },
-      { catalogId: 'parking', slotIndex: 2 },
-      { catalogId: 'club_deal_immo', slotIndex: 0 },
-    ],
+    id: 'realestate', label: 'Real Estate Quarter', shortLabel: 'Immobilier',
+    emoji: '🏠', hex: '#fbbf24',
+    zLeft: 51, zTop: 0, zRight: 100, zBottom: 47,
   },
   {
-    id: 'business',
-    label: 'Business Park',
-    emoji: '🏭',
-    hex: '#a78bfa',
-    // Center diamond (wider)
-    clip: 'polygon(50% 0%, 95% 28%, 95% 72%, 50% 100%, 5% 72%, 5% 28%)',
-    badgeX: 192, badgeY: 200,
-    previewSlots: [
-      { catalogId: 'business', slotIndex: 0 },
-      { catalogId: 'business', slotIndex: 1 },
-      { catalogId: 'crowdfunding_immo', slotIndex: 0 },
-      { catalogId: 'crowdfunding_immo', slotIndex: 1 },
-    ],
-    previewPos: [
-      { rx: 0.32, ry: 0.36 },
-      { rx: 0.56, ry: 0.28 },
-      { rx: 0.68, ry: 0.52 },
-      { rx: 0.36, ry: 0.60 },
-    ],
-    slots: [
-      { catalogId: 'business', slotIndex: 0 },
-      { catalogId: 'business', slotIndex: 1 },
-      { catalogId: 'crowdfunding_immo', slotIndex: 0 },
-      { catalogId: 'crowdfunding_immo', slotIndex: 1 },
-      { catalogId: 'crowdfunding_immo', slotIndex: 2 },
-    ],
+    id: 'business',   label: 'Business Park', shortLabel: 'Business',
+    emoji: '🏭', hex: '#a78bfa',
+    zLeft: 10, zTop: 46, zRight: 90, zBottom: 70,
   },
   {
-    id: 'alternative',
-    label: 'Alternative Zone',
-    emoji: '⚡',
-    hex: '#fb923c',
-    // Bottom-left diamond
-    clip: 'polygon(50% 0%, 95% 20%, 72% 47%, 28% 47%, 5% 20%)',
-    badgeX: 96, badgeY: 338,
-    previewSlots: [
-      { catalogId: 'crypto', slotIndex: 0 },
-      { catalogId: 'crypto', slotIndex: 1 },
-      { catalogId: 'or_metaux', slotIndex: 0 },
-      { catalogId: 'or_metaux', slotIndex: 1 },
-    ],
-    previewPos: [
-      { rx: 0.30, ry: 0.38 },
-      { rx: 0.52, ry: 0.26 },
-      { rx: 0.70, ry: 0.38 },
-      { rx: 0.50, ry: 0.58 },
-    ],
-    slots: [
-      { catalogId: 'crypto', slotIndex: 0 },
-      { catalogId: 'crypto', slotIndex: 1 },
-      { catalogId: 'or_metaux', slotIndex: 0 },
-      { catalogId: 'or_metaux', slotIndex: 1 },
-    ],
+    id: 'alternative', label: 'Alternative Zone', shortLabel: 'Alternatif',
+    emoji: '⚡', hex: '#fb923c',
+    zLeft: 0, zTop: 69, zRight: 49, zBottom: 100,
   },
   {
-    id: 'savings',
-    label: 'Savings Village',
-    emoji: '🛡️',
-    hex: '#34d399',
-    // Bottom-right diamond
-    clip: 'polygon(50% 0%, 95% 20%, 72% 47%, 28% 47%, 5% 20%)',
-    badgeX: 288, badgeY: 330,
-    previewSlots: [
-      { catalogId: 'livret', slotIndex: 0 },
-      { catalogId: 'assurance_vie', slotIndex: 0 },
-      { catalogId: 'assurance_vie', slotIndex: 1 },
-    ],
-    previewPos: [
-      { rx: 0.32, ry: 0.30 },
-      { rx: 0.58, ry: 0.30 },
-      { rx: 0.46, ry: 0.54 },
-      { rx: 0.5, ry: 0.5 },
-    ],
-    slots: [
-      { catalogId: 'livret', slotIndex: 0 },
-      { catalogId: 'assurance_vie', slotIndex: 0 },
-      { catalogId: 'assurance_vie', slotIndex: 1 },
-    ],
+    id: 'savings',    label: 'Savings Village', shortLabel: 'Épargne',
+    emoji: '🛡️', hex: '#34d399',
+    zLeft: 51, zTop: 69, zRight: 100, zBottom: 100,
   },
 ]
 
-// ─── Zone layout (position of each district's zone div in the map canvas) ────
+// ─── Map slots (prédéfinis) ───────────────────────────────────────────────────
+// x/y en % du canvas. 1 instance max par type sauf immo (3 max).
 
-// The 5 zones are absolutely positioned. Values are in px for a ~384px wide canvas.
-// The canvas itself is full-width/height so these are effectively responsive.
-type ZoneLayout = { left: string; top: string; width: string; height: string }
+const MAP_SLOTS: MapSlot[] = [
+  // Financial District
+  { id: 'f1', catalogId: 'bourse_etf',        slotIndex: 0, district: 'finance',     x: 10, y: 12 },
+  { id: 'f2', catalogId: 'scpi',              slotIndex: 0, district: 'finance',     x: 28, y:  6 },
+  { id: 'f3', catalogId: 'obligations_etat',  slotIndex: 0, district: 'finance',     x: 43, y: 12 },
+  { id: 'f4', catalogId: 'produit_structure', slotIndex: 0, district: 'finance',     x: 14, y: 34 },
 
-const ZONE_LAYOUT: Record<string, ZoneLayout> = {
-  // top-left
-  finance:     { left: '0%',    top: '0%',   width: '52%', height: '44%' },
-  // top-right
-  realestate:  { left: '48%',   top: '0%',   width: '52%', height: '44%' },
-  // center (overlaps slightly with top/bottom — higher z-index)
-  business:    { left: '12%',   top: '32%',  width: '76%', height: '38%' },
-  // bottom-left
-  alternative: { left: '0%',    top: '62%',  width: '52%', height: '38%' },
-  // bottom-right
-  savings:     { left: '48%',   top: '62%',  width: '52%', height: '38%' },
-}
+  // Real Estate Quarter
+  { id: 'r1', catalogId: 'immo_classique',    slotIndex: 0, district: 'realestate',  x: 57, y:  7 },
+  { id: 'r2', catalogId: 'immo_classique',    slotIndex: 1, district: 'realestate',  x: 74, y: 12 },
+  { id: 'r3', catalogId: 'lmnp',              slotIndex: 0, district: 'realestate',  x: 90, y:  7 },
+  { id: 'r4', catalogId: 'parking',           slotIndex: 0, district: 'realestate',  x: 60, y: 32 },
+  { id: 'r5', catalogId: 'parking',           slotIndex: 1, district: 'realestate',  x: 79, y: 34 },
+  { id: 'r6', catalogId: 'club_deal_immo',    slotIndex: 0, district: 'realestate',  x: 93, y: 32 },
 
-const ZONE_Z: Record<string, number> = {
-  finance: 1, realestate: 1, business: 2, alternative: 1, savings: 1,
-}
+  // Business Park
+  { id: 'b1', catalogId: 'business',          slotIndex: 0, district: 'business',    x: 22, y: 56 },
+  { id: 'b2', catalogId: 'crowdfunding_immo', slotIndex: 0, district: 'business',    x: 42, y: 52 },
+  { id: 'b3', catalogId: 'business',          slotIndex: 1, district: 'business',    x: 62, y: 56 },
+  { id: 'b4', catalogId: 'crowdfunding_immo', slotIndex: 1, district: 'business',    x: 80, y: 52 },
 
-// ─── Root ─────────────────────────────────────────────────────────────────────
+  // Alternative Zone
+  { id: 'a1', catalogId: 'crypto',            slotIndex: 0, district: 'alternative', x: 10, y: 76 },
+  { id: 'a2', catalogId: 'or_metaux',         slotIndex: 0, district: 'alternative', x: 30, y: 72 },
+  { id: 'a3', catalogId: 'crypto',            slotIndex: 1, district: 'alternative', x: 14, y: 90 },
+
+  // Savings Village
+  { id: 's1', catalogId: 'livret',            slotIndex: 0, district: 'savings',     x: 58, y: 74 },
+  { id: 's2', catalogId: 'assurance_vie',     slotIndex: 0, district: 'savings',     x: 76, y: 72 },
+  { id: 's3', catalogId: 'assurance_vie',     slotIndex: 1, district: 'savings',     x: 62, y: 89 },
+  { id: 's4', catalogId: 'livret',            slotIndex: 1, district: 'savings',     x: 88, y: 87 },
+]
+
+// ─── Root component ───────────────────────────────────────────────────────────
 
 export function CityMapView() {
   const { drawerScreen, open, close } = useDrawer()
-  const [activeId, setActiveId] = useState<string>('finance')
-  const [slotAction, setSlotAction] = useState<{ catalogId: InvestmentCategory; slotIndex: number } | null>(null)
   const game = useGameStore(s => s.game)!
+  const collectAll = useGameStore(s => s.collectAllRevenue)
+
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
+  const [collectAnim, setCollectAnim] = useState<{ id: string; amount: number }[]>([])
   const netWorth = calcNetWorth(game)
 
-  const active = CITY.find(d => d.id === activeId)!
+  const totalPending = game.investments.reduce((s, i) => s + (i.pendingRevenue ?? 0), 0)
+  const readyCount = game.investments.filter(i => (i.pendingRevenue ?? 0) > 0).length
+
+  function handleCollectAll() {
+    const { total } = collectAll()
+    if (total > 0) {
+      const animId = Date.now().toString()
+      setCollectAnim(prev => [...prev, { id: animId, amount: total }])
+      setTimeout(() => setCollectAnim(prev => prev.filter(a => a.id !== animId)), 1800)
+    }
+  }
+
+  const selectedSlot = MAP_SLOTS.find(s => s.id === selectedSlotId)
 
   return (
     <BetaShell accent="#050b18" openScreen={open} drawerScreen={drawerScreen} onCloseDrawer={close}>
-      <div className="h-full flex flex-col" style={{ background: '#050b18' }}>
+      <div className="h-full flex flex-col overflow-hidden" style={{ background: '#060d1e' }}>
 
-        {/* ── City map ── */}
-        <div className="relative flex-1 min-h-0 overflow-hidden">
-
-          {/* Background grid / road texture */}
-          <svg className="absolute inset-0 w-full h-full opacity-10 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <pattern id="grid" width="48" height="27" patternUnits="userSpaceOnUse" patternTransform="rotate(30)">
-                <path d="M 48 0 L 0 0 0 27" fill="none" stroke="#4f6a8a" strokeWidth="0.5"/>
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-          </svg>
-
-          {/* District zones */}
-          {CITY.map(d => {
-            const layout = ZONE_LAYOUT[d.id]
-            const z = ZONE_Z[d.id]
-            const isActive = d.id === activeId
-
-            // Gather preview slots with state
-            const previewBuildings = d.previewSlots.slice(0, 4).map(slot => {
-              const item = getCatalogItem(slot.catalogId)
-              const inv = game.investments.filter(i => i.catalogId === slot.catalogId)[slot.slotIndex] ?? null
-              const unlocked = netWorth >= item.unlockThreshold
-              const sprite = getBuildingSprite(slot.catalogId)
-              return { slot, item, inv, unlocked, sprite }
-            })
-
-            const ownedCount = d.slots.filter(s =>
-              game.investments.filter(i => i.catalogId === s.catalogId)[s.slotIndex]
-            ).length
-            const totalValue = d.slots.reduce((sum, s) => {
-              const inv = game.investments.filter(i => i.catalogId === s.catalogId)[s.slotIndex]
-              return sum + (inv?.currentValue ?? 0)
-            }, 0)
-
-            return (
-              <button
-                key={d.id}
-                onClick={() => setActiveId(d.id)}
-                className="absolute transition-all duration-200"
-                style={{
-                  ...layout,
-                  zIndex: z,
-                  outline: 'none',
-                  border: 'none',
-                  background: 'none',
-                  padding: 0,
-                }}
-              >
-                {/* Zone background */}
-                <div
-                  className="w-full h-full relative"
-                  style={{
-                    background: isActive
-                      ? `radial-gradient(ellipse at 50% 50%, ${d.hex}28 0%, ${d.hex}0e 60%, transparent 85%)`
-                      : `radial-gradient(ellipse at 50% 50%, ${d.hex}14 0%, ${d.hex}06 60%, transparent 85%)`,
-                    border: `1.5px solid ${d.hex}${isActive ? '90' : '40'}`,
-                    borderRadius: 20,
-                    boxShadow: isActive
-                      ? `0 0 32px ${d.hex}35, inset 0 0 24px ${d.hex}15`
-                      : `0 0 12px ${d.hex}18`,
-                    transition: 'all 0.2s ease',
-                  }}
-                >
-                  {/* District label badge */}
-                  <div
-                    className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-0.5 rounded-full whitespace-nowrap z-10"
-                    style={{
-                      background: `${d.hex}22`,
-                      border: `1px solid ${d.hex}55`,
-                      color: d.hex,
-                      fontSize: 9,
-                      fontWeight: 800,
-                      letterSpacing: '0.06em',
-                      backdropFilter: 'blur(4px)',
-                    }}
-                  >
-                    {d.emoji} {d.label.toUpperCase()}
-                  </div>
-
-                  {/* Owned count + value (bottom-right) */}
-                  {totalValue > 0 && (
-                    <div
-                      className="absolute bottom-1.5 right-2 text-right"
-                      style={{ color: d.hex }}
-                    >
-                      <div style={{ fontSize: 10, fontWeight: 800 }}>{formatEuroCompact(totalValue)}</div>
-                      <div style={{ fontSize: 8, opacity: 0.7 }}>{ownedCount}/{d.slots.length} bâtiments</div>
-                    </div>
-                  )}
-
-                  {/* Preview buildings */}
-                  {previewBuildings.map(({ slot, item, inv, unlocked, sprite }, i) => {
-                    const pos = d.previewPos[i]
-                    if (!pos) return null
-
-                    return (
-                      <div
-                        key={`${slot.catalogId}-${slot.slotIndex}`}
-                        className="absolute flex flex-col items-center"
-                        style={{
-                          left: `${pos.rx * 100}%`,
-                          top: `${pos.ry * 100}%`,
-                          transform: 'translate(-50%, -50%)',
-                        }}
-                      >
-                        {inv ? (
-                          // Owned building
-                          <div className="relative">
-                            <div
-                              className="iso-bob"
-                              style={{
-                                width: 52,
-                                height: 52,
-                                animationDelay: `${i * -0.9}s`,
-                                filter: `drop-shadow(0 0 8px ${item.color}99)`,
-                              }}
-                            >
-                              {sprite ? (
-                                <img src={sprite} alt={item.name} className="w-full h-full object-contain" draggable={false} />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center rounded-lg"
-                                  style={{ background: item.color + '25', border: `1px solid ${item.color}55` }}>
-                                  <Icon name={item.icon} size={22} style={{ color: item.color } as React.CSSProperties} />
-                                </div>
-                              )}
-                            </div>
-                            {/* Level indicator */}
-                            <div className="flex gap-0.5 justify-center mt-0.5">
-                              {Array.from({ length: 5 }).map((_, li) => (
-                                <div key={li} className="w-1 h-1 rounded-full"
-                                  style={{ background: li < (inv.level ?? 1) ? d.hex : 'rgba(255,255,255,0.12)' }} />
-                              ))}
-                            </div>
-                          </div>
-                        ) : unlocked ? (
-                          // Empty unlocked slot
-                          <div
-                            className="flex items-center justify-center rounded-xl"
-                            style={{
-                              width: 44, height: 44,
-                              border: `1.5px dashed ${d.hex}55`,
-                              background: `${d.hex}08`,
-                            }}
-                          >
-                            <Plus size={16} style={{ color: d.hex, opacity: 0.5 }} />
-                          </div>
-                        ) : (
-                          // Locked slot
-                          <div
-                            className="flex flex-col items-center justify-center rounded-xl gap-0.5"
-                            style={{
-                              width: 44, height: 44,
-                              border: '1.5px dashed rgba(148,163,184,0.2)',
-                              background: 'rgba(255,255,255,0.02)',
-                            }}
-                          >
-                            <Lock size={12} className="text-slate-600" />
-                            <span style={{ fontSize: 7, color: '#475569', fontWeight: 700 }}>
-                              {formatEuroCompact(item.unlockThreshold)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* ── Bottom building slots panel ── */}
-        <div
-          className="shrink-0"
-          style={{ background: '#080f1e', borderTop: `1px solid ${active.hex}30` }}
-        >
-          {/* Panel header */}
-          <div className="flex items-center justify-between px-4 pt-2.5 pb-1.5">
+        {/* ── Collect-all banner ── */}
+        {readyCount > 0 && (
+          <button
+            onClick={handleCollectAll}
+            className="mx-3 mt-2 mb-1 rounded-2xl flex items-center justify-between px-4 py-2.5 active:scale-98 transition-transform"
+            style={{
+              background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+              boxShadow: '0 4px 16px #f59e0b50',
+            }}
+          >
             <div className="flex items-center gap-2">
-              <span style={{ fontSize: 14 }}>{active.emoji}</span>
-              <span
-                className="text-xs font-extrabold uppercase tracking-wider"
-                style={{ color: active.hex }}
-              >
-                {active.label}
+              <Coins size={16} className="text-amber-900" />
+              <span className="text-amber-900 font-extrabold text-sm">
+                {readyCount} bâtiment{readyCount > 1 ? 's' : ''} prêt{readyCount > 1 ? 's' : ''}
               </span>
             </div>
-            <div className="text-[10px] text-slate-500 font-semibold">
-              Emplacements
+            <div className="flex items-center gap-1">
+              <span className="text-amber-900 font-black text-sm">
+                +{formatEuroCompact(totalPending)}
+              </span>
+              <span className="text-amber-800 text-xs font-bold">COLLECTER</span>
             </div>
-          </div>
+          </button>
+        )}
 
-          {/* Horizontal slot strip */}
-          <div className="overflow-x-auto hide-scrollbar px-3 pb-3">
-            <div className="flex gap-2.5" style={{ width: 'max-content' }}>
-              {active.slots.map(slot => (
-                <SlotCard
-                  key={`${slot.catalogId}-${slot.slotIndex}`}
-                  slot={slot}
-                  districtHex={active.hex}
-                  netWorth={netWorth}
-                  onClick={() => setSlotAction(slot)}
-                />
-              ))}
+        {/* ── City map canvas ── */}
+        <div className="relative flex-1 min-h-0 mx-2 mb-2 mt-1 rounded-2xl overflow-hidden"
+          style={{ background: '#070e1c' }}>
+
+          {/* SVG background: roads */}
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+            {/* Subtle grid */}
+            <defs>
+              <pattern id="citygrid" width="40" height="22" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 22" fill="none" stroke="#0d1e35" strokeWidth="0.8"/>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#citygrid)" />
+            {/* Main roads */}
+            <rect x="49%" y="0" width="2%" height="70%" fill="#040a14" />
+            <rect x="0" y="46%" width="100%" height="3%" fill="#040a14" />
+            <rect x="0" y="69%" width="100%" height="2%" fill="#040a14" />
+            {/* Road center lines */}
+            <line x1="50%" y1="0" x2="50%" y2="69%" stroke="#0f2040" strokeWidth="1" strokeDasharray="6 4" />
+            <line x1="0" y1="47.5%" x2="100%" y2="47.5%" stroke="#0f2040" strokeWidth="1" strokeDasharray="6 4" />
+            <line x1="0" y1="70%" x2="100%" y2="70%" stroke="#0f2040" strokeWidth="1" strokeDasharray="6 4" />
+          </svg>
+
+          {/* District zone backgrounds */}
+          {DISTRICTS.map(d => (
+            <div
+              key={d.id}
+              className="absolute pointer-events-none"
+              style={{
+                left: `${d.zLeft}%`,
+                top: `${d.zTop}%`,
+                width: `${d.zRight - d.zLeft}%`,
+                height: `${d.zBottom - d.zTop}%`,
+                background: `radial-gradient(ellipse at center, ${d.hex}12 0%, transparent 75%)`,
+                border: `1px solid ${d.hex}22`,
+              }}
+            >
+              {/* District badge */}
+              <div
+                className="absolute top-1.5 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-0.5 rounded-full whitespace-nowrap"
+                style={{
+                  background: `${d.hex}18`,
+                  border: `1px solid ${d.hex}40`,
+                  color: d.hex,
+                  fontSize: 8,
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                }}
+              >
+                {d.emoji} {d.shortLabel.toUpperCase()}
+              </div>
             </div>
-          </div>
+          ))}
+
+          {/* Building slots */}
+          {MAP_SLOTS.map(slot => (
+            <BuildingSlot
+              key={slot.id}
+              slot={slot}
+              netWorth={netWorth}
+              isSelected={selectedSlotId === slot.id}
+              onTap={() => setSelectedSlotId(prev => prev === slot.id ? null : slot.id)}
+            />
+          ))}
+
+          {/* Floating collect animations */}
+          {collectAnim.map(a => (
+            <div
+              key={a.id}
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 font-black text-amber-300 pointer-events-none"
+              style={{
+                fontSize: 20,
+                animation: 'floatUp 1.8s ease-out forwards',
+                textShadow: '0 0 20px #fbbf24',
+                zIndex: 100,
+              }}
+            >
+              +{formatEuroCompact(a.amount)}
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* ── Slot action modal ── */}
-      {slotAction && (
+      {/* ── Slot modal ── */}
+      {selectedSlot && (
         <SlotModal
-          slot={slotAction}
-          onClose={() => setSlotAction(null)}
-          onGotoPortfolio={() => { setSlotAction(null); open('portfolio') }}
+          slot={selectedSlot}
+          netWorth={netWorth}
+          onClose={() => setSelectedSlotId(null)}
+          onGotoPortfolio={() => { setSelectedSlotId(null); open('portfolio') }}
         />
       )}
     </BetaShell>
   )
 }
 
-// ─── Slot card (in the bottom strip) ─────────────────────────────────────────
+// ─── Building slot (on the map) ───────────────────────────────────────────────
 
-function SlotCard({
-  slot, districtHex, netWorth, onClick,
+function BuildingSlot({
+  slot, netWorth, isSelected, onTap,
 }: {
-  slot: Slot
-  districtHex: string
+  slot: MapSlot
   netWorth: number
-  onClick: () => void
+  isSelected: boolean
+  onTap: () => void
 }) {
   const game = useGameStore(s => s.game)!
   const item = getCatalogItem(slot.catalogId)
   const inv = game.investments.filter(i => i.catalogId === slot.catalogId)[slot.slotIndex] ?? null
   const unlocked = netWorth >= item.unlockThreshold
   const sprite = getBuildingSprite(slot.catalogId)
-
-  const [now, setNow] = useState(Date.now())
-  const isUpgrading = !!inv?.upgradeReadyAtReal && inv.upgradeReadyAtReal > now
+  const pending = inv?.pendingRevenue ?? 0
+  const isReady = pending > 0
   const level = inv?.level ?? 1
 
-  useEffect(() => {
-    if (!isUpgrading) return
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [isUpgrading])
-
-  const secsLeft = isUpgrading ? Math.max(0, Math.round((inv!.upgradeReadyAtReal! - now) / 1000)) : 0
-  const timer =
-    secsLeft > 3600
-      ? `${Math.floor(secsLeft / 3600)}h${String(Math.floor((secsLeft % 3600) / 60)).padStart(2, '0')}`
-      : secsLeft > 60
-      ? `${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')}`
-      : `${secsLeft}s`
+  // District color
+  const district = DISTRICTS.find(d => d.id === slot.district)!
+  const hex = district.hex
 
   return (
     <button
-      onClick={onClick}
-      className="relative flex flex-col items-center rounded-2xl transition-all active:scale-95"
+      onClick={onTap}
+      className="absolute flex flex-col items-center"
       style={{
-        width: 88, flexShrink: 0,
-        background: inv
-          ? `linear-gradient(145deg, ${item.color}18, rgba(5,11,24,0.9))`
-          : 'rgba(255,255,255,0.04)',
-        border: inv
-          ? `1.5px solid ${item.color}55`
-          : unlocked
-          ? `1.5px dashed ${districtHex}40`
-          : '1.5px dashed rgba(100,116,139,0.3)',
-        padding: '8px 6px 6px',
+        left: `${slot.x}%`,
+        top: `${slot.y}%`,
+        transform: 'translate(-50%, -50%)',
+        zIndex: isSelected ? 30 : isReady ? 20 : 10,
+        outline: 'none',
+        border: 'none',
+        background: 'none',
+        padding: 0,
       }}
     >
-      {/* Building preview */}
-      <div className="w-14 h-14 flex items-center justify-center relative">
+      {/* Pending revenue badge */}
+      {isReady && (
+        <div
+          className="mb-0.5 px-1.5 py-0.5 rounded-full font-black flex items-center gap-0.5"
+          style={{
+            background: '#fbbf24',
+            color: '#431407',
+            fontSize: 8,
+            boxShadow: '0 2px 8px #fbbf2480',
+            animation: 'floatBadge 2s ease-in-out infinite',
+          }}
+        >
+          <Coins size={7} />
+          {formatEuroCompact(pending)}
+        </div>
+      )}
+
+      {/* Building visual */}
+      <div
+        className="relative flex items-center justify-center rounded-xl"
+        style={{
+          width: 58,
+          height: 58,
+          background: inv
+            ? `radial-gradient(circle at 35% 35%, ${item.color}30, ${item.color}10)`
+            : unlocked
+            ? `rgba(255,255,255,0.03)`
+            : `rgba(0,0,0,0.3)`,
+          border: isSelected
+            ? `2px solid ${inv ? item.color : hex}`
+            : isReady
+            ? `2px solid #fbbf24`
+            : inv
+            ? `1.5px solid ${item.color}55`
+            : unlocked
+            ? `1.5px dashed ${hex}35`
+            : `1.5px dashed rgba(100,116,139,0.2)`,
+          boxShadow: isSelected
+            ? `0 0 0 3px ${inv ? item.color : hex}40, 0 0 20px ${inv ? item.color : hex}30`
+            : isReady
+            ? `0 0 12px #fbbf2455`
+            : inv
+            ? `0 0 8px ${item.color}20`
+            : 'none',
+          transition: 'all 0.15s ease',
+        }}
+      >
         {inv ? (
           sprite ? (
-            <img src={sprite} alt={item.name} className="w-full h-full object-contain"
-              style={{ filter: `drop-shadow(0 2px 6px ${item.color}77)` }} draggable={false} />
+            <img
+              src={sprite}
+              alt={item.name}
+              draggable={false}
+              className="w-full h-full object-contain p-1"
+              style={{ filter: `drop-shadow(0 1px 4px ${item.color}80)` }}
+            />
           ) : (
-            <div className="w-full h-full flex items-center justify-center rounded-xl"
-              style={{ background: item.color + '22', border: `1px solid ${item.color}44` }}>
-              <Icon name={item.icon} size={26} style={{ color: item.color } as React.CSSProperties} />
-            </div>
+            <Icon name={item.icon} size={24} style={{ color: item.color } as React.CSSProperties} />
           )
         ) : unlocked ? (
-          <div className="w-12 h-12 flex items-center justify-center rounded-xl"
-            style={{ border: `1.5px dashed ${districtHex}50`, background: `${districtHex}08` }}>
-            <Plus size={18} style={{ color: districtHex, opacity: 0.5 }} />
-          </div>
+          <Plus size={18} style={{ color: hex, opacity: 0.5 }} />
         ) : (
-          <div className="w-12 h-12 flex flex-col items-center justify-center rounded-xl gap-1"
-            style={{ border: '1.5px dashed rgba(100,116,139,0.25)' }}>
-            <Lock size={14} className="text-slate-600" />
-            <span className="text-[8px] text-slate-600 font-bold">{formatEuroCompact(item.unlockThreshold)}</span>
+          <Lock size={14} className="text-slate-700" />
+        )}
+
+        {/* Level pip */}
+        {inv && (
+          <div
+            className="absolute -bottom-0 -right-0 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black"
+            style={{ background: item.color, color: '#000' }}
+          >
+            {level}
           </div>
         )}
       </div>
 
-      {/* Label */}
-      <div className="text-[9px] font-bold text-center leading-tight mt-1 px-1"
-        style={{ color: inv ? '#e2e8f0' : '#64748b' }}>
-        {item.shortName ?? item.name.split(' ')[0]}
-      </div>
-
-      {/* Level dots / status */}
-      {inv ? (
-        <div className="mt-1">
-          {isUpgrading ? (
-            <div className="flex items-center gap-0.5 text-[8px] text-amber-300 font-bold">
-              <Clock size={8} /> {timer}
-            </div>
-          ) : (
-            <div className="flex gap-0.5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="w-1.5 h-1.5 rounded-full"
-                  style={{ background: i < level ? item.color : 'rgba(255,255,255,0.1)' }} />
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="mt-1 text-[8px] font-bold"
-          style={{ color: unlocked ? districtHex : '#475569', opacity: 0.7 }}>
-          {unlocked ? 'Construire' : 'Verrouillé'}
-        </div>
+      {/* Ready glow ring */}
+      {isReady && (
+        <div
+          className="absolute inset-0 rounded-xl pointer-events-none"
+          style={{ animation: 'pulseRing 1.5s ease-in-out infinite' }}
+        />
       )}
     </button>
   )
 }
 
-// ─── Slot modal (build or upgrade) ───────────────────────────────────────────
+// ─── Slot modal ───────────────────────────────────────────────────────────────
 
 function SlotModal({
-  slot, onClose, onGotoPortfolio,
+  slot, netWorth, onClose, onGotoPortfolio,
 }: {
-  slot: Slot
+  slot: MapSlot
+  netWorth: number
   onClose: () => void
   onGotoPortfolio: () => void
 }) {
   const game = useGameStore(s => s.game)!
   const buyInvestment = useGameStore(s => s.buyInvestment)
   const upgradeInvestment = useGameStore(s => s.upgradeInvestment)
+  const collectRevenue = useGameStore(s => s.collectRevenue)
   const cash = game.cashBalance
-  const netWorth = calcNetWorth(game)
 
   const item = getCatalogItem(slot.catalogId)
   const inv = game.investments.filter(i => i.catalogId === slot.catalogId)[slot.slotIndex] ?? null
   const unlocked = netWorth >= item.unlockThreshold
   const sprite = getBuildingSprite(slot.catalogId)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [collected, setCollected] = useState(false)
   const [now, setNow] = useState(Date.now())
 
   const level = inv?.level ?? 1
@@ -580,7 +423,18 @@ function SlotModal({
   const targetLevel = level + 1
   const upgradeCost = isMax ? 0 : getUpgradeCost(item.minAmount, targetLevel)
   const buildCost = item.minAmount
-  const isRE = ['parking', 'lmnp', 'immo_classique', 'club_deal_immo'].includes(slot.catalogId)
+  const isRealEstate = ['parking', 'lmnp', 'immo_classique', 'club_deal_immo'].includes(slot.catalogId)
+  const pending = inv?.pendingRevenue ?? 0
+  const isReady = pending > 0
+
+  const secsLeft = isUpgrading ? Math.max(0, Math.round((inv!.upgradeReadyAtReal! - now) / 1000)) : 0
+  const timer = secsLeft > 3600
+    ? `${Math.floor(secsLeft / 3600)}h${String(Math.floor((secsLeft % 3600) / 60)).padStart(2, '0')}`
+    : secsLeft > 60
+    ? `${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')}`
+    : `${secsLeft}s`
+
+  const district = DISTRICTS.find(d => d.id === slot.district)!
 
   useEffect(() => {
     if (!isUpgrading) return
@@ -588,15 +442,14 @@ function SlotModal({
     return () => clearInterval(t)
   }, [isUpgrading])
 
-  const secsLeft = isUpgrading ? Math.max(0, Math.round((inv!.upgradeReadyAtReal! - now) / 1000)) : 0
-  const timer =
-    secsLeft > 3600
-      ? `${Math.floor(secsLeft / 3600)}h${String(Math.floor((secsLeft % 3600) / 60)).padStart(2, '0')}`
-      : secsLeft > 60
-      ? `${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')}`
-      : `${secsLeft}s`
-
-  const rate = inv ? inv.annualReturnRate + getInvestmentLevelBonus(slot.catalogId, level) : item.baseAnnualReturn
+  function handleCollect() {
+    const { collected: amount } = collectRevenue(inv!.instanceId)
+    if (amount > 0) {
+      setCollected(true)
+      setFeedback(`+${formatEuroCompact(amount)} collecté !`)
+      setTimeout(() => { setCollected(false); onClose() }, 1200)
+    }
+  }
 
   function handleBuild() {
     const r = buyInvestment(slot.catalogId, item.minAmount, false)
@@ -608,143 +461,183 @@ function SlotModal({
     if (!inv) return
     const r = upgradeInvestment(inv.instanceId)
     setFeedback(r.message)
-    if (r.success) onClose()
+    if (r.success) setTimeout(onClose, 800)
   }
+
+  const rate = inv
+    ? inv.annualReturnRate + getInvestmentLevelBonus(slot.catalogId, level)
+    : item.baseAnnualReturn
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <div
-        className="relative rounded-t-3xl p-5 pb-10 shadow-2xl"
+        className="relative rounded-t-3xl pb-10 shadow-2xl"
         style={{
-          background: `linear-gradient(160deg, ${item.color}1c, rgba(5,11,24,0.99))`,
+          background: `linear-gradient(165deg, ${item.color}1e 0%, #070e1c 60%)`,
           border: `1px solid ${item.color}30`,
           borderBottom: 'none',
-          animation: 'slideUpPanel 0.22s ease-out',
+          animation: 'slideUpPanel 0.2s ease-out',
         }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-4" />
+        <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mt-3" />
 
         {/* Header */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 flex items-center justify-center"
-              style={{ background: item.color + '18', border: `1.5px solid ${item.color}45` }}>
-              {sprite
-                ? <img src={sprite} alt={item.name} className="w-full h-full object-contain" />
-                : <Icon name={item.icon} size={26} style={{ color: item.color } as React.CSSProperties} />
-              }
-            </div>
-            <div>
-              <div className="font-extrabold text-white text-base leading-tight">{item.name}</div>
-              {inv && (
-                <div className="flex gap-0.5 mt-1">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="w-4 h-1.5 rounded-full"
-                      style={{ background: i < level ? item.color : 'rgba(255,255,255,0.1)' }} />
-                  ))}
-                  <span className="text-[10px] font-bold ml-1" style={{ color: item.color }}>
-                    {LEVEL_LABELS[level]}
-                  </span>
-                </div>
-              )}
-            </div>
+        <div className="flex items-center gap-3 px-5 pt-3 pb-0">
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0"
+            style={{
+              background: `radial-gradient(circle, ${item.color}25, ${item.color}0a)`,
+              border: `1.5px solid ${item.color}50`,
+            }}
+          >
+            {sprite
+              ? <img src={sprite} alt={item.name} className="w-full h-full object-contain p-1" draggable={false} />
+              : <Icon name={item.icon} size={30} style={{ color: item.color } as React.CSSProperties} />
+            }
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white p-1">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span style={{ fontSize: 11, color: district.hex, fontWeight: 800, letterSpacing: '0.06em' }}>
+                {district.emoji} {district.shortLabel.toUpperCase()}
+              </span>
+            </div>
+            <div className="font-black text-white text-base leading-tight mt-0.5">{item.name}</div>
+            {inv && (
+              <div className="flex items-center gap-1 mt-1">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="h-1.5 rounded-full flex-1"
+                    style={{ background: i < level ? item.color : 'rgba(255,255,255,0.1)' }} />
+                ))}
+                <span className="text-[10px] font-bold ml-1 whitespace-nowrap" style={{ color: item.color }}>
+                  Niv. {level} — {LEVEL_LABELS[level]}
+                </span>
+              </div>
+            )}
+          </div>
+          <button onClick={onClose} className="text-slate-600 hover:text-white p-1 shrink-0">
             <X size={20} />
           </button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {inv ? (
-            <>
-              <ModalStat label="Valeur actuelle" value={formatEuroCompact(inv.currentValue)} color={item.color} />
-              <ModalStat label="Rendement/an" value={`+${(rate * 100).toFixed(2)} %`} color="#34d399" />
-              {inv.monthlyIncome > 0 && (
-                <ModalStat label="Revenu/mois" value={`+${formatEuroCompact(inv.monthlyIncome)}`} color="#fbbf24" />
+        {/* Collect card (if revenue pending) */}
+        {isReady && (
+          <div className="mx-5 mt-4">
+            <button
+              onClick={handleCollect}
+              className="w-full py-4 rounded-2xl flex items-center justify-between px-5 active:scale-98 transition-transform"
+              style={{
+                background: collected
+                  ? 'rgba(34,197,94,0.2)'
+                  : 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                boxShadow: collected ? 'none' : '0 6px 20px #f59e0b50',
+              }}
+            >
+              <div className="flex items-center gap-2">
+                {collected ? <CheckCircle2 size={20} className="text-green-400" /> : <Coins size={20} className="text-amber-900" />}
+                <div className="text-left">
+                  <div className="font-black text-sm" style={{ color: collected ? '#4ade80' : '#431407' }}>
+                    {collected ? 'Collecté !' : 'Revenus disponibles'}
+                  </div>
+                  <div className="text-[11px] font-semibold" style={{ color: collected ? '#86efac' : '#78350f' }}>
+                    {collected ? '' : `Tap pour encaisser`}
+                  </div>
+                </div>
+              </div>
+              {!collected && (
+                <div className="font-black text-xl" style={{ color: '#431407' }}>
+                  +{formatEuroCompact(pending)}
+                </div>
               )}
-              {!isMax && !isUpgrading && (
-                <ModalStat label="Amélioration" value={formatEuroCompact(upgradeCost)} color={item.color} />
-              )}
-            </>
+            </button>
+          </div>
+        )}
+
+        {/* Stats row */}
+        {inv ? (
+          <div className="grid grid-cols-3 gap-2 mx-5 mt-3">
+            <StatPill label="Valeur" value={formatEuroCompact(inv.currentValue)} color={item.color} />
+            <StatPill label="Rendement" value={`${(rate * 100).toFixed(1)}%`} color="#34d399" />
+            {inv.monthlyIncome > 0
+              ? <StatPill label="Revenu/mois" value={`+${formatEuroCompact(inv.monthlyIncome)}`} color="#fbbf24" />
+              : <StatPill label="Niveau" value={`${level}/5`} color={item.color} />
+            }
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 mx-5 mt-3">
+            <StatPill label="Investissement min." value={formatEuroCompact(buildCost)} color={item.color} />
+            <StatPill label="Rendement/an" value={`${(item.baseAnnualReturn * 100).toFixed(1)}%`} color="#34d399" />
+          </div>
+        )}
+
+        {/* Primary action */}
+        <div className="mx-5 mt-3 space-y-2">
+          {!inv ? (
+            !unlocked ? (
+              <div className="w-full py-3.5 rounded-2xl text-center text-sm font-bold text-slate-500 flex items-center justify-center gap-2"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <Lock size={14} />
+                Débloque à {formatEuroCompact(item.unlockThreshold)} de patrimoine
+              </div>
+            ) : isRealEstate ? (
+              <button onClick={onGotoPortfolio}
+                className="w-full py-3.5 rounded-2xl font-extrabold text-sm text-white flex items-center justify-center gap-2 active:scale-98 transition-transform"
+                style={{ background: `linear-gradient(135deg, ${item.color}, ${item.color}88)`, boxShadow: `0 6px 20px ${item.color}40` }}>
+                <Hammer size={16} /> Acheter · {formatEuroCompact(buildCost)}
+                <ChevronRight size={14} className="opacity-70" />
+              </button>
+            ) : (
+              <button onClick={handleBuild} disabled={cash < buildCost}
+                className="w-full py-3.5 rounded-2xl font-extrabold text-sm text-white flex items-center justify-center gap-2 active:scale-98 transition-transform disabled:opacity-40"
+                style={{ background: `linear-gradient(135deg, ${item.color}, ${item.color}88)`, boxShadow: `0 6px 20px ${item.color}40` }}>
+                <Hammer size={16} /> Construire · {formatEuroCompact(buildCost)}
+              </button>
+            )
+          ) : isUpgrading ? (
+            <div className="w-full py-3.5 rounded-2xl font-bold text-sm text-amber-300 flex items-center justify-center gap-2"
+              style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)' }}>
+              <Clock size={16} /> Amélioration en cours — {timer}
+            </div>
+          ) : isMax ? (
+            <div className="w-full py-3 rounded-2xl text-center text-sm font-extrabold flex items-center justify-center gap-2"
+              style={{ background: 'rgba(255,255,255,0.05)', color: item.color }}>
+              <Sparkles size={14} /> Niveau maximum atteint
+            </div>
           ) : (
-            <>
-              <ModalStat label="Coût de construction" value={formatEuroCompact(buildCost)} color={item.color} />
-              <ModalStat label="Rendement de base" value={`+${(item.baseAnnualReturn * 100).toFixed(1)} %`} color="#34d399" />
-            </>
+            <button onClick={handleUpgrade} disabled={cash < upgradeCost}
+              className="w-full py-3.5 rounded-2xl font-extrabold text-sm text-white flex items-center justify-center gap-2 active:scale-98 transition-transform disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', boxShadow: '0 6px 20px #f59e0b40' }}>
+              <ArrowUpCircle size={16} />
+              Améliorer → Niv.{targetLevel} · {formatEuroCompact(upgradeCost)}
+              <span className="opacity-70 text-[10px]">({TIER_LABELS[targetLevel]})</span>
+            </button>
+          )}
+
+          {inv && (
+            <button onClick={onGotoPortfolio}
+              className="w-full py-2.5 rounded-2xl font-semibold text-xs text-white/50 flex items-center justify-center gap-1 active:scale-98"
+              style={{ background: 'rgba(255,255,255,0.04)' }}>
+              Gérer dans le portefeuille <ChevronRight size={11} />
+            </button>
           )}
         </div>
 
-        {/* Primary action */}
-        {!inv ? (
-          // BUILD
-          !unlocked ? (
-            <div className="w-full py-3.5 rounded-2xl text-center text-sm font-bold text-slate-500"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              🔒 Débloquer à {formatEuroCompact(item.unlockThreshold)} de patrimoine
-            </div>
-          ) : isRE ? (
-            <button onClick={onGotoPortfolio}
-              className="w-full py-3.5 rounded-2xl font-extrabold text-sm text-white flex items-center justify-center gap-2 active:scale-95 transition-all"
-              style={{ background: `linear-gradient(135deg, ${item.color}, ${item.color}88)`, boxShadow: `0 6px 20px ${item.color}40` }}>
-              <Hammer size={16} /> Acheter (avec option crédit) <ChevronRight size={14} />
-            </button>
-          ) : (
-            <button onClick={handleBuild}
-              disabled={cash < buildCost}
-              className="w-full py-3.5 rounded-2xl font-extrabold text-sm text-white flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
-              style={{ background: `linear-gradient(135deg, ${item.color}, ${item.color}88)`, boxShadow: `0 6px 20px ${item.color}40` }}>
-              <Hammer size={16} /> Construire · {formatEuroCompact(buildCost)}
-            </button>
-          )
-        ) : isUpgrading ? (
-          // UPGRADING IN PROGRESS
-          <div className="w-full py-3.5 rounded-2xl font-bold text-sm text-amber-300 flex items-center justify-center gap-2"
-            style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)' }}>
-            <Clock size={16} /> Amélioration en cours — {timer}
-          </div>
-        ) : isMax ? (
-          // MAX LEVEL
-          <div className="w-full py-3 rounded-2xl text-center text-sm font-extrabold"
-            style={{ background: 'rgba(255,255,255,0.06)', color: item.color }}>
-            ⭐ Niveau maximum atteint
-          </div>
-        ) : (
-          // UPGRADE
-          <button onClick={handleUpgrade}
-            disabled={cash < upgradeCost}
-            className="w-full py-3.5 rounded-2xl font-extrabold text-sm text-white flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', boxShadow: '0 6px 20px #f59e0b40' }}>
-            <ArrowUpCircle size={16} />
-            Améliorer → {LEVEL_LABELS[targetLevel]} · {formatEuroCompact(upgradeCost)}
-            <span className="text-[10px] opacity-80">({TIER_LABELS[targetLevel]})</span>
-          </button>
-        )}
-
         {feedback && (
-          <div className="text-center text-[11px] mt-2" style={{ color: feedback.startsWith('✓') ? '#4ade80' : '#94a3b8' }}>
+          <div className="text-center text-xs mt-2 pb-1 font-semibold"
+            style={{ color: feedback.startsWith('+') || feedback.startsWith('✓') ? '#4ade80' : '#94a3b8' }}>
             {feedback}
           </div>
-        )}
-
-        {inv && (
-          <button onClick={onGotoPortfolio}
-            className="w-full py-2.5 mt-2 rounded-2xl font-semibold text-xs text-white/60 flex items-center justify-center gap-1 transition-all active:scale-95"
-            style={{ background: 'rgba(255,255,255,0.05)' }}>
-            Gérer dans le portefeuille <ChevronRight size={12} />
-          </button>
         )}
       </div>
     </div>
   )
 }
 
-function ModalStat({ label, value, color }: { label: string; value: string; color: string }) {
+function StatPill({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-      <div className="text-[10px] text-slate-500 mb-0.5">{label}</div>
+    <div className="rounded-xl p-2.5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="text-[9px] text-slate-500 font-semibold mb-0.5 uppercase tracking-wider">{label}</div>
       <div className="text-sm font-extrabold leading-tight" style={{ color }}>{value}</div>
     </div>
   )

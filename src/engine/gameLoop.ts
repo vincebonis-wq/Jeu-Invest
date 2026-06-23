@@ -531,7 +531,8 @@ function processMonth(ctx: MonthContext) {
   let monthlyTax = 0
   investments = investments.map((inv) => {
     const { investment, netCash, tax } = applyMonthlyIncome(inv, economy, ctx.stance)
-    cash += netCash
+    // Revenue is NOT auto-added to cash — player must tap each building to collect.
+    investment.pendingRevenue = (investment.pendingRevenue ?? 0) + netCash
     monthlyTax += tax
     return investment
   })

@@ -145,6 +145,8 @@ interface GameStore {
   upgradeInvestment: (instanceId: string) => { success: boolean; message: string }
   depositToInvestment: (instanceId: string, amount: number) => BuyResult
   renovateProperty: (instanceId: string) => BuyResult
+  collectRevenue: (instanceId: string) => { collected: number }
+  collectAllRevenue: () => { total: number; count: number }
 }
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
@@ -1885,6 +1887,54 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const tierLabel = TIER_LABELS[targetLevel]
     return { success: true, message: `Mise à niveau vers le palier ${targetLevel} lancée ! (${tierLabel})` }
+  },
+
+  collectRevenue: (instanceId: string) => {
+    const game = get().game
+    if (!game) return { collected: 0 }
+    const inv = game.investments.find((i) => i.instanceId === instanceId)
+    if (!inv || (inv.pendingRevenue ?? 0) <= 0) return { collected: 0 }
+    const collected = Math.round(inv.pendingRevenue)
+    set((s) => {
+      if (!s.game) return s
+      return {
+        game: {
+          ...s.game,
+          cashBalance: s.game.cashBalance + collected,
+          investments: s.game.investments.map((i) =>
+            i.instanceId === instanceId
+              ? { ...i, pendingRevenue: 0, lastCollectedAt: Date.now() }
+              : i,
+          ),
+        },
+      }
+    })
+    get().saveGame()
+    return { collected }
+  },
+
+  collectAllRevenue: () => {
+    const game = get().game
+    if (!game) return { total: 0, count: 0 }
+    const ready = game.investments.filter((i) => (i.pendingRevenue ?? 0) > 0)
+    if (ready.length === 0) return { total: 0, count: 0 }
+    const total = Math.round(ready.reduce((s, i) => s + (i.pendingRevenue ?? 0), 0))
+    set((s) => {
+      if (!s.game) return s
+      return {
+        game: {
+          ...s.game,
+          cashBalance: s.game.cashBalance + total,
+          investments: s.game.investments.map((i) =>
+            (i.pendingRevenue ?? 0) > 0
+              ? { ...i, pendingRevenue: 0, lastCollectedAt: Date.now() }
+              : i,
+          ),
+        },
+      }
+    })
+    get().saveGame()
+    return { total, count: ready.length }
   },
 
   depositToInvestment: (instanceId, amount) => {

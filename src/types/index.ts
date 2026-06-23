@@ -297,6 +297,8 @@ export interface Investment {
   saleListingPrice?: number   // prix de mise en vente (si bien mis en vente)
   pendingOffers?: SaleOffer[] // offres NPC en attente
   nextOfferAtReal?: number    // epoch ms réel de la prochaine offre NPC
+  pendingRevenue: number           // € accumulés non collectés (tap-to-collect)
+  lastCollectedAt: number          // epoch ms réel du dernier tap-collect
 }
 
 export interface Mortgage {
