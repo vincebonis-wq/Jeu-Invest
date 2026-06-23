@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Lock, Plus, X, ChevronRight } from 'lucide-react'
+import { Lock, Plus, X, ChevronRight, Hammer, ArrowUpCircle, Clock } from 'lucide-react'
 import { useGameStore } from '../store/gameStore'
 import { calcNetWorth } from '../utils/calculations'
 import { getCatalogItem } from '../data/investments'
-import { getInvestmentLevelBonus } from '../data/upgradeTiers'
+import { getInvestmentLevelBonus, getUpgradeCost, TIER_LABELS, LEVEL_LABELS } from '../data/upgradeTiers'
 import { formatEuroCompact } from '../utils/formatting'
 import type { Investment, InvestmentCategory } from '../types'
 import { Icon } from '../components/ui/Icon'
@@ -114,10 +114,17 @@ const ZONE_HALOS = Object.entries(DISTRICTS).map(([id, def]) => {
 
 export function CityMapView() {
   const { drawerScreen, open, close } = useDrawer()
-  const [selected, setSelected] = useState<Investment | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [buildTarget, setBuildTarget] = useState<InvestmentCategory | null>(null)
   const game = useGameStore(s => s.game)!
   const netWorth = calcNetWorth(game)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Resolve the selected investment from live state so the sheet stays in sync
+  // after a build / level-up (it re-reads from the store, not a stale snapshot).
+  const selected = selectedId
+    ? game.investments.find(i => i.instanceId === selectedId) ?? null
+    : null
 
   // Scroll to show center of city on first mount
   useEffect(() => {
@@ -202,20 +209,29 @@ export function CityMapView() {
                 unlocked={unlocked}
                 threshold={item.unlockThreshold}
                 district={district}
-                onSelect={setSelected}
-                onBuild={() => open('marketplace')}
+                onSelect={inv => setSelectedId(inv.instanceId)}
+                onBuild={() => setBuildTarget(slot.catalogId)}
               />
             )
           })}
         </div>
       </div>
 
-      {/* Building detail sheet */}
+      {/* Construction sheet (empty plot) */}
+      {buildTarget && (
+        <BuildSheet
+          catalogId={buildTarget}
+          onClose={() => setBuildTarget(null)}
+          onMarketplace={() => { setBuildTarget(null); open('marketplace') }}
+        />
+      )}
+
+      {/* Building detail + level-up sheet */}
       {selected && (
         <BuildingSheet
           inv={selected}
-          onClose={() => setSelected(null)}
-          onPortfolio={() => { setSelected(null); open('portfolio') }}
+          onClose={() => setSelectedId(null)}
+          onPortfolio={() => { setSelectedId(null); open('portfolio') }}
         />
       )}
     </BetaShell>
@@ -483,6 +499,116 @@ function LockedSlot({ threshold }: { threshold: number }) {
   )
 }
 
+/* ── Construction sheet (build on an empty plot) ─────────────────────────── */
+
+function BuildSheet({
+  catalogId, onClose, onMarketplace,
+}: {
+  catalogId: InvestmentCategory
+  onClose: () => void
+  onMarketplace: () => void
+}) {
+  const buyInvestment = useGameStore(s => s.buyInvestment)
+  const cash = useGameStore(s => s.game!.cashBalance)
+  const item = getCatalogItem(catalogId)
+  const sprite = getBuildingSprite(catalogId)
+  const [feedback, setFeedback] = useState<string | null>(null)
+
+  const isRealEstate = ['parking', 'lmnp', 'immo_classique', 'club_deal_immo'].includes(catalogId)
+  const cost = item.minAmount
+  const canAfford = cash >= cost
+
+  function handleBuild() {
+    const r = buyInvestment(catalogId, item.minAmount, false)
+    if (r.success) {
+      onClose()
+    } else {
+      setFeedback(r.message)
+    }
+  }
+
+  return (
+    <div className="absolute inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" />
+      <div
+        className="relative rounded-t-3xl p-5 pb-10 shadow-2xl animate-slide-up"
+        style={{
+          background: `linear-gradient(160deg, ${item.color}20, rgba(2,6,23,0.98))`,
+          border: `1px solid ${item.color}35`,
+          borderBottom: 'none',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-5" />
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center overflow-hidden shrink-0"
+              style={{
+                background: item.color + '18',
+                border: `1.5px solid ${item.color}50`,
+                boxShadow: `0 0 20px ${item.color}30`,
+              }}
+            >
+              {sprite ? (
+                <img src={sprite} alt={item.name} className="w-14 h-14 object-contain" />
+              ) : (
+                <Icon name={item.icon} size={30} style={{ color: item.color } as React.CSSProperties} />
+              )}
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: item.color }}>
+                Terrain libre
+              </div>
+              <div className="font-extrabold text-white text-base leading-tight">{item.name}</div>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-slate-500 hover:text-white transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        <p className="text-xs text-slate-400 leading-relaxed mb-4">{item.description}</p>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <SheetStat label="Coût de construction" value={formatEuroCompact(cost)} color={item.color} />
+          <SheetStat label="Rendement de base" value={`+${(item.baseAnnualReturn * 100).toFixed(1)} %`} color="#34d399" />
+        </div>
+
+        {/* CTA Construire */}
+        <button
+          onClick={handleBuild}
+          disabled={!canAfford && !isRealEstate}
+          className="w-full py-3.5 rounded-2xl font-extrabold text-sm text-white flex items-center justify-center gap-2 transition-all active:scale-95 mb-2.5 disabled:opacity-50"
+          style={{
+            background: `linear-gradient(135deg, ${item.color}, ${item.color}88)`,
+            boxShadow: `0 6px 20px ${item.color}40`,
+          }}
+        >
+          <Hammer size={16} /> Construire · {formatEuroCompact(cost)}
+        </button>
+
+        {feedback && (
+          <div className="text-center text-[11px] text-amber-300 mb-2.5">{feedback}</div>
+        )}
+
+        {(isRealEstate || feedback) && (
+          <button
+            onClick={onMarketplace}
+            className="w-full py-3 rounded-2xl font-bold text-sm text-white/80 flex items-center justify-center gap-2 transition-all active:scale-95"
+            style={{ background: 'rgba(255,255,255,0.06)' }}
+          >
+            Plus d'options (crédit, montant…) <ChevronRight size={16} />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* ── Building detail sheet ────────────────────────────────────────────────── */
 
 function BuildingSheet({
@@ -492,12 +618,42 @@ function BuildingSheet({
   onClose: () => void
   onPortfolio: () => void
 }) {
+  const upgradeInvestment = useGameStore(s => s.upgradeInvestment)
+  const cash = useGameStore(s => s.game!.cashBalance)
   const item = getCatalogItem(inv.catalogId)
   const level = inv.level ?? 1
   const rate = inv.annualReturnRate + getInvestmentLevelBonus(inv.catalogId, level)
   const sprite = getBuildingSprite(inv.catalogId)
   const gain = inv.currentValue - inv.purchasePrice
   const gainPct = inv.purchasePrice > 0 ? (gain / inv.purchasePrice) * 100 : 0
+
+  // ── Level-up state ──
+  const [now, setNow] = useState(Date.now())
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const isUpgrading = !!inv.upgradeReadyAtReal && inv.upgradeReadyAtReal > now
+  const isMax = level >= 5
+  const targetLevel = level + 1
+  const upgradeCost = isMax ? 0 : getUpgradeCost(item.minAmount, targetLevel)
+  const canAfford = cash >= upgradeCost
+
+  useEffect(() => {
+    if (!isUpgrading) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [isUpgrading])
+
+  const secsLeft = isUpgrading ? Math.max(0, Math.round((inv.upgradeReadyAtReal! - now) / 1000)) : 0
+  const timer =
+    secsLeft > 3600
+      ? `${Math.floor(secsLeft / 3600)}h${String(Math.floor((secsLeft % 3600) / 60)).padStart(2, '0')}`
+      : secsLeft > 60
+      ? `${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')}`
+      : `${secsLeft}s`
+
+  function handleUpgrade() {
+    const r = upgradeInvestment(inv.instanceId)
+    setFeedback(r.message)
+  }
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
@@ -566,13 +722,47 @@ function BuildingSheet({
           )}
         </div>
 
+        {/* ── Level-up CTA (build → améliore) ── */}
+        {isMax ? (
+          <div
+            className="w-full py-3 rounded-2xl font-extrabold text-sm text-center mb-2.5"
+            style={{ background: 'rgba(255,255,255,0.06)', color: item.color }}
+          >
+            ⭐ Niveau maximum atteint
+          </div>
+        ) : isUpgrading ? (
+          <div
+            className="w-full py-3 rounded-2xl font-bold text-sm text-amber-300 flex items-center justify-center gap-2 mb-2.5"
+            style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)' }}
+          >
+            <Clock size={16} /> Amélioration en cours — {timer}
+          </div>
+        ) : (
+          <button
+            onClick={handleUpgrade}
+            disabled={!canAfford}
+            className="w-full py-3.5 rounded-2xl font-extrabold text-sm text-white flex items-center justify-center gap-2 transition-all active:scale-95 mb-2.5 disabled:opacity-50"
+            style={{
+              background: canAfford
+                ? 'linear-gradient(135deg, #f59e0b, #d97706)'
+                : 'rgba(255,255,255,0.08)',
+              boxShadow: canAfford ? '0 6px 20px #f59e0b40' : undefined,
+            }}
+          >
+            <ArrowUpCircle size={16} />
+            Améliorer → {LEVEL_LABELS[targetLevel]} · {formatEuroCompact(upgradeCost)}
+            <span className="text-[10px] opacity-80">({TIER_LABELS[targetLevel]})</span>
+          </button>
+        )}
+
+        {feedback && (
+          <div className="text-center text-[11px] text-slate-400 mb-2.5">{feedback}</div>
+        )}
+
         <button
           onClick={onPortfolio}
-          className="w-full py-3.5 rounded-2xl font-extrabold text-sm text-white flex items-center justify-center gap-2 transition-all active:scale-95"
-          style={{
-            background: `linear-gradient(135deg, ${item.color}, ${item.color}88)`,
-            boxShadow: `0 6px 20px ${item.color}40`,
-          }}
+          className="w-full py-3 rounded-2xl font-bold text-sm text-white/80 flex items-center justify-center gap-2 transition-all active:scale-95"
+          style={{ background: 'rgba(255,255,255,0.06)' }}
         >
           Gérer dans le portefeuille <ChevronRight size={16} />
         </button>
