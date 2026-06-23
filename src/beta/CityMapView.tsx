@@ -10,119 +10,207 @@ import { Icon } from '../components/ui/Icon'
 import { BetaShell, useDrawer } from './BetaShell'
 import { getBuildingSprite } from './buildingSprites'
 
-// ── District definitions ──────────────────────────────────────────────────────
+/* ── Geometry ─────────────────────────────────────────────────────────────── */
 
-interface BuildingDef { catalogId: InvestmentCategory; slots: number }
-interface District {
-  id: string
-  label: string
-  emoji: string
-  hex: string
-  buildings: BuildingDef[]
+const HW = 46        // iso half-width per tile
+const HH = 26        // iso half-height per tile
+const TW = HW * 2   // tile pixel width  = 92
+const TH = HH * 2   // tile pixel height = 52
+const HEADROOM = 60  // px above tile base for building sprite
+const PAD = 70       // canvas padding on each side
+
+function isoXY(col: number, row: number) {
+  return { x: (col - row) * HW, y: (col + row) * HH }
 }
 
-const DISTRICTS: District[] = [
-  {
-    id: 'finance',
-    label: 'Financial District',
-    emoji: '🏦',
-    hex: '#38bdf8',
-    buildings: [
-      { catalogId: 'bourse_etf', slots: 3 },
-      { catalogId: 'scpi', slots: 2 },
-      { catalogId: 'obligations_etat', slots: 2 },
-      { catalogId: 'produit_structure', slots: 1 },
-    ],
-  },
-  {
-    id: 'realestate',
-    label: 'Real Estate Quarter',
-    emoji: '🏠',
-    hex: '#fbbf24',
-    buildings: [
-      { catalogId: 'immo_classique', slots: 2 },
-      { catalogId: 'lmnp', slots: 2 },
-      { catalogId: 'parking', slots: 3 },
-      { catalogId: 'club_deal_immo', slots: 1 },
-    ],
-  },
-  {
-    id: 'business',
-    label: 'Business Park',
-    emoji: '🚀',
-    hex: '#a78bfa',
-    buildings: [
-      { catalogId: 'business', slots: 2 },
-      { catalogId: 'crowdfunding_immo', slots: 3 },
-    ],
-  },
-  {
-    id: 'alternative',
-    label: 'Alternative Zone',
-    emoji: '⚡',
-    hex: '#fb923c',
-    buildings: [
-      { catalogId: 'crypto', slots: 2 },
-      { catalogId: 'or_metaux', slots: 2 },
-    ],
-  },
-  {
-    id: 'savings',
-    label: 'Savings Village',
-    emoji: '🛡️',
-    hex: '#34d399',
-    buildings: [
-      { catalogId: 'livret', slots: 1 },
-      { catalogId: 'assurance_vie', slots: 2 },
-    ],
-  },
+/* ── District registry ────────────────────────────────────────────────────── */
+
+interface DistrictDef { label: string; emoji: string; hex: string }
+
+const DISTRICTS: Record<string, DistrictDef> = {
+  savings:     { label: 'Épargne',            emoji: '🛡️', hex: '#34d399' },
+  business:    { label: 'Business Park',      emoji: '🚀', hex: '#a78bfa' },
+  finance:     { label: 'Financial District', emoji: '🏦', hex: '#38bdf8' },
+  realestate:  { label: 'Real Estate',        emoji: '🏠', hex: '#fbbf24' },
+  alternative: { label: 'Alternative',        emoji: '⚡', hex: '#fb923c' },
+}
+
+const ZONE_RADII: Record<string, number> = {
+  savings: 105, business: 150, finance: 195, realestate: 195, alternative: 130,
+}
+
+/* ── Fixed slot layout ────────────────────────────────────────────────────── */
+
+interface MapSlot {
+  col: number; row: number
+  catalogId: InvestmentCategory
+  slotIndex: number
+  districtId: string
+}
+
+const MAP_SLOTS: MapSlot[] = [
+  // Épargne — top-left
+  { col: 0, row: 0, catalogId: 'livret',        slotIndex: 0, districtId: 'savings' },
+  { col: 1, row: 0, catalogId: 'assurance_vie', slotIndex: 0, districtId: 'savings' },
+  { col: 0, row: 1, catalogId: 'assurance_vie', slotIndex: 1, districtId: 'savings' },
+
+  // Business Park — center-left
+  { col: 3, row: 0, catalogId: 'crowdfunding_immo', slotIndex: 0, districtId: 'business' },
+  { col: 2, row: 1, catalogId: 'business',          slotIndex: 0, districtId: 'business' },
+  { col: 3, row: 2, catalogId: 'business',          slotIndex: 1, districtId: 'business' },
+  { col: 2, row: 3, catalogId: 'crowdfunding_immo', slotIndex: 1, districtId: 'business' },
+  { col: 1, row: 3, catalogId: 'crowdfunding_immo', slotIndex: 2, districtId: 'business' },
+
+  // Financial District — center-right
+  { col: 5, row: 0, catalogId: 'bourse_etf',        slotIndex: 0, districtId: 'finance' },
+  { col: 6, row: 0, catalogId: 'bourse_etf',        slotIndex: 1, districtId: 'finance' },
+  { col: 7, row: 1, catalogId: 'bourse_etf',        slotIndex: 2, districtId: 'finance' },
+  { col: 5, row: 2, catalogId: 'obligations_etat',  slotIndex: 0, districtId: 'finance' },
+  { col: 6, row: 2, catalogId: 'scpi',              slotIndex: 0, districtId: 'finance' },
+  { col: 7, row: 3, catalogId: 'scpi',              slotIndex: 1, districtId: 'finance' },
+  { col: 5, row: 4, catalogId: 'obligations_etat',  slotIndex: 1, districtId: 'finance' },
+  { col: 6, row: 4, catalogId: 'produit_structure', slotIndex: 0, districtId: 'finance' },
+
+  // Real Estate — bottom-left
+  { col: 0, row: 4, catalogId: 'immo_classique', slotIndex: 0, districtId: 'realestate' },
+  { col: 1, row: 4, catalogId: 'immo_classique', slotIndex: 1, districtId: 'realestate' },
+  { col: 0, row: 5, catalogId: 'lmnp',           slotIndex: 0, districtId: 'realestate' },
+  { col: 1, row: 5, catalogId: 'lmnp',           slotIndex: 1, districtId: 'realestate' },
+  { col: 0, row: 6, catalogId: 'parking',        slotIndex: 0, districtId: 'realestate' },
+  { col: 1, row: 6, catalogId: 'parking',        slotIndex: 1, districtId: 'realestate' },
+  { col: 2, row: 6, catalogId: 'parking',        slotIndex: 2, districtId: 'realestate' },
+  { col: 0, row: 7, catalogId: 'club_deal_immo', slotIndex: 0, districtId: 'realestate' },
+
+  // Alternative — bottom-right
+  { col: 7, row: 5, catalogId: 'or_metaux', slotIndex: 0, districtId: 'alternative' },
+  { col: 8, row: 6, catalogId: 'or_metaux', slotIndex: 1, districtId: 'alternative' },
+  { col: 7, row: 7, catalogId: 'crypto',    slotIndex: 0, districtId: 'alternative' },
+  { col: 8, row: 8, catalogId: 'crypto',    slotIndex: 1, districtId: 'alternative' },
 ]
 
-// Isometric plot geometry
-const PLOT_W = 116
-const PLOT_H = 64
-const HALF_W = PLOT_W / 2
-const HALF_H = PLOT_H / 2
-const HEADROOM = 70 // space above plots for tall buildings
+/* ── Canvas bounds (computed once) ───────────────────────────────────────── */
 
-interface PlotData {
-  key: string
-  catalogId: InvestmentCategory
-  inv: Investment | null
-  unlocked: boolean
-  threshold: number
-  // grid pos
-  col: number
-  row: number
-}
+const ALL_ISO = MAP_SLOTS.map(s => isoXY(s.col, s.row))
+const MIN_X = Math.min(...ALL_ISO.map(p => p.x))
+const MAX_X = Math.max(...ALL_ISO.map(p => p.x))
+const MIN_Y = Math.min(...ALL_ISO.map(p => p.y))
+const MAX_Y = Math.max(...ALL_ISO.map(p => p.y))
+const OX = -MIN_X + PAD   // x offset: normalise coords to canvas
+const OY = -MIN_Y + PAD   // y offset
+const CANVAS_W = MAX_X - MIN_X + TW + PAD * 2
+const CANVAS_H = MAX_Y - MIN_Y + TH + HEADROOM + PAD * 2
 
-// ── Root ──────────────────────────────────────────────────────────────────────
+/* Compute halo centre for each district */
+const ZONE_HALOS = Object.entries(DISTRICTS).map(([id, def]) => {
+  const slots = MAP_SLOTS.filter(s => s.districtId === id)
+  const avgCol = slots.reduce((s, p) => s + p.col, 0) / slots.length
+  const avgRow = slots.reduce((s, p) => s + p.row, 0) / slots.length
+  const { x, y } = isoXY(avgCol, avgRow)
+  const r = ZONE_RADII[id] ?? 130
+  return { id, def, cx: x + OX + HW, cy: y + OY + HH, r }
+})
+
+/* ── Root component ───────────────────────────────────────────────────────── */
 
 export function CityMapView() {
   const { drawerScreen, open, close } = useDrawer()
   const [selected, setSelected] = useState<Investment | null>(null)
+  const game = useGameStore(s => s.game)!
+  const netWorth = calcNetWorth(game)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to show center of city on first mount
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollLeft = Math.max(0, (CANVAS_W - el.clientWidth) / 2 - 40)
+    el.scrollTop = Math.max(0, (CANVAS_H - el.clientHeight) / 3)
+  }, [])
+
+  // Sort slots by iso depth for correct z-ordering
+  const sortedSlots = [...MAP_SLOTS].sort((a, b) => (a.col + a.row) - (b.col + b.row))
 
   return (
     <BetaShell accent="#0b1120" openScreen={open} drawerScreen={drawerScreen} onCloseDrawer={close}>
       <div
-        className="h-full overflow-y-auto hide-scrollbar"
+        ref={scrollRef}
+        className="h-full overflow-auto hide-scrollbar"
         style={{
-          background:
-            'radial-gradient(120% 80% at 50% -10%, #1e293b 0%, #0b1120 55%, #060912 100%)',
+          background: 'radial-gradient(120% 80% at 50% 0%, #1e293b 0%, #0b1120 55%, #060912 100%)',
         }}
       >
-        <div className="px-2 py-3 space-y-2.5 pb-8">
-          {DISTRICTS.map((d) => (
-            <DistrictZone
-              key={d.id}
-              district={d}
-              onSelect={setSelected}
-              onBuild={() => open('marketplace')}
+        {/* ── Single city canvas ── */}
+        <div
+          className="relative"
+          style={{ width: CANVAS_W, height: CANVAS_H, minWidth: CANVAS_W }}
+        >
+          {/* District zone background halos */}
+          {ZONE_HALOS.map(({ id, def, cx, cy, r }) => (
+            <div
+              key={id}
+              className="absolute pointer-events-none"
+              style={{
+                left: cx - r,
+                top: cy - r * 0.62,
+                width: r * 2,
+                height: r * 1.24,
+                borderRadius: '50%',
+                background: `radial-gradient(ellipse, ${def.hex}1a 0%, ${def.hex}0a 50%, transparent 75%)`,
+              }}
             />
           ))}
+
+          {/* District label badges — floating above their zone */}
+          {ZONE_HALOS.map(({ id, def, cx, cy, r }) => (
+            <div
+              key={id}
+              className="absolute pointer-events-none flex items-center gap-1 px-2 py-0.5 rounded-full whitespace-nowrap"
+              style={{
+                left: cx - 44,
+                top: cy - r * 0.62 - 2,
+                background: `${def.hex}18`,
+                border: `1px solid ${def.hex}35`,
+                color: def.hex,
+                fontSize: 10,
+                fontWeight: 700,
+                backdropFilter: 'blur(4px)',
+                letterSpacing: '0.04em',
+                zIndex: 1,
+              }}
+            >
+              {def.emoji} {def.label}
+            </div>
+          ))}
+
+          {/* All building slots */}
+          {sortedSlots.map(slot => {
+            const { x, y } = isoXY(slot.col, slot.row)
+            const item = getCatalogItem(slot.catalogId)
+            const owned = game.investments.filter(i => i.catalogId === slot.catalogId)
+            const inv = owned[slot.slotIndex] ?? null
+            const unlocked = netWorth >= item.unlockThreshold
+            const district = DISTRICTS[slot.districtId]
+
+            return (
+              <MapPlot
+                key={`${slot.catalogId}-${slot.slotIndex}`}
+                left={x + OX}
+                top={y + OY}
+                depth={slot.col + slot.row}
+                catalogId={slot.catalogId}
+                inv={inv}
+                unlocked={unlocked}
+                threshold={item.unlockThreshold}
+                district={district}
+                onSelect={setSelected}
+                onBuild={() => open('marketplace')}
+              />
+            )
+          })}
         </div>
       </div>
 
+      {/* Building detail sheet */}
       {selected && (
         <BuildingSheet
           inv={selected}
@@ -134,184 +222,71 @@ export function CityMapView() {
   )
 }
 
-// ── District zone (isometric cluster) ─────────────────────────────────────────
+/* ── Single isometric plot ────────────────────────────────────────────────── */
 
-function DistrictZone({
-  district,
-  onSelect,
-  onBuild,
+function MapPlot({
+  left, top, depth,
+  catalogId, inv, unlocked, threshold, district,
+  onSelect, onBuild,
 }: {
-  district: District
-  onSelect: (inv: Investment) => void
+  left: number; top: number; depth: number
+  catalogId: InvestmentCategory
+  inv: Investment | null
+  unlocked: boolean; threshold: number
+  district: DistrictDef
+  onSelect: (i: Investment) => void
   onBuild: () => void
 }) {
-  const game = useGameStore((s) => s.game)!
-  const netWorth = calcNetWorth(game)
-
-  // Build the flat list of plots
-  const flat: Omit<PlotData, 'col' | 'row'>[] = district.buildings.flatMap((b) => {
-    const item = getCatalogItem(b.catalogId)
-    const owned = game.investments.filter((inv) => inv.catalogId === b.catalogId)
-    const unlocked = netWorth >= item.unlockThreshold
-    return Array.from({ length: b.slots }, (_, i) => ({
-      key: `${b.catalogId}-${i}`,
-      catalogId: b.catalogId,
-      inv: owned[i] ?? null,
-      unlocked,
-      threshold: item.unlockThreshold,
-    }))
-  })
-
-  // Arrange in iso grid
-  const COLS = flat.length <= 4 ? 2 : 3
-  const plots: PlotData[] = flat.map((p, i) => ({
-    ...p,
-    col: i % COLS,
-    row: Math.floor(i / COLS),
-  }))
-
-  // Compute iso positions + container size
-  const positioned = plots.map((p) => ({
-    plot: p,
-    isoX: (p.col - p.row) * HALF_W,
-    isoY: (p.col + p.row) * HALF_H,
-  }))
-  const xs = positioned.map((p) => p.isoX)
-  const ys = positioned.map((p) => p.isoY)
-  const minX = Math.min(...xs)
-  const maxX = Math.max(...xs)
-  const minY = Math.min(...ys)
-  const maxY = Math.max(...ys)
-  const containerW = maxX - minX + PLOT_W
-  const containerH = maxY - minY + PLOT_H + HEADROOM
-
-  const totalValue = plots.reduce((s, p) => s + (p.inv?.currentValue ?? 0), 0)
-  const ownedCount = plots.filter((p) => p.inv).length
-
-  return (
-    <div
-      className="relative rounded-3xl overflow-hidden"
-      style={{
-        background: `radial-gradient(90% 70% at 50% 40%, ${district.hex}1f 0%, transparent 70%)`,
-        border: `1px solid ${district.hex}22`,
-      }}
-    >
-      {/* District label badge — floating top-left like reference */}
-      <div className="absolute top-2.5 left-2.5 z-30 flex items-center gap-1.5">
-        <div
-          className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-lg shadow-lg backdrop-blur-sm"
-          style={{
-            background: `linear-gradient(135deg, ${district.hex}cc, ${district.hex}88)`,
-            boxShadow: `0 2px 12px ${district.hex}55`,
-          }}
-        >
-          <span className="text-sm">{district.emoji}</span>
-          <span className="text-[10px] font-extrabold text-white uppercase tracking-wider">
-            {district.label}
-          </span>
-        </div>
-      </div>
-
-      {/* Holdings summary — top right */}
-      {totalValue > 0 && (
-        <div className="absolute top-2.5 right-3 z-30 text-right">
-          <div className="text-sm font-extrabold leading-none" style={{ color: district.hex }}>
-            {formatEuroCompact(totalValue)}
-          </div>
-          <div className="text-[9px] text-white/40 leading-none mt-0.5">
-            {ownedCount} bâtiment{ownedCount > 1 ? 's' : ''}
-          </div>
-        </div>
-      )}
-
-      {/* Iso scene */}
-      <div className="w-full flex justify-center overflow-x-auto hide-scrollbar pt-9 pb-2">
-        <div className="relative shrink-0" style={{ width: containerW, height: containerH }}>
-          {positioned.map(({ plot, isoX, isoY }) => (
-            <IsoPlot
-              key={plot.key}
-              plot={plot}
-              district={district}
-              left={isoX - minX}
-              top={isoY - minY}
-              z={plot.col + plot.row}
-              onSelect={onSelect}
-              onBuild={onBuild}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Isometric plot ────────────────────────────────────────────────────────────
-
-function IsoPlot({
-  plot,
-  district,
-  left,
-  top,
-  z,
-  onSelect,
-  onBuild,
-}: {
-  plot: PlotData
-  district: District
-  left: number
-  top: number
-  z: number
-  onSelect: (inv: Investment) => void
-  onBuild: () => void
-}) {
-  const { inv, unlocked, threshold, catalogId } = plot
   const item = getCatalogItem(catalogId)
 
   return (
     <div
       className="absolute"
-      style={{ left, top, width: PLOT_W, height: PLOT_H + HEADROOM, zIndex: z }}
+      style={{ left, top, width: TW, height: TH + HEADROOM, zIndex: depth * 2 }}
     >
-      {/* Ground diamond (SVG for crisp dashed edges) */}
+      {/* Ground diamond */}
       <svg
-        viewBox={`0 0 ${PLOT_W} ${PLOT_H}`}
-        width={PLOT_W}
-        height={PLOT_H}
+        viewBox={`0 0 ${TW} ${TH}`}
+        width={TW}
+        height={TH}
         className="absolute left-0"
         style={{ top: HEADROOM }}
       >
         <polygon
-          points={`${HALF_W},2 ${PLOT_W - 2},${HALF_H} ${HALF_W},${PLOT_H - 2} 2,${HALF_H}`}
-          fill={inv ? `${item.color}1f` : 'rgba(255,255,255,0.02)'}
+          points={`${HW},2 ${TW - 2},${HH} ${HW},${TH - 2} 2,${HH}`}
+          fill={inv ? `${item.color}1c` : `${district.hex}0a`}
           stroke={
-            inv ? `${item.color}aa` : unlocked ? `${district.hex}88` : 'rgba(148,163,184,0.35)'
+            inv
+              ? `${item.color}99`
+              : unlocked
+              ? `${district.hex}55`
+              : 'rgba(148,163,184,0.18)'
           }
           strokeWidth={1.5}
-          strokeDasharray={inv ? undefined : '5 4'}
+          strokeDasharray={inv ? undefined : '4 3'}
         />
       </svg>
 
-      {/* Content on the plot */}
+      {/* Building content */}
       {inv ? (
-        <OwnedBuilding inv={inv} district={district} onClick={() => onSelect(inv)} />
+        <OwnedBuilding inv={inv} district={district} depth={depth} onClick={() => onSelect(inv)} />
       ) : unlocked ? (
-        <EmptyPlot item={item} onClick={onBuild} />
+        <EmptySlot item={item} onClick={onBuild} />
       ) : (
-        <LockedPlot threshold={threshold} />
+        <LockedSlot threshold={threshold} />
       )}
     </div>
   )
 }
 
-// ── Owned building (sprite + animations) ──────────────────────────────────────
+/* ── Owned building (sprite + animations) ────────────────────────────────── */
 
 function OwnedBuilding({
-  inv,
-  district,
-  onClick,
+  inv, district, depth, onClick,
 }: {
   inv: Investment
-  district: District
+  district: DistrictDef
+  depth: number
   onClick: () => void
 }) {
   const [now, setNow] = useState(Date.now())
@@ -321,7 +296,7 @@ function OwnedBuilding({
   const isUpgrading = !!inv.upgradeReadyAtReal && inv.upgradeReadyAtReal > now
   const rate = inv.annualReturnRate + getInvestmentLevelBonus(inv.catalogId, level)
 
-  // Level-up flash detection
+  // Level-up flash
   const prevLevel = useRef(level)
   const [flash, setFlash] = useState(false)
   useEffect(() => {
@@ -344,7 +319,7 @@ function OwnedBuilding({
   const [ping, setPing] = useState(0)
   useEffect(() => {
     if (inv.monthlyIncome <= 0) return
-    const t = setInterval(() => setPing((p) => p + 1), 4000 + Math.random() * 2000)
+    const t = setInterval(() => setPing(p => p + 1), 4000 + Math.random() * 2000)
     return () => clearInterval(t)
   }, [inv.monthlyIncome])
 
@@ -356,34 +331,34 @@ function OwnedBuilding({
       ? `${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')}`
       : `${secsLeft}s`
 
-  // Slight per-instance phase so buildings don't bob in unison
+  // Per-instance phase so buildings don't bob in unison
   const phase = (parseInt(inv.instanceId.slice(-3), 36) % 100) / 100
 
   return (
     <button
       onClick={onClick}
       className="absolute inset-x-0 spawn-pop"
-      style={{ top: 0, height: HEADROOM + PLOT_H }}
+      style={{ top: 0, height: HEADROOM + TH, zIndex: depth * 2 + 1 }}
     >
-      {/* Glow halo under building base */}
+      {/* Glow halo */}
       <div
         className="iso-glow absolute left-1/2 -translate-x-1/2 rounded-full"
         style={{
           top: HEADROOM + 4,
-          width: PLOT_W * 0.78,
-          height: PLOT_H * 0.78,
-          background: `radial-gradient(ellipse, ${item.color}66 0%, transparent 70%)`,
+          width: TW * 0.78,
+          height: TH * 0.78,
+          background: `radial-gradient(ellipse, ${item.color}60 0%, transparent 70%)`,
           animationDelay: `${phase * -3}s`,
         }}
       />
 
-      {/* Building sprite (bobbing) — base planted on diamond front vertex */}
+      {/* Building sprite (bobbing) */}
       <div
         className="iso-bob absolute left-1/2 -translate-x-1/2 flex items-end justify-center"
         style={{
           top: 0,
-          width: PLOT_W * 0.92,
-          height: HEADROOM + PLOT_H,
+          width: TW * 0.94,
+          height: HEADROOM + TH,
           animationDelay: `${phase * -3.4}s`,
         }}
       >
@@ -396,24 +371,24 @@ function OwnedBuilding({
               width: '100%',
               height: '100%',
               objectFit: 'contain',
-              filter: `drop-shadow(0 6px 8px rgba(0,0,0,0.5))`,
+              filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.5))',
             }}
             draggable={false}
           />
         ) : (
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center mb-1"
+            className="w-11 h-11 rounded-xl flex items-center justify-center mb-1"
             style={{ background: item.color + '30', boxShadow: `0 0 14px ${item.color}55` }}
           >
-            <Icon name={item.icon} size={26} style={{ color: item.color } as React.CSSProperties} />
+            <Icon name={item.icon} size={24} style={{ color: item.color } as React.CSSProperties} />
           </div>
         )}
       </div>
 
-      {/* Level dots — above info chip */}
+      {/* Level dots */}
       <div
         className="absolute left-1/2 -translate-x-1/2 flex gap-0.5"
-        style={{ top: HEADROOM + PLOT_H - 30 }}
+        style={{ top: HEADROOM + TH - 30 }}
       >
         {Array.from({ length: 5 }).map((_, i) => (
           <div
@@ -427,20 +402,20 @@ function OwnedBuilding({
         ))}
       </div>
 
-      {/* Info chip at plot front */}
+      {/* Info chip at tile front */}
       <div
         className="absolute left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md whitespace-nowrap"
         style={{
-          top: HEADROOM + PLOT_H - 16,
+          top: HEADROOM + TH - 16,
           background: 'rgba(2,6,23,0.82)',
           border: `1px solid ${item.color}40`,
           backdropFilter: 'blur(4px)',
         }}
       >
         {isUpgrading ? (
-          <span className="text-[10px] font-bold text-amber-300">⏳ {timer}</span>
+          <span className="text-[9px] font-bold text-amber-300">⏳ {timer}</span>
         ) : (
-          <span className="text-[10px] font-extrabold text-white">
+          <span className="text-[9px] font-extrabold text-white">
             {formatEuroCompact(inv.currentValue)}
             <span className="ml-1 font-semibold" style={{ color: district.hex }}>
               +{(rate * 100).toFixed(1)}%
@@ -454,7 +429,11 @@ function OwnedBuilding({
         <span
           key={ping}
           className="income-float absolute left-1/2 text-[11px] font-extrabold pointer-events-none"
-          style={{ top: HEADROOM - 18, color: '#4ade80', textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}
+          style={{
+            top: HEADROOM - 16,
+            color: '#4ade80',
+            textShadow: '0 1px 4px rgba(0,0,0,0.6)',
+          }}
         >
           +{formatEuroCompact(inv.monthlyIncome)}
         </span>
@@ -463,49 +442,51 @@ function OwnedBuilding({
   )
 }
 
-// ── Empty plot (available to build) ───────────────────────────────────────────
+/* ── Empty slot ───────────────────────────────────────────────────────────── */
 
-function EmptyPlot({ item, onClick }: { item: ReturnType<typeof getCatalogItem>; onClick: () => void }) {
+function EmptySlot({
+  item, onClick,
+}: {
+  item: ReturnType<typeof getCatalogItem>
+  onClick: () => void
+}) {
   return (
     <button
       onClick={onClick}
       className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center justify-center group"
-      style={{ top: HEADROOM + 6, width: PLOT_W * 0.6, height: PLOT_H - 12 }}
+      style={{ top: HEADROOM + 8, width: TW * 0.6, height: TH - 14 }}
     >
       <div
-        className="w-8 h-8 rounded-full flex items-center justify-center transition-all group-hover:scale-110"
+        className="w-7 h-7 rounded-full flex items-center justify-center transition-all group-hover:scale-110"
         style={{ background: 'rgba(255,255,255,0.05)', border: '1px dashed rgba(255,255,255,0.2)' }}
       >
-        <Plus size={16} className="text-white/40 group-hover:text-white/70 transition-colors" />
+        <Plus size={14} className="text-white/40 group-hover:text-white/70 transition-colors" />
       </div>
-      <span className="mt-1 text-[8px] text-white/35 font-semibold truncate max-w-full">
+      <span className="mt-0.5 text-[8px] text-white/35 font-semibold truncate max-w-full">
         {item.shortName ?? item.name.split(' ')[0]}
       </span>
     </button>
   )
 }
 
-// ── Locked plot ───────────────────────────────────────────────────────────────
+/* ── Locked slot ──────────────────────────────────────────────────────────── */
 
-function LockedPlot({ threshold }: { threshold: number }) {
+function LockedSlot({ threshold }: { threshold: number }) {
   return (
     <div
       className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center justify-center"
-      style={{ top: HEADROOM + 8, width: PLOT_W * 0.7, height: PLOT_H - 14 }}
+      style={{ top: HEADROOM + 10, width: TW * 0.7, height: TH - 16 }}
     >
-      <Lock size={15} className="text-slate-500" />
-      <span className="mt-0.5 text-[8px] text-slate-500 font-bold uppercase tracking-wide">Locked</span>
-      <span className="text-[8px] text-slate-600 font-semibold">{formatEuroCompact(threshold)}</span>
+      <Lock size={13} className="text-slate-600" />
+      <span className="mt-0.5 text-[8px] text-slate-600 font-bold">{formatEuroCompact(threshold)}</span>
     </div>
   )
 }
 
-// ── Building detail sheet ─────────────────────────────────────────────────────
+/* ── Building detail sheet ────────────────────────────────────────────────── */
 
 function BuildingSheet({
-  inv,
-  onClose,
-  onPortfolio,
+  inv, onClose, onPortfolio,
 }: {
   inv: Investment
   onClose: () => void
@@ -519,7 +500,7 @@ function BuildingSheet({
   const gainPct = inv.purchasePrice > 0 ? (gain / inv.purchasePrice) * 100 : 0
 
   return (
-    <div className="absolute inset-0 z-30 flex flex-col justify-end" onClick={onClose}>
+    <div className="absolute inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" />
       <div
         className="relative rounded-t-3xl p-5 pb-10 shadow-2xl animate-slide-up"
@@ -528,7 +509,7 @@ function BuildingSheet({
           border: `1px solid ${item.color}35`,
           borderBottom: 'none',
         }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-5" />
 
@@ -572,16 +553,16 @@ function BuildingSheet({
 
         {/* Stats */}
         <div className="grid grid-cols-2 gap-2 mb-5">
-          <Stat label="Valeur actuelle" value={formatEuroCompact(inv.currentValue)} color={item.color} />
-          <Stat label="Rendement/an" value={`+${(rate * 100).toFixed(2)} %`} color="#34d399" />
-          <Stat
+          <SheetStat label="Valeur actuelle" value={formatEuroCompact(inv.currentValue)} color={item.color} />
+          <SheetStat label="Rendement/an" value={`+${(rate * 100).toFixed(2)} %`} color="#34d399" />
+          <SheetStat
             label="Plus-value"
             value={`${gain >= 0 ? '+' : ''}${formatEuroCompact(gain)}`}
             sub={`${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(1)} %`}
             color={gain >= 0 ? '#34d399' : '#f87171'}
           />
           {inv.monthlyIncome > 0 && (
-            <Stat label="Revenu/mois" value={`+${formatEuroCompact(inv.monthlyIncome)}`} color="#fbbf24" />
+            <SheetStat label="Revenu/mois" value={`+${formatEuroCompact(inv.monthlyIncome)}`} color="#fbbf24" />
           )}
         </div>
 
@@ -600,7 +581,7 @@ function BuildingSheet({
   )
 }
 
-function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) {
+function SheetStat({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) {
   return (
     <div
       className="rounded-xl p-3"

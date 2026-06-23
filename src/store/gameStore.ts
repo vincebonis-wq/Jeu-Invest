@@ -702,7 +702,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // ── Progression offline ───────────────────────────────────────────
       const savedNetWorth = calcNetWorth(saved)
       const savedPassiveIncome = calcMonthlyPassiveIncome(saved)
-      const elapsedMs = Date.now() - saved.lastRealTimestamp
+      // Cap real elapsed time at 24h so the clock never runs away more than 1 day.
+      const elapsedMs = Math.min(Date.now() - saved.lastRealTimestamp, 86_400_000)
       const offlineDays = Math.min(
         OFFLINE_CAP_DAYS,
         Math.floor((elapsedMs / 1000) * saved.speedMultiplier),
@@ -739,7 +740,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const newNetWorth = calcNetWorth(game)
       const netWorthGainAmount = Math.round(newNetWorth - savedNetWorth)
       const cashGainAmount = Math.round(game.cashBalance - saved.cashBalance)
-      if (offlineDays >= 1 && (netWorthGainAmount >= 50 || cashGainAmount >= 50)) {
+      // Show the return modal on every reconnection after 2 min real absence.
+      if (elapsedMs > 120_000 && offlineDays >= 1) {
         const elapsedMonths = offlineDays / 30
         const passiveIncomeEarned = Math.round(savedPassiveIncome * elapsedMonths)
         const offlineGains: OfflineGains = {
