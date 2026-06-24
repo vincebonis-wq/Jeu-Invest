@@ -25,7 +25,8 @@ import { formatEuroCompact } from '../utils/formatting'
 import { Icon } from '../components/ui/Icon'
 import { BetaShell, useDrawer } from './BetaShell'
 import { getBuildingSprite } from './buildingSprites'
-import { LivingCity, PARCELS, DISTRICTS, getVisualLevel, type Parcel } from './LivingCity'
+import { DISTRICTS } from './LivingCity'
+import { CityImageMap, HOTSPOTS, type Hotspot } from './CityImageMap'
 
 // ─── Empire tiers ─────────────────────────────────────────────────────────────
 
@@ -173,7 +174,7 @@ export function CityMapView() {
     }
   }
 
-  const selectedSlot = PARCELS.find(p => p.id === selectedSlotId) ?? null
+  const selectedSlot = HOTSPOTS.find(h => h.id === selectedSlotId) ?? null
 
   return (
     <BetaShell accent="#050b18" openScreen={open} drawerScreen={drawerScreen} onCloseDrawer={close}>
@@ -290,10 +291,10 @@ export function CityMapView() {
               </button>
             )}
 
-            {/* Métropole vivante */}
+            {/* Métropole photoréaliste interactive */}
             <div className="flex-1 min-h-0 relative mx-3 mt-2 mb-1 rounded-2xl overflow-hidden"
               style={{ background: '#060c1a' }}>
-              <LivingCity
+              <CityImageMap
                 netWorth={netWorth}
                 selectedId={selectedSlotId}
                 onSelect={id => setSelectedSlotId(prev => prev === id ? null : id)}
@@ -515,7 +516,7 @@ function WorldEventsView() {
 function BuildingModal({
   parcel, netWorth, onClose, onGotoPortfolio,
 }: {
-  parcel: Parcel; netWorth: number; onClose: () => void; onGotoPortfolio: () => void
+  parcel: Hotspot; netWorth: number; onClose: () => void; onGotoPortfolio: () => void
 }) {
   const game = useGameStore(s => s.game)!
   const buyInvestment = useGameStore(s => s.buyInvestment)
@@ -539,7 +540,6 @@ function BuildingModal({
   const isRealEstate = ['parking', 'lmnp', 'immo_classique', 'club_deal_immo'].includes(parcel.catalogId)
   const pending = inv?.pendingRevenue ?? 0
   const district = DISTRICTS[parcel.district]
-  const visualLevel = inv ? getVisualLevel(inv.currentValue, level, item.minAmount) : 0
 
   const secsLeft = isUpgrading ? Math.max(0, Math.round((inv!.upgradeReadyAtReal! - now) / 1000)) : 0
   const timer = secsLeft > 3600
@@ -607,12 +607,11 @@ function BuildingModal({
             <div className="font-black text-white text-base leading-tight">{item.name}</div>
             {inv && (
               <div className="flex items-center gap-2 mt-1.5">
-                {/* Niveau visuel du bâtiment (1→20) */}
+                {/* Palier d'amélioration (1→5) */}
                 <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md"
                   style={{ background: `${item.color}22`, color: item.color }}>
-                  Bâtiment Niv. {visualLevel}/20
+                  Niveau {level}/5
                 </span>
-                {/* Palier d'amélioration */}
                 <span className="text-[10px] font-bold" style={{ color: '#94a3b8' }}>
                   {LEVEL_LABELS[level]}
                 </span>
