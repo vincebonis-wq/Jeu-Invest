@@ -161,6 +161,20 @@
   50%       { transform: translateY(-4px); }
 }
 
+/* Ville vivante — pulsation de la tuile quand un revenu est collectable */
+@keyframes collectPulse {
+  0%, 100% { opacity: 0.9; }
+  50%       { opacity: 0.2; }
+}
+.collect-pulse { animation: collectPulse 1.4s ease-in-out infinite; }
+
+/* Ville vivante — badge de revenu flottant (SVG <g>) */
+@keyframes badgeBob {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-3px); }
+}
+.revenue-badge { animation: badgeBob 1.8s ease-in-out infinite; }
+
 @keyframes ticker {
   0%   { transform: translateX(0); }
   100% { transform: translateX(-50%); }

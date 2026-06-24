@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import {
-  Lock, Plus, ArrowUpCircle, Clock, X, ChevronRight,
+  Lock, ArrowUpCircle, Clock, X, ChevronRight,
   Hammer, Coins, Sparkles, TrendingUp, TrendingDown,
   Trophy, Globe, MapPin, Zap, Building2,
 } from 'lucide-react'
@@ -22,10 +22,10 @@ import {
   getInvestmentLevelBonus, getUpgradeCost, TIER_LABELS, LEVEL_LABELS,
 } from '../data/upgradeTiers'
 import { formatEuroCompact } from '../utils/formatting'
-import type { InvestmentCategory } from '../types'
 import { Icon } from '../components/ui/Icon'
 import { BetaShell, useDrawer } from './BetaShell'
 import { getBuildingSprite } from './buildingSprites'
+import { LivingCity, PARCELS, DISTRICTS, getVisualLevel, type Parcel } from './LivingCity'
 
 // ─── Empire tiers ─────────────────────────────────────────────────────────────
 
@@ -128,83 +128,10 @@ const NPC_PLAYERS = [
 
 const TOTAL_PLAYERS = 1_247
 
-// ─── Map layout ───────────────────────────────────────────────────────────────
+type LBPlayer = { name: string; city: string; nw: number; isMe?: boolean }
+type LBData = { all: LBPlayer[]; myRank: number }
 
-type DistrictId = 'finance' | 'realestate' | 'business' | 'alternative' | 'savings'
-
-interface District {
-  id: DistrictId; label: string; short: string; emoji: string; hex: string
-  // SVG polygon points on viewBox "0 0 380 420"
-  poly: string
-  // Label anchor
-  lx: number; ly: number
-}
-
-const DISTRICTS: District[] = [
-  {
-    id: 'finance', label: 'Financial District', short: 'Finance', emoji: '📈', hex: '#38bdf8',
-    poly: '170,12 285,72 170,132 55,72',
-    lx: 170, ly: 52,
-  },
-  {
-    id: 'realestate', label: 'Real Estate Quarter', short: 'Immobilier', emoji: '🏠', hex: '#fbbf24',
-    poly: '315,22 378,67 315,112 252,67',
-    lx: 315, ly: 52,
-  },
-  {
-    id: 'business', label: 'Business Park', short: 'Business', emoji: '🏭', hex: '#a78bfa',
-    poly: '190,138 355,220 190,302 25,220',
-    lx: 190, ly: 198,
-  },
-  {
-    id: 'alternative', label: 'Alternative Zone', short: 'Alternatif', emoji: '⚡', hex: '#fb923c',
-    poly: '100,305 178,343 100,381 22,343',
-    lx: 100, ly: 323,
-  },
-  {
-    id: 'savings', label: 'Savings Village', short: 'Épargne', emoji: '🛡️', hex: '#34d399',
-    poly: '285,305 363,343 285,381 207,343',
-    lx: 285, ly: 323,
-  },
-]
-
-interface MapSlot {
-  id: string; catalogId: InvestmentCategory; slotIndex: number
-  district: DistrictId; x: number; y: number // % of SVG viewBox
-}
-
-// Positions calibrées pour chaque emplacement sur le canvas 380×420
-const MAP_SLOTS: MapSlot[] = [
-  // Financial District
-  { id: 'f1', catalogId: 'bourse_etf',        slotIndex: 0, district: 'finance',     x: 44.7, y: 14.0 },
-  { id: 'f2', catalogId: 'scpi',              slotIndex: 0, district: 'finance',     x: 60.5, y: 10.0 },
-  { id: 'f3', catalogId: 'obligations_etat',  slotIndex: 0, district: 'finance',     x: 44.7, y: 23.3 },
-  { id: 'f4', catalogId: 'produit_structure', slotIndex: 0, district: 'finance',     x: 29.2, y: 17.1 },
-
-  // Real Estate Quarter
-  { id: 'r1', catalogId: 'immo_classique',    slotIndex: 0, district: 'realestate',  x: 79.7, y:  8.1 },
-  { id: 'r2', catalogId: 'immo_classique',    slotIndex: 1, district: 'realestate',  x: 93.2, y: 14.3 },
-  { id: 'r3', catalogId: 'lmnp',              slotIndex: 0, district: 'realestate',  x: 80.5, y: 20.7 },
-  { id: 'r4', catalogId: 'parking',           slotIndex: 0, district: 'realestate',  x: 93.2, y: 24.3 },
-  { id: 'r5', catalogId: 'club_deal_immo',    slotIndex: 0, district: 'realestate',  x: 71.1, y: 15.5 },
-
-  // Business Park
-  { id: 'b1', catalogId: 'business',          slotIndex: 0, district: 'business',    x: 38.2, y: 40.0 },
-  { id: 'b2', catalogId: 'business',          slotIndex: 1, district: 'business',    x: 56.6, y: 37.1 },
-  { id: 'b3', catalogId: 'crowdfunding_immo', slotIndex: 0, district: 'business',    x: 47.4, y: 49.0 },
-  { id: 'b4', catalogId: 'crowdfunding_immo', slotIndex: 1, district: 'business',    x: 66.1, y: 46.0 },
-
-  // Alternative Zone
-  { id: 'a1', catalogId: 'crypto',            slotIndex: 0, district: 'alternative', x: 21.1, y: 72.1 },
-  { id: 'a2', catalogId: 'crypto',            slotIndex: 1, district: 'alternative', x: 37.1, y: 77.1 },
-  { id: 'a3', catalogId: 'or_metaux',         slotIndex: 0, district: 'alternative', x: 19.7, y: 82.4 },
-
-  // Savings Village
-  { id: 's1', catalogId: 'livret',            slotIndex: 0, district: 'savings',     x: 71.8, y: 72.4 },
-  { id: 's2', catalogId: 'assurance_vie',     slotIndex: 0, district: 'savings',     x: 86.6, y: 76.2 },
-  { id: 's3', catalogId: 'assurance_vie',     slotIndex: 1, district: 'savings',     x: 75.0, y: 83.3 },
-  { id: 's4', catalogId: 'livret',            slotIndex: 1, district: 'savings',     x: 93.4, y: 79.3 },
-]
+// ─── Map layout (voir LivingCity.tsx) ───────────────────────────────────────────
 
 type Tab = 'map' | 'rank' | 'events'
 
@@ -246,7 +173,7 @@ export function CityMapView() {
     }
   }
 
-  const selectedSlot = MAP_SLOTS.find(s => s.id === selectedSlotId) ?? null
+  const selectedSlot = PARCELS.find(p => p.id === selectedSlotId) ?? null
 
   return (
     <BetaShell accent="#050b18" openScreen={open} drawerScreen={drawerScreen} onCloseDrawer={close}>
@@ -363,10 +290,10 @@ export function CityMapView() {
               </button>
             )}
 
-            {/* City canvas */}
+            {/* Métropole vivante */}
             <div className="flex-1 min-h-0 relative mx-3 mt-2 mb-1 rounded-2xl overflow-hidden"
               style={{ background: '#060c1a' }}>
-              <CityCanvas
+              <LivingCity
                 netWorth={netWorth}
                 selectedId={selectedSlotId}
                 onSelect={id => setSelectedSlotId(prev => prev === id ? null : id)}
@@ -389,7 +316,7 @@ export function CityMapView() {
       {/* Building modal */}
       {selectedSlot && (
         <BuildingModal
-          slot={selectedSlot}
+          parcel={selectedSlot}
           netWorth={netWorth}
           onClose={() => setSelectedSlotId(null)}
           onGotoPortfolio={() => { setSelectedSlotId(null); open('portfolio') }}
@@ -399,221 +326,12 @@ export function CityMapView() {
   )
 }
 
-// ─── City canvas ──────────────────────────────────────────────────────────────
-
-function CityCanvas({
-  netWorth, selectedId, onSelect,
-}: {
-  netWorth: number
-  selectedId: string | null
-  onSelect: (id: string) => void
-}) {
-  return (
-    <div className="relative w-full h-full">
-      {/* SVG: district zones + roads */}
-      <svg
-        className="absolute inset-0 w-full h-full"
-        viewBox="0 0 380 420"
-        preserveAspectRatio="xMidYMid meet"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        {/* Background grid */}
-        <defs>
-          <pattern id="isogrid" width="44" height="25" patternUnits="userSpaceOnUse" patternTransform="skewX(-30)">
-            <line x1="0" y1="0" x2="0" y2="25" stroke="#0d1e35" strokeWidth="0.6"/>
-            <line x1="0" y1="0" x2="44" y2="0" stroke="#0d1e35" strokeWidth="0.6"/>
-          </pattern>
-          {/* Glow filters per district */}
-          {DISTRICTS.map(d => (
-            <filter key={d.id} id={`glow-${d.id}`} x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-          ))}
-        </defs>
-
-        <rect width="380" height="420" fill="url(#isogrid)" />
-
-        {/* District polygons */}
-        {DISTRICTS.map(d => (
-          <g key={d.id}>
-            {/* Zone fill */}
-            <polygon
-              points={d.poly}
-              fill={`${d.hex}0e`}
-              stroke={`${d.hex}45`}
-              strokeWidth="1.5"
-            />
-            {/* Zone glow */}
-            <polygon
-              points={d.poly}
-              fill="none"
-              stroke={`${d.hex}25`}
-              strokeWidth="6"
-              filter={`url(#glow-${d.id})`}
-            />
-            {/* District label */}
-            <text
-              x={d.lx}
-              y={d.ly}
-              textAnchor="middle"
-              fill={d.hex}
-              fontSize="8"
-              fontWeight="800"
-              fontFamily="system-ui"
-              opacity="0.75"
-              letterSpacing="1"
-            >
-              {d.emoji} {d.short.toUpperCase()}
-            </text>
-          </g>
-        ))}
-
-        {/* Roads between zones */}
-        <line x1="170" y1="132" x2="170" y2="138" stroke="#040a14" strokeWidth="14"/>
-        <line x1="315" y1="112" x2="315" y2="138" stroke="#040a14" strokeWidth="14"/>
-        <line x1="100" y1="302" x2="190" y2="302" stroke="#040a14" strokeWidth="14"/>
-        <line x1="190" y1="302" x2="285" y2="302" stroke="#040a14" strokeWidth="14"/>
-      </svg>
-
-      {/* Buildings (absolutely positioned over SVG) */}
-      {MAP_SLOTS.map(slot => (
-        <BuildingPin
-          key={slot.id}
-          slot={slot}
-          netWorth={netWorth}
-          isSelected={selectedId === slot.id}
-          onTap={() => onSelect(slot.id)}
-        />
-      ))}
-    </div>
-  )
-}
-
-// ─── Building pin ─────────────────────────────────────────────────────────────
-
-function BuildingPin({
-  slot, netWorth, isSelected, onTap,
-}: {
-  slot: MapSlot; netWorth: number; isSelected: boolean; onTap: () => void
-}) {
-  const game = useGameStore(s => s.game)!
-  const item = getCatalogItem(slot.catalogId)
-  const inv = game.investments.filter(i => i.catalogId === slot.catalogId)[slot.slotIndex] ?? null
-  const unlocked = netWorth >= item.unlockThreshold
-  const sprite = getBuildingSprite(slot.catalogId)
-  const pending = inv?.pendingRevenue ?? 0
-  const isReady = pending > 0
-  const level = inv?.level ?? 1
-  const district = DISTRICTS.find(d => d.id === slot.district)!
-
-  // Building size grows with level
-  const size = inv ? 48 + level * 6 : 40
-
-  return (
-    <button
-      onClick={onTap}
-      className="absolute flex flex-col items-center"
-      style={{
-        left: `${slot.x}%`,
-        top: `${slot.y}%`,
-        transform: 'translate(-50%, -50%)',
-        zIndex: isSelected ? 50 : isReady ? 30 : 10,
-        border: 'none', background: 'none', padding: 0,
-      }}
-    >
-      {/* Revenue badge */}
-      {isReady && (
-        <div
-          className="mb-0.5 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 font-black shrink-0"
-          style={{
-            background: '#fbbf24',
-            color: '#431407',
-            fontSize: 7,
-            boxShadow: '0 2px 10px rgba(251,191,36,0.6)',
-            animation: 'floatBadge 1.8s ease-in-out infinite',
-            lineHeight: 1.2,
-          }}
-        >
-          <Coins size={6} />
-          {formatEuroCompact(pending)}
-        </div>
-      )}
-
-      {/* Building */}
-      <div
-        className="flex items-center justify-center rounded-xl relative transition-all duration-200"
-        style={{
-          width: size,
-          height: size,
-          background: inv
-            ? `radial-gradient(circle at 30% 30%, ${item.color}40, ${item.color}10)`
-            : 'rgba(255,255,255,0.03)',
-          border: isSelected
-            ? `2px solid ${inv ? item.color : district.hex}`
-            : isReady
-            ? `2px solid #fbbf24`
-            : inv
-            ? `1.5px solid ${item.color}60`
-            : unlocked
-            ? `1.5px dashed ${district.hex}35`
-            : `1.5px dashed rgba(71,85,105,0.3)`,
-          boxShadow: isSelected
-            ? `0 0 0 3px ${inv ? item.color : district.hex}40, 0 0 24px ${inv ? item.color : district.hex}35`
-            : isReady
-            ? `0 0 14px rgba(251,191,36,0.5)`
-            : inv
-            ? `0 4px 12px ${item.color}25, 0 0 6px ${item.color}15`
-            : 'none',
-        }}
-      >
-        {inv ? (
-          sprite ? (
-            <img src={sprite} alt={item.name} draggable={false}
-              className="object-contain p-1 w-full h-full"
-              style={{
-                filter: `drop-shadow(0 2px 6px ${item.color}88)`,
-                animation: isReady ? 'floatBadge 2.5s ease-in-out infinite' : undefined,
-              }}
-            />
-          ) : (
-            <Icon name={item.icon} size={Math.round(size * 0.45)}
-              style={{ color: item.color } as React.CSSProperties} />
-          )
-        ) : unlocked ? (
-          <Plus size={14} style={{ color: district.hex, opacity: 0.45 }} />
-        ) : (
-          <Lock size={11} className="text-slate-700" />
-        )}
-
-        {/* Level badge */}
-        {inv && (
-          <div
-            className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black shadow-lg"
-            style={{ background: item.color, color: '#000', lineHeight: 1 }}
-          >
-            {level}
-          </div>
-        )}
-      </div>
-
-      {/* Pulse ring when ready */}
-      {isReady && (
-        <div
-          className="absolute inset-0 rounded-xl pointer-events-none"
-          style={{ animation: 'pulseRing 1.8s ease-out infinite' }}
-        />
-      )}
-    </button>
-  )
-}
-
 // ─── Leaderboard ──────────────────────────────────────────────────────────────
 
 function LeaderboardView({
   data, netWorth, tier,
 }: {
-  data: ReturnType<typeof buildLeaderboard>
+  data: LBData
   netWorth: number
   tier: (typeof EMPIRE_TIERS)[number]
 }) {
@@ -696,13 +414,6 @@ function LeaderboardView({
       </div>
     </div>
   )
-}
-
-// Helper type for buildLeaderboard (needed by LeaderboardView)
-type LBData = { all: (typeof NPC_PLAYERS[0] & { isMe?: boolean; city?: string })[]; myRank: number }
-
-function buildLeaderboard(_nw: number): LBData { // unused, inlined in root
-  return { all: [], myRank: 0 }
 }
 
 // ─── World events ─────────────────────────────────────────────────────────────
@@ -802,9 +513,9 @@ function WorldEventsView() {
 // ─── Building modal ───────────────────────────────────────────────────────────
 
 function BuildingModal({
-  slot, netWorth, onClose, onGotoPortfolio,
+  parcel, netWorth, onClose, onGotoPortfolio,
 }: {
-  slot: MapSlot; netWorth: number; onClose: () => void; onGotoPortfolio: () => void
+  parcel: Parcel; netWorth: number; onClose: () => void; onGotoPortfolio: () => void
 }) {
   const game = useGameStore(s => s.game)!
   const buyInvestment = useGameStore(s => s.buyInvestment)
@@ -812,10 +523,10 @@ function BuildingModal({
   const collectRevenue = useGameStore(s => s.collectRevenue)
   const cash = game.cashBalance
 
-  const item = getCatalogItem(slot.catalogId)
-  const inv = game.investments.filter(i => i.catalogId === slot.catalogId)[slot.slotIndex] ?? null
+  const item = getCatalogItem(parcel.catalogId)
+  const inv = game.investments.filter(i => i.catalogId === parcel.catalogId)[parcel.slotIndex] ?? null
   const unlocked = netWorth >= item.unlockThreshold
-  const sprite = getBuildingSprite(slot.catalogId)
+  const sprite = getBuildingSprite(parcel.catalogId)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [collected, setCollected] = useState(false)
   const [now, setNow] = useState(Date.now())
@@ -825,9 +536,10 @@ function BuildingModal({
   const isUpgrading = !!inv?.upgradeReadyAtReal && inv.upgradeReadyAtReal > now
   const targetLevel = level + 1
   const upgradeCost = isMax ? 0 : getUpgradeCost(item.minAmount, targetLevel)
-  const isRealEstate = ['parking', 'lmnp', 'immo_classique', 'club_deal_immo'].includes(slot.catalogId)
+  const isRealEstate = ['parking', 'lmnp', 'immo_classique', 'club_deal_immo'].includes(parcel.catalogId)
   const pending = inv?.pendingRevenue ?? 0
-  const district = DISTRICTS.find(d => d.id === slot.district)!
+  const district = DISTRICTS[parcel.district]
+  const visualLevel = inv ? getVisualLevel(inv.currentValue, level, item.minAmount) : 0
 
   const secsLeft = isUpgrading ? Math.max(0, Math.round((inv!.upgradeReadyAtReal! - now) / 1000)) : 0
   const timer = secsLeft > 3600
@@ -842,7 +554,7 @@ function BuildingModal({
   }, [isUpgrading])
 
   const rate = inv
-    ? inv.annualReturnRate + getInvestmentLevelBonus(slot.catalogId, level)
+    ? inv.annualReturnRate + getInvestmentLevelBonus(parcel.catalogId, level)
     : item.baseAnnualReturn
 
   function handleCollect() {
@@ -852,7 +564,7 @@ function BuildingModal({
   }
 
   function handleBuild() {
-    const r = buyInvestment(slot.catalogId, item.minAmount, false)
+    const r = buyInvestment(parcel.catalogId, item.minAmount, false)
     if (r.success) onClose(); else setFeedback(r.message)
   }
 
@@ -894,14 +606,14 @@ function BuildingModal({
             </div>
             <div className="font-black text-white text-base leading-tight">{item.name}</div>
             {inv && (
-              <div className="flex items-center gap-1.5 mt-1.5">
-                <div className="flex gap-0.5">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="h-1.5 w-4 rounded-full"
-                      style={{ background: i < level ? item.color : 'rgba(255,255,255,0.1)' }} />
-                  ))}
-                </div>
-                <span className="text-[10px] font-bold" style={{ color: item.color }}>
+              <div className="flex items-center gap-2 mt-1.5">
+                {/* Niveau visuel du bâtiment (1→20) */}
+                <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md"
+                  style={{ background: `${item.color}22`, color: item.color }}>
+                  Bâtiment Niv. {visualLevel}/20
+                </span>
+                {/* Palier d'amélioration */}
+                <span className="text-[10px] font-bold" style={{ color: '#94a3b8' }}>
                   {LEVEL_LABELS[level]}
                 </span>
               </div>
