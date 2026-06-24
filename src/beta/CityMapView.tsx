@@ -182,83 +182,129 @@ export function CityMapView() {
 
         {/* ─── Empire HUD ─── */}
         <div
-          className="shrink-0 px-4 pt-2.5 pb-1.5"
-          style={{ background: 'rgba(6,13,30,0.97)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+          className="shrink-0 relative"
+          style={{ background: 'rgba(5,9,20,0.98)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}
         >
-          <div className="flex items-center gap-3">
-            {/* Tier badge */}
-            <div className="flex flex-col items-center shrink-0">
-              <span style={{ fontSize: 26 }}>{tier.badge}</span>
-              <span className="text-[9px] font-black uppercase tracking-widest"
-                style={{ color: tier.color }}>{tier.label}</span>
+          {/* Accent line — couleur du rang actuel */}
+          <div
+            className="absolute top-0 inset-x-0 h-[1.5px]"
+            style={{ background: `linear-gradient(90deg, transparent 0%, ${tier.color}80 35%, ${tier.color} 50%, ${tier.color}80 65%, transparent 100%)` }}
+          />
+
+          <div className="flex items-stretch px-3 py-2">
+
+            {/* ── Gauche : badge de rang ── */}
+            <div className="flex flex-col items-center justify-center pr-3 gap-0.5 shrink-0">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{
+                  background: `radial-gradient(circle at 35% 30%, ${tier.color}38, ${tier.color}12)`,
+                  border: `1.5px solid ${tier.color}50`,
+                  boxShadow: `0 0 16px ${tier.color}28`,
+                }}
+              >
+                <span style={{ fontSize: 20 }}>{tier.badge}</span>
+              </div>
+              <span
+                className="text-[8px] font-black uppercase tracking-widest leading-none mt-0.5"
+                style={{ color: tier.color }}
+              >
+                {tier.label}
+              </span>
             </div>
 
-            {/* Progress + stats */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-white font-extrabold text-sm">Mon Empire</span>
-                <div className="flex items-center gap-2">
-                  {/* Revenue/h */}
-                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full"
-                    style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.25)' }}>
-                    <Zap size={9} className="text-emerald-400" />
-                    <span className="text-[10px] font-black text-emerald-400">
-                      +{formatEuroCompact(revenuePerHour)}/h
-                    </span>
-                  </div>
-                  {/* Rank */}
-                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full"
-                    style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.25)' }}>
-                    <Trophy size={9} className="text-amber-400" />
-                    <span className="text-[10px] font-black text-amber-400">
-                      #{lbData.myRank}
-                    </span>
-                  </div>
-                </div>
+            {/* Séparateur */}
+            <div className="w-px self-stretch mx-0.5" style={{ background: 'rgba(255,255,255,0.07)' }} />
+
+            {/* ── Centre : nom + progression + métriques ── */}
+            <div className="flex-1 flex flex-col justify-center gap-1 px-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-white/90 leading-none tracking-wide">
+                  {game.player?.name ?? 'Mon Empire'}
+                </span>
+                {next && (
+                  <span className="text-[8px] text-slate-600 leading-none">
+                    → {next.label} · {formatEuroCompact(next.min)}
+                  </span>
+                )}
               </div>
-              {/* Progress bar to next tier */}
+
               {next && (
-                <div>
-                  <div className="relative h-1.5 rounded-full overflow-hidden"
-                    style={{ background: 'rgba(255,255,255,0.08)' }}>
-                    <div className="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
-                      style={{ width: `${Math.min(100, progress * 100).toFixed(1)}%`, background: tier.color }} />
-                  </div>
-                  <div className="flex justify-between mt-0.5">
-                    <span className="text-[8px] text-slate-500">
-                      {formatEuroCompact(netWorth)}
-                    </span>
-                    <span className="text-[8px] text-slate-500">
-                      {next.label} → {formatEuroCompact(next.min)}
-                    </span>
-                  </div>
+                <div
+                  className="relative h-1 rounded-full overflow-hidden"
+                  style={{ background: 'rgba(255,255,255,0.07)' }}
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
+                    style={{
+                      width: `${Math.min(100, progress * 100).toFixed(1)}%`,
+                      background: `linear-gradient(90deg, ${tier.color}aa, ${tier.color})`,
+                      boxShadow: `0 0 6px ${tier.color}70`,
+                    }}
+                  />
                 </div>
               )}
+
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-black text-white leading-none">
+                  {formatEuroCompact(netWorth)}
+                </span>
+                <span className="text-[8px] text-slate-600 leading-none font-semibold uppercase tracking-wider">
+                  patrimoine
+                </span>
+                <span className="text-white/8 text-[10px] select-none">|</span>
+                <Zap size={9} className="text-emerald-400 shrink-0" />
+                <span className="text-[12px] font-black text-emerald-400 leading-none">
+                  +{formatEuroCompact(revenuePerHour)}/h
+                </span>
+              </div>
+            </div>
+
+            {/* Séparateur */}
+            <div className="w-px self-stretch mx-0.5" style={{ background: 'rgba(255,255,255,0.07)' }} />
+
+            {/* ── Droite : classement ── */}
+            <div className="flex flex-col items-center justify-center pl-3 shrink-0 gap-0.5">
+              <Trophy size={11} className="text-amber-400" />
+              <span className="text-[15px] font-black text-amber-400 leading-none">
+                #{lbData.myRank}
+              </span>
+              <span className="text-[7px] text-slate-600 leading-none font-semibold">
+                /{TOTAL_PLAYERS.toLocaleString('fr-FR')}
+              </span>
             </div>
           </div>
         </div>
 
         {/* ─── Sub-tabs ─── */}
-        <div className="shrink-0 flex" style={{ background: '#070e1c', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="shrink-0 flex" style={{ background: '#050a17', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           {([
             { id: 'map',    icon: MapPin,  label: 'VILLE'       },
             { id: 'rank',   icon: Trophy,  label: 'CLASSEMENT'  },
             { id: 'events', icon: Globe,   label: 'MARCHÉ'      },
-          ] as const).map(({ id, icon: Icon2, label }) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2 transition-colors relative"
-              style={{ color: tab === id ? '#38bdf8' : '#475569' }}
-            >
-              <Icon2 size={13} />
-              <span className="text-[10px] font-black tracking-wider">{label}</span>
-              {tab === id && (
-                <div className="absolute bottom-0 inset-x-4 h-0.5 rounded-full"
-                  style={{ background: '#38bdf8' }} />
-              )}
-            </button>
-          ))}
+          ] as const).map(({ id, icon: Icon2, label }) => {
+            const active = tab === id
+            return (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 transition-all relative"
+                style={{
+                  color: active ? '#e2e8f0' : '#374151',
+                  background: active ? 'rgba(56,189,248,0.06)' : 'transparent',
+                }}
+              >
+                <Icon2 size={12} style={{ color: active ? '#38bdf8' : undefined }} />
+                <span className="text-[9px] font-black tracking-widest">{label}</span>
+                {active && (
+                  <div
+                    className="absolute bottom-0 inset-x-6 h-[1.5px] rounded-full"
+                    style={{ background: 'linear-gradient(90deg, transparent, #38bdf8, transparent)' }}
+                  />
+                )}
+              </button>
+            )
+          })}
         </div>
 
         {/* ─── CARTE ─── */}
