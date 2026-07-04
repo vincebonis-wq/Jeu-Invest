@@ -57,6 +57,14 @@ export function getUpgradeLabel(catalogId: string): string {
 
 export const LEVEL_LABELS = ['', 'Découverte', 'Développé', 'Avancé', 'Expert', 'Maître']
 
+// ── Monétisation : coût en 💎 lingots pour terminer un timer instantanément ──
+// Barème progressif ~1 lingot / 6 min restantes, plancher 1, arrondi au sup.
+// Repères : 3 min → 1 · 20 min → 4 · 2h → 20 · 12h → 120.
+export function gemCostForSecs(secsLeft: number): number {
+  if (secsLeft <= 0) return 0
+  return Math.max(1, Math.ceil(secsLeft / 360))
+}
+
 // Inline lookup arrays (index = targetLevel)
 export const COST_MULTIPLIERS = [0, 0, 1.0, 2.5, 6.0, 15.0]
 export const TIER_SECS        = [0, 0, 180, 1200, 7200, 43200]

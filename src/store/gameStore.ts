@@ -45,7 +45,7 @@ import {
 } from '../utils/calculations'
 import { IMMO_SEARCH_DURATIONS } from '../engine/immoEngine'
 import { pickRandomFlash, generateFlashOpportunity } from '../data/flashOpportunities'
-import { COST_MULTIPLIERS, TIER_SECS, TIER_LABELS } from '../data/upgradeTiers'
+import { COST_MULTIPLIERS, TIER_SECS, TIER_LABELS, gemCostForSecs } from '../data/upgradeTiers'
 
 // ============================================================================
 // Store principal : état du jeu + UI + boucle de temps + sauvegarde.
@@ -147,7 +147,15 @@ interface GameStore {
   renovateProperty: (instanceId: string) => BuyResult
   collectRevenue: (instanceId: string) => { collected: number }
   collectAllRevenue: () => { total: number; count: number }
+
+  // Monétisation F2P — devise premium 💎 lingots
+  earnGems: (amount: number, reason?: string) => void
+  finishUpgradeNow: (instanceId: string) => { success: boolean; message: string; cost?: number }
 }
+
+// Don quotidien de lingots (rétention). Le premier login du jour crédite des 💎.
+const DAILY_GEM_GRANT = 3
+const STARTING_GEMS = 30
 
 // --- État de la boucle (hors store pour éviter les re-renders) ---
 let intervalId: ReturnType<typeof setInterval> | null = null
@@ -306,6 +314,9 @@ function createInitialState(
     pendingBadges: [],
     flashOpportunities: [],
     prestige: prestige,
+    gems: STARTING_GEMS,
+    gemsEarnedTotal: STARTING_GEMS,
+    lastGemGrantISO: new Date().toISOString().split('T')[0],
     weeklyChallenges: generateWeeklyChallenges(savings + extraCash, 0),
     questProgress: QUEST_CHAINS.map((chain) => ({
       chainId: chain.id,
@@ -666,6 +677,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
       saved.streak = newStreak
 
+      // ── Lingots 💎 : init rétro-compat + don quotidien au premier login du jour ──
+      if (saved.gems === undefined) {
+        saved.gems = STARTING_GEMS
+        saved.gemsEarnedTotal = STARTING_GEMS
+      }
+      let dailyGemToast: Toast | null = null
+      if (saved.lastGemGrantISO !== today) {
+        // Don progressif : bonus si la série de connexion tient (jusqu'à ×3).
+        const streakMult = newStreak.currentStreak >= 30 ? 3 : newStreak.currentStreak >= 7 ? 2 : 1
+        const grant = DAILY_GEM_GRANT * streakMult
+        saved.gems = (saved.gems ?? 0) + grant
+        saved.gemsEarnedTotal = (saved.gemsEarnedTotal ?? 0) + grant
+        saved.lastGemGrantISO = today
+        dailyGemToast = {
+          id: `daily_gems_${today}`,
+          title: `💎 +${grant} lingots`,
+          description: streakMult > 1
+            ? `Bonus de série ×${streakMult} — reviens chaque jour pour plus !`
+            : 'Don quotidien de connexion.',
+          severity: 'good',
+        }
+      }
+
       // Reset weekly challenges if new week
       const thisWeek = getCurrentWeekISO()
       if (!saved.weeklyChallenges || saved.weeklyChallenges.weekISO !== thisWeek) {
@@ -760,7 +794,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         game = { ...game, pendingOfflineGains: offlineGains }
       }
 
-      set({ game, toasts: offlineToasts })
+      set({ game, toasts: dailyGemToast ? [...offlineToasts, dailyGemToast].slice(-4) : offlineToasts })
       get().startLoop()
       return true
     } catch (e) {
@@ -1774,10 +1808,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (!wc.challenges.every((c) => c.completed)) return s
       const netWorth = calcNetWorth(s.game)
       const comboBonus = Math.round(Math.max(2000, netWorth * 0.005))
+      const gemReward = 10 // les 5 défis de la semaine bouclés → 💎 premium
       return {
         game: {
           ...s.game,
           cashBalance: s.game.cashBalance + comboBonus,
+          gems: (s.game.gems ?? 0) + gemReward,
+          gemsEarnedTotal: (s.game.gemsEarnedTotal ?? 0) + gemReward,
           weeklyChallenges: {
             ...wc,
             comboClaimed: true,
@@ -1935,6 +1972,50 @@ export const useGameStore = create<GameStore>((set, get) => ({
     })
     get().saveGame()
     return { total, count: ready.length }
+  },
+
+  earnGems: (amount, _reason) => {
+    if (amount <= 0) return
+    set((s) => s.game ? {
+      game: {
+        ...s.game,
+        gems: (s.game.gems ?? 0) + amount,
+        gemsEarnedTotal: (s.game.gemsEarnedTotal ?? 0) + amount,
+      },
+    } : s)
+    get().saveGame()
+  },
+
+  finishUpgradeNow: (instanceId) => {
+    const game = get().game
+    if (!game) return { success: false, message: 'Aucune partie.' }
+    const inv = game.investments.find((i) => i.instanceId === instanceId)
+    if (!inv) return { success: false, message: 'Investissement introuvable.' }
+    if (!inv.upgradeReadyAtReal) return { success: false, message: 'Aucune amélioration en cours.' }
+
+    const secsLeft = Math.max(0, Math.ceil((inv.upgradeReadyAtReal - Date.now()) / 1000))
+    const cost = gemCostForSecs(secsLeft)
+    const gems = game.gems ?? 0
+    if (gems < cost) {
+      return { success: false, message: `Il te faut ${cost} 💎 pour terminer maintenant (tu en as ${gems}).`, cost }
+    }
+
+    // Débite les lingots et fait expirer le timer immédiatement : le prochain
+    // tick de checkRealTimeProgress applique le bonus de niveau.
+    set((s) => {
+      if (!s.game) return s
+      return {
+        game: {
+          ...s.game,
+          gems: (s.game.gems ?? 0) - cost,
+          investments: s.game.investments.map((i) =>
+            i.instanceId === instanceId ? { ...i, upgradeReadyAtReal: Date.now() - 1 } : i,
+          ),
+        },
+      }
+    })
+    get().saveGame()
+    return { success: true, message: `Amélioration terminée pour ${cost} 💎 !`, cost }
   },
 
   depositToInvestment: (instanceId, amount) => {

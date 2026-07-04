@@ -495,6 +495,11 @@ export interface GameState {
   questProgress?: QuestChainProgress[]
   pendingYearRecap?: AnnualRecap
   investmentUpgrades?: Record<string, number> // catalogId → highest level ever reached (non-RE assets only)
+  // ── Monétisation F2P ──
+  gems?: number                     // 💎 lingots — devise premium (skip timers, boosts)
+  gemsEarnedTotal?: number          // cumul gagné (stats)
+  lastGemGrantISO?: string          // date (YYYY-MM-DD) du dernier don quotidien de lingots
+  vipUntilReal?: number             // epoch ms — abonnement VIP actif jusqu'à cette date (0/undefined = inactif)
 }
 
 // ----------------------------------------------------------------------------

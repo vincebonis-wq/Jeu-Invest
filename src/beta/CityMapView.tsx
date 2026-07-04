@@ -19,7 +19,7 @@ import { useGameStore } from '../store/gameStore'
 import { calcNetWorth } from '../utils/calculations'
 import { getCatalogItem } from '../data/investments'
 import {
-  getInvestmentLevelBonus, getUpgradeCost, TIER_LABELS, LEVEL_LABELS,
+  getInvestmentLevelBonus, getUpgradeCost, TIER_LABELS, LEVEL_LABELS, gemCostForSecs,
 } from '../data/upgradeTiers'
 import { formatEuroCompact } from '../utils/formatting'
 import { Icon } from '../components/ui/Icon'
@@ -263,15 +263,31 @@ export function CityMapView() {
             {/* Séparateur */}
             <div className="w-px self-stretch mx-0.5" style={{ background: 'rgba(255,255,255,0.07)' }} />
 
-            {/* ── Droite : classement ── */}
-            <div className="flex flex-col items-center justify-center pl-3 shrink-0 gap-0.5">
-              <Trophy size={11} className="text-amber-400" />
-              <span className="text-[15px] font-black text-amber-400 leading-none">
-                #{lbData.myRank}
-              </span>
-              <span className="text-[7px] text-slate-600 leading-none font-semibold">
-                /{TOTAL_PLAYERS.toLocaleString('fr-FR')}
-              </span>
+            {/* ── Droite : lingots 💎 + classement ── */}
+            <div className="flex flex-col items-stretch justify-center pl-2.5 shrink-0 gap-1">
+              {/* Lingots premium */}
+              <div
+                className="flex items-center gap-1 px-2 py-1 rounded-lg"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(56,189,248,0.16), rgba(139,92,246,0.14))',
+                  border: '1px solid rgba(56,189,248,0.3)',
+                }}
+              >
+                <span style={{ fontSize: 11 }}>💎</span>
+                <span className="text-[12px] font-black leading-none" style={{ color: '#7dd3fc' }}>
+                  {(game.gems ?? 0).toLocaleString('fr-FR')}
+                </span>
+              </div>
+              {/* Classement */}
+              <div className="flex items-center justify-center gap-1">
+                <Trophy size={10} className="text-amber-400" />
+                <span className="text-[12px] font-black text-amber-400 leading-none">
+                  #{lbData.myRank}
+                </span>
+                <span className="text-[7px] text-slate-600 leading-none font-semibold self-end mb-px">
+                  /{(TOTAL_PLAYERS / 1000).toFixed(1)}k
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -568,7 +584,9 @@ function BuildingModal({
   const buyInvestment = useGameStore(s => s.buyInvestment)
   const upgradeInvestment = useGameStore(s => s.upgradeInvestment)
   const collectRevenue = useGameStore(s => s.collectRevenue)
+  const finishUpgradeNow = useGameStore(s => s.finishUpgradeNow)
   const cash = game.cashBalance
+  const gems = game.gems ?? 0
 
   const item = getCatalogItem(parcel.catalogId)
   const inv = game.investments.filter(i => i.catalogId === parcel.catalogId)[parcel.slotIndex] ?? null
@@ -588,6 +606,7 @@ function BuildingModal({
   const district = DISTRICTS[parcel.district]
 
   const secsLeft = isUpgrading ? Math.max(0, Math.round((inv!.upgradeReadyAtReal! - now) / 1000)) : 0
+  const skipCost = isUpgrading ? gemCostForSecs(secsLeft) : 0
   const timer = secsLeft > 3600
     ? `${Math.floor(secsLeft / 3600)}h${String(Math.floor((secsLeft % 3600) / 60)).padStart(2, '0')}`
     : secsLeft > 60 ? `${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')}`
@@ -617,6 +636,13 @@ function BuildingModal({
   function handleUpgrade() {
     if (!inv) return
     const r = upgradeInvestment(inv.instanceId)
+    setFeedback(r.message)
+    if (r.success) setTimeout(onClose, 700)
+  }
+
+  function handleSkip() {
+    if (!inv) return
+    const r = finishUpgradeNow(inv.instanceId)
     setFeedback(r.message)
     if (r.success) setTimeout(onClose, 700)
   }
@@ -744,10 +770,22 @@ function BuildingModal({
               </button>
             )
           ) : isUpgrading ? (
-            <div className="w-full py-3.5 rounded-2xl font-bold text-sm text-amber-300 flex items-center justify-center gap-2"
-              style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)' }}>
-              <Clock size={16} /> Amélioration en cours — {timer}
-            </div>
+            <>
+              <div className="w-full py-3 rounded-2xl font-bold text-sm text-amber-300 flex items-center justify-center gap-2"
+                style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)' }}>
+                <Clock size={16} /> Amélioration en cours — {timer}
+              </div>
+              {/* Skip premium — le hook de monétisation F2P */}
+              <button onClick={handleSkip} disabled={gems < skipCost}
+                className="w-full py-3 rounded-2xl font-extrabold text-sm text-white flex items-center justify-center gap-2 active:scale-98 transition-transform disabled:opacity-40"
+                style={{
+                  background: 'linear-gradient(135deg, #38bdf8, #8b5cf6)',
+                  boxShadow: '0 6px 20px rgba(56,189,248,0.3)',
+                }}>
+                <Zap size={15} /> Terminer maintenant · {skipCost} 💎
+                {gems < skipCost && <span className="text-[10px] opacity-80">(tu as {gems})</span>}
+              </button>
+            </>
           ) : isMax ? (
             <div className="w-full py-3 rounded-2xl text-center text-sm font-extrabold flex items-center justify-center gap-2"
               style={{ background: 'rgba(255,255,255,0.05)', color: item.color }}>
