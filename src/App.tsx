@@ -25,9 +25,10 @@ import { Modal } from './components/ui/Modal'
 import { Button } from './components/ui/Button'
 import { formatEuroSigned } from './utils/formatting'
 import { checkOfflineReminder, scheduleOfflineReminder } from './utils/notifications'
-import { useUiMode } from './beta/uiModeStore'
+import { useUiMode, type UiMode } from './beta/uiModeStore'
 import { BetaModeSwitcher } from './beta/BetaModeSwitcher'
 import { CityMapView } from './beta/CityMapView'
+import { MogulGame } from './beta/mogul/MogulGame'
 
 const SCREENS = {
   dashboard: Dashboard,
@@ -87,20 +88,33 @@ export default function App() {
     return <CharacterCreation />
   }
 
+  return <AppShell />
+}
+
+/** Coquille principale — connaît le mode d'affichage pour router vue + popups. */
+function AppShell() {
+  const mode = useUiMode((s) => s.mode)
+  // MOGUL est un jeu autonome (hors simulation) : on masque les popups du moteur
+  // pour rester épuré.
+  const showSimOverlays = mode !== 'mogul'
+
   return (
     <>
-      <MainView />
+      <MainView mode={mode} />
 
-      {/* Modales globales — rendues quel que soit le mode d'affichage */}
-      <Toaster />
-      <PendingActionModal />
-      <FirstStepModal />
-      <FreedomModal />
-      <QuarterlyReviewModal />
-      <ReturnModal />
-      <BadgeNotification />
-      <FirstInvestModal />
-      <YearRecapModal />
+      {showSimOverlays && (
+        <>
+          <Toaster />
+          <PendingActionModal />
+          <FirstStepModal />
+          <FreedomModal />
+          <QuarterlyReviewModal />
+          <ReturnModal />
+          <BadgeNotification />
+          <FirstInvestModal />
+          <YearRecapModal />
+        </>
+      )}
 
       {/* Bascule entre l'app actuelle et les betas */}
       <BetaModeSwitcher />
@@ -108,10 +122,10 @@ export default function App() {
   )
 }
 
-/** Choisit la vue principale selon le mode d'affichage (classic / base / city). */
-function MainView() {
-  const mode = useUiMode((s) => s.mode)
+/** Choisit la vue principale selon le mode d'affichage (classic / city / mogul). */
+function MainView({ mode }: { mode: UiMode }) {
   if (mode === 'citymap') return <CityMapView />
+  if (mode === 'mogul') return <MogulGame />
   return <ClassicShell />
 }
 

@@ -163,7 +163,7 @@ let accumulator = 0
 let lastTick = 0
 let saveAccumulator = 0
 let lastFlashGeneratedAt = 0
-const FLASH_INTERVAL_MS = 12 * 60_000 // 12 min réelles entre chaque opportunité flash
+const FLASH_INTERVAL_MS = 22 * 60_000 // 22 min réelles min. entre deux opportunités flash (épuration)
 
 function checkQuestCondition(step: QuestStep, game: GameState, passiveIncome: number, netWorth: number): boolean {
   switch (step.conditionType) {
@@ -390,24 +390,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (wholeDays > MAX_CATCHUP_DAYS) wholeDays = MAX_CATCHUP_DAYS
 
       const prevYear = new Date(game.gameDateISO).getUTCFullYear()
-      const prevMonthIndex = game.monthIndex ?? 0
       const { state: rawGame, toasts } = advanceDays(game, wholeDays)
       const newYear = new Date(rawGame.gameDateISO).getUTCFullYear()
 
-      // Toast récap mensuel (discret, après chaque mois de jeu)
-      const newMonthIndex = rawGame.monthIndex ?? 0
-      if (newMonthIndex > prevMonthIndex && newMonthIndex > 1) {
-        const passiveM = calcMonthlyPassiveIncome(rawGame)
-        const gains = rawGame.investments.reduce((s, i) => s + i.monthlyIncome, 0)
-        if (gains > 0) {
-          pendingToasts = [...pendingToasts, {
-            id: `monthly_${newMonthIndex}`,
-            title: `📅 Mois ${newMonthIndex}`,
-            description: `+${Math.round(gains).toLocaleString('fr-FR')} € générés · Passifs : ${Math.round(passiveM).toLocaleString('fr-FR')} €/mois`,
-            severity: 'good' as const,
-          }]
-        }
-      }
+      // (Récap mensuel retiré — générait un toast à chaque mois de jeu, soit
+      //  un flux continu à vitesse ×50. Le suivi se fait dans Stats/Dashboard.)
 
       // Badges gagnés pendant le tick
       const tickBadgeIds = checkBadges(rawGame)
@@ -513,7 +500,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const hasActiveFlash = (newGame.flashOpportunities ?? []).some(
         (o) => !o.claimed && o.expiresAtReal > nowMs,
       )
-      if (!hasActiveFlash && nowMs - lastFlashGeneratedAt > FLASH_INTERVAL_MS && Math.random() < 0.5) {
+      if (!hasActiveFlash && nowMs - lastFlashGeneratedAt > FLASH_INTERVAL_MS && Math.random() < 0.3) {
         const recentCatalogIds = (newGame.flashOpportunities ?? []).map((o) => o.catalogId)
         const template = pickRandomFlash(recentCatalogIds)
         const flash = generateFlashOpportunity(template)

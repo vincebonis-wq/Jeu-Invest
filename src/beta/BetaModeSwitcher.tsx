@@ -5,8 +5,15 @@ import { cn } from '../utils/formatting'
 
 const MODES: { id: UiMode; emoji: string; label: string; desc: string }[] = [
   { id: 'classic', emoji: '🏠', label: 'App classique', desc: 'Version stable (défaut)' },
-  { id: 'citymap', emoji: '🗺️', label: 'Beta · Carte Patrimoine', desc: 'Vue visuelle par zones et slots' },
+  { id: 'citymap', emoji: '🗺️', label: 'Beta · Carte Patrimoine', desc: 'Ville interactive, tap-to-collect' },
+  { id: 'mogul',   emoji: '🎩', label: 'Beta · MOGUL', desc: 'Décisions à balayer — gameplay alternatif' },
 ]
+
+const PILL: Record<UiMode, string> = {
+  classic: 'Beta',
+  citymap: '🗺️ Carte',
+  mogul: '🎩 Mogul',
+}
 
 export function BetaModeSwitcher() {
   const mode = useUiMode((s) => s.mode)
@@ -45,7 +52,7 @@ export function BetaModeSwitcher() {
         )}
       >
         <FlaskConical size={15} />
-        {mode === 'classic' ? 'Beta' : '🗺️ Carte'}
+        {PILL[mode]}
       </button>
     </div>
   )
