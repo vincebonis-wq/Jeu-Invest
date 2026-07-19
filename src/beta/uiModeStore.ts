@@ -4,14 +4,15 @@ import { create } from 'zustand'
 // 'classic'  = app actuelle (défaut, intacte)
 // 'citymap'  = beta "Carte Patrimoine" — vue visuelle par zones et slots
 // 'mogul'    = beta "MOGUL" — jeu de décisions à balayer (gameplay alternatif, hors-ligne)
-export type UiMode = 'classic' | 'citymap' | 'mogul'
+// 'coffres'  = beta "Coffres" — patrimoine tangible : récolter / retirer avec fiscalité réelle
+export type UiMode = 'classic' | 'citymap' | 'mogul' | 'coffres'
 
 const KEY = 'jeu-invest-uimode'
 
 function loadMode(): UiMode {
   try {
     const v = localStorage.getItem(KEY)
-    if (v === 'citymap' || v === 'classic' || v === 'mogul') return v
+    if (v === 'citymap' || v === 'classic' || v === 'mogul' || v === 'coffres') return v
   } catch {
     /* ignore */
   }

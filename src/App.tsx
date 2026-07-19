@@ -29,6 +29,7 @@ import { useUiMode, type UiMode } from './beta/uiModeStore'
 import { BetaModeSwitcher } from './beta/BetaModeSwitcher'
 import { CityMapView } from './beta/CityMapView'
 import { MogulGame } from './beta/mogul/MogulGame'
+import { CoffresView } from './beta/coffres/CoffresView'
 
 const SCREENS = {
   dashboard: Dashboard,
@@ -94,9 +95,11 @@ export default function App() {
 /** Coquille principale — connaît le mode d'affichage pour router vue + popups. */
 function AppShell() {
   const mode = useUiMode((s) => s.mode)
-  // MOGUL est un jeu autonome (hors simulation) : on masque les popups du moteur
-  // pour rester épuré.
+  // MOGUL est un jeu autonome (hors simulation) : on masque tous les popups du moteur.
   const showSimOverlays = mode !== 'mogul'
+  // Les modales tutoriel/onboarding plein écran n'ont de sens que dans l'app
+  // classique : dans les betas elles bloqueraient l'expérience.
+  const showTutorials = mode === 'classic'
 
   return (
     <>
@@ -106,13 +109,18 @@ function AppShell() {
         <>
           <Toaster />
           <PendingActionModal />
-          <FirstStepModal />
           <FreedomModal />
           <QuarterlyReviewModal />
           <ReturnModal />
           <BadgeNotification />
-          <FirstInvestModal />
           <YearRecapModal />
+        </>
+      )}
+
+      {showTutorials && (
+        <>
+          <FirstStepModal />
+          <FirstInvestModal />
         </>
       )}
 
@@ -125,6 +133,7 @@ function AppShell() {
 /** Choisit la vue principale selon le mode d'affichage (classic / city / mogul). */
 function MainView({ mode }: { mode: UiMode }) {
   if (mode === 'citymap') return <CityMapView />
+  if (mode === 'coffres') return <CoffresView />
   if (mode === 'mogul') return <MogulGame />
   return <ClassicShell />
 }

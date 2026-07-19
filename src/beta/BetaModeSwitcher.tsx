@@ -6,12 +6,14 @@ import { cn } from '../utils/formatting'
 const MODES: { id: UiMode; emoji: string; label: string; desc: string }[] = [
   { id: 'classic', emoji: '🏠', label: 'App classique', desc: 'Version stable (défaut)' },
   { id: 'citymap', emoji: '🗺️', label: 'Beta · Carte Patrimoine', desc: 'Ville interactive, tap-to-collect' },
+  { id: 'coffres', emoji: '🗄️', label: 'Beta · Coffres', desc: 'Récolter / retirer — fiscalité tangible' },
   { id: 'mogul',   emoji: '🎩', label: 'Beta · MOGUL', desc: 'Décisions à balayer — gameplay alternatif' },
 ]
 
 const PILL: Record<UiMode, string> = {
   classic: 'Beta',
   citymap: '🗺️ Carte',
+  coffres: '🗄️ Coffres',
   mogul: '🎩 Mogul',
 }
 
