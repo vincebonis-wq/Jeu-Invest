@@ -7,6 +7,7 @@ const MODES: { id: UiMode; emoji: string; label: string; desc: string }[] = [
   { id: 'classic', emoji: '🏠', label: 'App classique', desc: 'Version stable (défaut)' },
   { id: 'citymap', emoji: '🗺️', label: 'Beta · Carte Patrimoine', desc: 'Ville interactive, tap-to-collect' },
   { id: 'coffres', emoji: '🗄️', label: 'Beta · Coffres', desc: 'Récolter / retirer — fiscalité tangible' },
+  { id: 'rentier', emoji: '🕊️', label: 'Beta · Le Rentier', desc: 'Atteindre la liberté par le cash-flow' },
   { id: 'mogul',   emoji: '🎩', label: 'Beta · MOGUL', desc: 'Décisions à balayer — gameplay alternatif' },
 ]
 
@@ -14,6 +15,7 @@ const PILL: Record<UiMode, string> = {
   classic: 'Beta',
   citymap: '🗺️ Carte',
   coffres: '🗄️ Coffres',
+  rentier: '🕊️ Rentier',
   mogul: '🎩 Mogul',
 }
 
