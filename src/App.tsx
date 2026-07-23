@@ -32,6 +32,7 @@ import { MogulGame } from './beta/mogul/MogulGame'
 import { CoffresView } from './beta/coffres/CoffresView'
 import { RentierGame } from './beta/rentier/RentierGame'
 import { TourView } from './beta/tour/TourView'
+import { FluxView } from './beta/flux/FluxView'
 
 const SCREENS = {
   dashboard: Dashboard,
@@ -137,6 +138,7 @@ function AppShell() {
 function MainView({ mode }: { mode: UiMode }) {
   if (mode === 'citymap') return <CityMapView />
   if (mode === 'tour') return <TourView />
+  if (mode === 'flux') return <FluxView />
   if (mode === 'coffres') return <CoffresView />
   if (mode === 'rentier') return <RentierGame />
   if (mode === 'mogul') return <MogulGame />
