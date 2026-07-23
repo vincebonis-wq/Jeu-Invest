@@ -31,6 +31,7 @@ import { CityMapView } from './beta/CityMapView'
 import { MogulGame } from './beta/mogul/MogulGame'
 import { CoffresView } from './beta/coffres/CoffresView'
 import { RentierGame } from './beta/rentier/RentierGame'
+import { TourView } from './beta/tour/TourView'
 
 const SCREENS = {
   dashboard: Dashboard,
@@ -135,6 +136,7 @@ function AppShell() {
 /** Choisit la vue principale selon le mode d'affichage (classic / city / mogul). */
 function MainView({ mode }: { mode: UiMode }) {
   if (mode === 'citymap') return <CityMapView />
+  if (mode === 'tour') return <TourView />
   if (mode === 'coffres') return <CoffresView />
   if (mode === 'rentier') return <RentierGame />
   if (mode === 'mogul') return <MogulGame />

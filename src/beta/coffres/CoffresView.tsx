@@ -17,9 +17,6 @@ import {
 } from 'lucide-react'
 import { useGameStore } from '../../store/gameStore'
 import { getCatalogItem } from '../../data/investments'
-import {
-  getAVFiscalDetails, capitalGainsTax, FLAT_TAX_RATE, AV_ALLOWANCE,
-} from '../../engine/fiscal'
 import { formatEuroCompact } from '../../utils/formatting'
 import { calcNetWorth } from '../../utils/calculations'
 import { Icon } from '../../components/ui/Icon'
@@ -27,53 +24,12 @@ import { BetaShell, useDrawer } from '../BetaShell'
 import { getBuildingSprite } from '../buildingSprites'
 import { HOTSPOTS, type Hotspot } from '../CityImageMap'
 import { DISTRICTS } from '../LivingCity'
+import { euro, fiscalStatus, previewWithdraw } from '../shared/fiscalHelpers'
 import cityImg from '../assets/metropolis.jpg'
 import type { GameState, Investment } from '../../types'
 
-const euro = (n: number) => Math.round(n).toLocaleString('fr-FR') + ' €'
-
 function invForHotspot(h: Hotspot, game: GameState): Investment | null {
   return game.investments.filter((i) => i.catalogId === h.catalogId)[h.slotIndex] ?? null
-}
-
-// ── Statut fiscal ────────────────────────────────────────────────────────────
-type FiscalKind = 'hard' | 'fiscal' | 'taxed' | 'open'
-interface FiscalStatus { kind: FiscalKind; label: string; sub: string; rate: number; yearsToFav?: number }
-
-function daysBetween(a: string, b: string) { return Math.ceil((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000) }
-
-function fiscalStatus(inv: Investment, game: GameState): FiscalStatus {
-  const item = getCatalogItem(inv.catalogId)
-  if (inv.isLocked && inv.unlockDateISO) {
-    const d = Math.max(0, daysBetween(game.gameDateISO, inv.unlockDateISO))
-    return { kind: 'hard', label: 'Capital bloqué', sub: `Se libère dans ${d > 60 ? Math.round(d / 30) + ' mois' : d + ' j'}`, rate: FLAT_TAX_RATE }
-  }
-  if (inv.catalogId === 'assurance_vie') {
-    const av = getAVFiscalDetails(inv, game.gameDateISO)
-    if (av.isFavorable) return { kind: 'open', label: 'Fiscalité optimisée', sub: `Abattement ${euro(AV_ALLOWANCE)}/an`, rate: av.taxRate }
-    return { kind: 'fiscal', label: `Cadenas fiscal · ${Math.round(av.taxRate * 100)} %`, sub: `S'ouvre dans ${av.yearsToFavorable} an${av.yearsToFavorable > 1 ? 's' : ''}`, rate: av.taxRate, yearsToFav: av.yearsToFavorable }
-  }
-  if (item.taxRegime === 'exonere') return { kind: 'open', label: 'Exonéré d\'impôt', sub: 'Retrait libre', rate: 0 }
-  if (item.isRealEstate) return { kind: 'taxed', label: 'Plus-value taxée', sub: 'À la revente', rate: 0.19 }
-  return { kind: 'taxed', label: 'Flat tax · 30 %', sub: 'Sur la plus-value', rate: FLAT_TAX_RATE }
-}
-
-interface WithdrawPreview { gross: number; gain: number; tax: number; net: number; isFull: boolean; debt: number }
-function previewWithdraw(inv: Investment, game: GameState, amount: number): WithdrawPreview {
-  const item = getCatalogItem(inv.catalogId)
-  const isFull = amount >= inv.currentValue - 0.5
-  if (isFull) {
-    const mortgage = inv.mortgageId ? game.mortgages.find((m) => m.id === inv.mortgageId) : null
-    const debt = mortgage ? mortgage.outstandingBalance : 0
-    const tax = capitalGainsTax(inv, game.gameDateISO)
-    return { gross: inv.currentValue, gain: Math.max(0, inv.currentValue - inv.totalInvested), tax, net: inv.currentValue - debt - tax, isFull: true, debt }
-  }
-  const fraction = amount / inv.currentValue
-  const gainPortion = fraction * Math.max(0, inv.currentValue - inv.totalInvested)
-  let tax = 0
-  if (inv.catalogId === 'assurance_vie') tax = Math.round(gainPortion * getAVFiscalDetails(inv, game.gameDateISO).taxRate)
-  else if (item.taxRegime !== 'exonere') tax = Math.round(gainPortion * FLAT_TAX_RATE)
-  return { gross: amount, gain: gainPortion, tax, net: amount - tax, isFull: false, debt: 0 }
 }
 
 // ── Racine ───────────────────────────────────────────────────────────────────

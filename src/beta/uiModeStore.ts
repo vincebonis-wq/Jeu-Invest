@@ -6,14 +6,15 @@ import { create } from 'zustand'
 // 'mogul'    = beta "MOGUL" — jeu de décisions à balayer (gameplay alternatif, hors-ligne)
 // 'coffres'  = beta "Coffres" — patrimoine tangible : récolter / retirer avec fiscalité réelle
 // 'rentier'  = beta "Le Rentier" — atteindre la liberté par le cash-flow net d'impôt (tour par tour)
-export type UiMode = 'classic' | 'citymap' | 'mogul' | 'coffres' | 'rentier'
+// 'tour'     = beta "La Tour" — empire vertical qui monte à chaque achat (patrimoine tangible)
+export type UiMode = 'classic' | 'citymap' | 'mogul' | 'coffres' | 'rentier' | 'tour'
 
 const KEY = 'jeu-invest-uimode'
 
 function loadMode(): UiMode {
   try {
     const v = localStorage.getItem(KEY)
-    if (v === 'citymap' || v === 'classic' || v === 'mogul' || v === 'coffres' || v === 'rentier') return v
+    if (v === 'citymap' || v === 'classic' || v === 'mogul' || v === 'coffres' || v === 'rentier' || v === 'tour') return v
   } catch {
     /* ignore */
   }
