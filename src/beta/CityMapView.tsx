@@ -27,6 +27,7 @@ import { BetaShell, useDrawer } from './BetaShell'
 import { getBuildingSprite } from './buildingSprites'
 import { DISTRICTS } from './LivingCity'
 import { CityImageMap, HOTSPOTS, type Hotspot } from './CityImageMap'
+import { AssetSheet } from './shared/ManageSheets'
 
 // ─── Empire tiers ─────────────────────────────────────────────────────────────
 
@@ -376,15 +377,20 @@ export function CityMapView() {
         )}
       </div>
 
-      {/* Building modal */}
-      {selectedSlot && (
-        <BuildingModal
-          parcel={selectedSlot}
-          netWorth={netWorth}
-          onClose={() => setSelectedSlotId(null)}
-          onGotoPortfolio={() => { setSelectedSlotId(null); open('portfolio') }}
-        />
-      )}
+      {/* Gestion d'un actif : actif possédé → AssetSheet partagé (récolter /
+          retirer / fiscalité, cohérent avec toutes les betas). Parcelle vide
+          ou verrouillée → BuildingModal (construire). */}
+      {selectedSlot && (() => {
+        const inv = game.investments.filter(i => i.catalogId === selectedSlot.catalogId)[selectedSlot.slotIndex] ?? null
+        return inv
+          ? <AssetSheet inv={inv} game={game} onClose={() => setSelectedSlotId(null)} />
+          : <BuildingModal
+              parcel={selectedSlot}
+              netWorth={netWorth}
+              onClose={() => setSelectedSlotId(null)}
+              onGotoPortfolio={() => { setSelectedSlotId(null); open('portfolio') }}
+            />
+      })()}
     </BetaShell>
   )
 }
