@@ -6,6 +6,7 @@ import { cn } from '../utils/formatting'
 const MODES: { id: UiMode; emoji: string; label: string; desc: string }[] = [
   { id: 'classic', emoji: '🏠', label: 'App classique', desc: 'Version stable (défaut)' },
   { id: 'citymap', emoji: '🗺️', label: 'Beta · Carte Patrimoine', desc: 'Ville interactive, tap-to-collect' },
+  { id: 'ratrace', emoji: '🎯', label: 'Beta · Rat Race', desc: 'Un seul but : sortir de la course' },
   { id: 'tour',    emoji: '🏙️', label: 'Beta · La Tour', desc: 'Empire vertical qui monte à chaque achat' },
   { id: 'flux',    emoji: '💧', label: 'Beta · Le Flux', desc: 'Raffinerie à capital — l\'argent coule (mode eau)' },
   { id: 'coffres', emoji: '🗄️', label: 'Beta · Coffres', desc: 'Récolter / retirer — fiscalité tangible' },
@@ -16,6 +17,7 @@ const MODES: { id: UiMode; emoji: string; label: string; desc: string }[] = [
 const PILL: Record<UiMode, string> = {
   classic: 'Beta',
   citymap: '🗺️ Carte',
+  ratrace: '🎯 Rat Race',
   tour: '🏙️ Tour',
   flux: '💧 Flux',
   coffres: '🗄️ Coffres',

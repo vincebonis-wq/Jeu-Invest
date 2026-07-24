@@ -8,14 +8,15 @@ import { create } from 'zustand'
 // 'rentier'  = beta "Le Rentier" — atteindre la liberté par le cash-flow net d'impôt (tour par tour)
 // 'tour'     = beta "La Tour" — empire vertical qui monte à chaque achat (patrimoine tangible)
 // 'flux'     = beta "Le Flux" — raffinerie à capital : l'argent coule, l'impôt est une vanne (mode eau)
-export type UiMode = 'classic' | 'citymap' | 'mogul' | 'coffres' | 'rentier' | 'tour' | 'flux'
+// 'ratrace'  = beta "Rat Race" — un seul but : sortir de la course (passifs nets > dépenses)
+export type UiMode = 'classic' | 'citymap' | 'mogul' | 'coffres' | 'rentier' | 'tour' | 'flux' | 'ratrace'
 
 const KEY = 'jeu-invest-uimode'
 
 function loadMode(): UiMode {
   try {
     const v = localStorage.getItem(KEY)
-    if (v === 'citymap' || v === 'classic' || v === 'mogul' || v === 'coffres' || v === 'rentier' || v === 'tour' || v === 'flux') return v
+    if (v === 'citymap' || v === 'classic' || v === 'mogul' || v === 'coffres' || v === 'rentier' || v === 'tour' || v === 'flux' || v === 'ratrace') return v
   } catch {
     /* ignore */
   }

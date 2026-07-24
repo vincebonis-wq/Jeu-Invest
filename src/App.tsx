@@ -33,6 +33,7 @@ import { CoffresView } from './beta/coffres/CoffresView'
 import { RentierGame } from './beta/rentier/RentierGame'
 import { TourView } from './beta/tour/TourView'
 import { FluxView } from './beta/flux/FluxView'
+import { RatRaceView } from './beta/ratrace/RatRaceView'
 
 const SCREENS = {
   dashboard: Dashboard,
@@ -137,6 +138,7 @@ function AppShell() {
 /** Choisit la vue principale selon le mode d'affichage (classic / city / mogul). */
 function MainView({ mode }: { mode: UiMode }) {
   if (mode === 'citymap') return <CityMapView />
+  if (mode === 'ratrace') return <RatRaceView />
   if (mode === 'tour') return <TourView />
   if (mode === 'flux') return <FluxView />
   if (mode === 'coffres') return <CoffresView />
