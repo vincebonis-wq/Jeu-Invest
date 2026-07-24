@@ -34,6 +34,8 @@ import { RentierGame } from './beta/rentier/RentierGame'
 import { TourView } from './beta/tour/TourView'
 import { FluxView } from './beta/flux/FluxView'
 import { RatRaceView } from './beta/ratrace/RatRaceView'
+import { TycoonView } from './beta/tycoon/TycoonView'
+import { TerminalView } from './beta/terminal/TerminalView'
 
 const SCREENS = {
   dashboard: Dashboard,
@@ -139,6 +141,8 @@ function AppShell() {
 function MainView({ mode }: { mode: UiMode }) {
   if (mode === 'citymap') return <CityMapView />
   if (mode === 'ratrace') return <RatRaceView />
+  if (mode === 'tycoon') return <TycoonView />
+  if (mode === 'terminal') return <TerminalView />
   if (mode === 'tour') return <TourView />
   if (mode === 'flux') return <FluxView />
   if (mode === 'coffres') return <CoffresView />

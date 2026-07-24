@@ -9,14 +9,16 @@ import { create } from 'zustand'
 // 'tour'     = beta "La Tour" — empire vertical qui monte à chaque achat (patrimoine tangible)
 // 'flux'     = beta "Le Flux" — raffinerie à capital : l'argent coule, l'impôt est une vanne (mode eau)
 // 'ratrace'  = beta "Rat Race" — un seul but : sortir de la course (passifs nets > dépenses)
-export type UiMode = 'classic' | 'citymap' | 'mogul' | 'coffres' | 'rentier' | 'tour' | 'flux' | 'ratrace'
+// 'tycoon'   = beta "Tycoon" — empire idle : gestionnaires auto-collectent + prestige
+// 'terminal' = beta "Le Terminal" — salle des marchés : courbe temps réel, trading actif
+export type UiMode = 'classic' | 'citymap' | 'mogul' | 'coffres' | 'rentier' | 'tour' | 'flux' | 'ratrace' | 'tycoon' | 'terminal'
 
 const KEY = 'jeu-invest-uimode'
 
 function loadMode(): UiMode {
   try {
     const v = localStorage.getItem(KEY)
-    if (v === 'citymap' || v === 'classic' || v === 'mogul' || v === 'coffres' || v === 'rentier' || v === 'tour' || v === 'flux' || v === 'ratrace') return v
+    if (['citymap', 'classic', 'mogul', 'coffres', 'rentier', 'tour', 'flux', 'ratrace', 'tycoon', 'terminal'].includes(v as string)) return v as UiMode
   } catch {
     /* ignore */
   }
