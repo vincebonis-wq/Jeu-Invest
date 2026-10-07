@@ -8,8 +8,8 @@
 
 import {
   ROOMS, SLOTS, SW, SHAFT_W, DAY_S, WALK, LIFT_SPEED, LIFT_CAP, START_CASH, LIFESTYLE, TAX, HOME_COST_GROWTH, HOME_COST_FREE, SHOP_COST_GROWTH,
-  FURNISH_COST, floorCost, chargesPerMonth, FREEDOM_TIERS, FIRST_NAMES, SKINS, CLOTHES, HAIR,
-  type RoomType, type Need,
+  FURNISH_COST, floorCost, chargesPerMonth, FREEDOM_TIERS, FIRST_NAMES, SKINS, CLOTHES, HAIR, STAFF, CLEAN_COST,
+  type RoomType, type Need, type StaffRole,
 } from './data'
 
 // ── État persistant ──────────────────────────────────────────────────────────
@@ -23,6 +23,7 @@ export interface Room {
   regime: 'lmnp' | 'nu'; level: number; stored: number
   tenants: Tenant[]; incident: Incident | null; builtAt: number
   visits: number
+  dirt?: number             // saleté 0..100
 }
 export interface Quest { id: string; title: string; kind: QuestKind; target: number; param?: string; reward: number; done?: boolean }
 export type QuestKind = 'collect' | 'build' | 'count' | 'floors' | 'basement' | 'tenants' | 'income' | 'repair' | 'renovate' | 'freedom'
@@ -37,7 +38,7 @@ export interface Game {
   rooms: Room[]
   shopHist: number[]          // recettes nettes des commerces par mois
   shopMonth: number           // recettes du mois en cours
-  stats: { earned: number; taxes: number; charges: number; visits: number; moves: number; repairs: number; collects: number; peak: number; lost?: number }
+  stats: { earned: number; taxes: number; charges: number; visits: number; moves: number; repairs: number; collects: number; peak: number; lost?: number; cleans?: number; stolen?: number; caught?: number }
   quests: Quest[]
   questCursor: number
   freedomTier: number
@@ -139,9 +140,17 @@ export function monthlyRent(g: Game, r: Room) {
   return { gross: 0, net: 0 }
 }
 
-export function charges(g: Game) {
-  return chargesPerMonth(g.top, -g.bottom) + (g.liftLevel - 1) * 40
+export function salaries(g: Game) {
+  return g.rooms.reduce((a, r) => { const role = ROOMS[r.type].staff; return a + (role ? STAFF[role].salary * r.level : 0) }, 0)
 }
+
+export function charges(g: Game) {
+  return chargesPerMonth(g.top, -g.bottom) + (g.liftLevel - 1) * 40 + salaries(g)
+}
+
+/** Effet de la saleté (0 = propre). */
+export const dirtOf = (r: Room) => r.dirt ?? 0
+export const shopPriceMult = (r: Room) => (1 + 0.25 * (r.level - 1)) * (1 - dirtOf(r) / 250)
 
 export function shopAverage(g: Game) {
   const h = g.shopHist.slice(-3)
@@ -250,6 +259,16 @@ export function repair(g: Game, r: Room, free = false) {
   return true
 }
 
+/** Nettoyage ponctuel (entreprise extérieure). */
+export function clean(g: Game, r: Room) {
+  if (dirtOf(r) < 5 || g.cash < CLEAN_COST) return false
+  g.cash -= CLEAN_COST
+  r.dirt = 0
+  r.tenants.forEach((t) => { t.sat = Math.min(100, t.sat + 3) })
+  g.stats.cleans = (g.stats.cleans ?? 0) + 1
+  return true
+}
+
 export function furnish(g: Game, r: Room) {
   const c = FURNISH_COST(r.type)
   if (r.regime === 'lmnp' || ROOMS[r.type].kind !== 'home' || g.cash < c) return false
@@ -284,6 +303,8 @@ export type GEvent =
   | { kind: 'freedom'; tier: number }
   | { kind: 'quest'; quest: Quest }
   | { kind: 'month'; net: number; charges: number }
+  | { kind: 'theft'; amount: number; room: Room }
+  | { kind: 'caught'; byGuard: boolean }
 
 // ── Objectifs ────────────────────────────────────────────────────────────────
 const SCRIPT: Omit<Quest, 'id'>[] = [
@@ -292,11 +313,13 @@ const SCRIPT: Omit<Quest, 'id'>[] = [
   { kind: 'count', param: 'studio', title: 'Possède 3 studios', target: 3, reward: 3000 },
   { kind: 'build', param: 'cafe', title: 'Ouvre un café', target: 1, reward: 3000 },
   { kind: 'floors', title: 'Construis le 2ᵉ étage', target: 2, reward: 4000 },
+  { kind: 'build', param: 'menage', title: 'Embauche un agent d’entretien', target: 1, reward: 2500 },
   { kind: 'tenants', title: 'Loge 6 locataires', target: 6, reward: 2500 },
   { kind: 'basement', title: 'Creuse un sous-sol et ouvre un parking', target: 1, reward: 3000 },
   { kind: 'repair', title: 'Répare un incident', target: 1, reward: 1000 },
   { kind: 'income', title: 'Atteins 1 500 €/mois de revenus nets', target: 1500, reward: 4000 },
   { kind: 'renovate', title: 'Rénove un logement', target: 1, reward: 3000 },
+  { kind: 'build', param: 'securite', title: 'Installe un poste de sécurité', target: 1, reward: 5000 },
   { kind: 'build', param: 'sport', title: 'Ouvre une salle de sport', target: 1, reward: 6000 },
   { kind: 'floors', title: 'Monte à 5 étages', target: 5, reward: 8000 },
   { kind: 'freedom', title: 'Atteins 50 % de liberté financière', target: 50, reward: 12000 },
@@ -375,12 +398,21 @@ export type Step =
   | { t: 'queue'; roomId: string }
   | { t: 'serve'; roomId: string; idx: number }
   | { t: 'fix'; roomId: string; dur: number }
+  | { t: 'clean'; roomId: string }
+  | { t: 'wait'; dur: number; icon?: string }
+  | { t: 'steal'; roomId: string; dur: number }
+  | { t: 'chase'; thiefId: string }
   | { t: 'gone' }
   | { t: 'settle' }
 
 export interface Agent {
   id: string
-  kind: 'res' | 'vis' | 'concierge'
+  kind: 'res' | 'vis' | 'staff' | 'thief'
+  role?: StaffRole
+  task?: string             // pièce / voleur pris en charge par un employé
+  loot?: number
+  lootRoom?: string
+  caught?: boolean
   tenantId?: string
   homeId?: string
   floor: number
@@ -393,7 +425,7 @@ export interface Agent {
   dir: 1 | -1
   inLift: boolean
   waitT: number
-  carry?: 'suitcase' | 'wrench' | 'bag' | 'basket'
+  carry?: 'suitcase' | 'wrench' | 'bag' | 'basket' | 'mop' | 'sack'
   speed: number
   away: boolean
   sched: { leave: number; back: number; evening: number; works: boolean }
@@ -413,6 +445,7 @@ export interface World {
   spawnAcc: number
   stations: Record<string, Station[]>
   queues: Record<string, string[]>
+  thiefDay: number          // dernière nuit où un cambriolage a été tiré au sort
 }
 
 // ── Services (laverie, café, sport, bar) ─────────────────────────────────────
@@ -465,7 +498,7 @@ function homeSpot(r: Room, idx: number) {
 }
 
 export function createWorld(g: Game): World {
-  const w: World = { agents: [], lift: { y: 0, dir: 1, riders: [], stopT: 0, waiting: new Map() }, dayIdx: Math.floor(g.month), spawnAcc: 0, stations: {}, queues: {} }
+  const w: World = { agents: [], lift: { y: 0, dir: 1, riders: [], stopT: 0, waiting: new Map() }, dayIdx: Math.floor(g.month), spawnAcc: 0, stations: {}, queues: {}, thiefDay: -1 }
   const p = g.month % 1
   for (const r of g.rooms) r.tenants.forEach((t, i) => {
     const a = residentAgent(r, t, i)
@@ -476,17 +509,135 @@ export function createWorld(g: Game): World {
     a.lastDay = w.dayIdx
     w.agents.push(a)
   })
-  if (g.rooms.some((r) => r.type === 'concierge')) w.agents.push(conciergeAgent(g))
+  syncStaff(g, w)
   return w
 }
 
-function conciergeAgent(g: Game): Agent {
-  const c = g.rooms.find((r) => r.type === 'concierge')!
-  return {
-    id: 'concierge', kind: 'concierge', homeId: c.id, floor: c.floor, x: roomX(c), steps: [],
-    skin: '#e0a97a', cloth: '#2f6f3e', hair: '#5b3a29', icon: null, iconT: 0, walking: false, dir: 1, inLift: false,
-    waitT: 0, away: false, sched: schedule(), lastDay: 0, phaseDone: new Set(), speed: WALK * 1.15,
+// ── Personnel ────────────────────────────────────────────────────────────────
+/** Un employé par niveau de local ; ils apparaissent / disparaissent avec les locaux. */
+export function syncStaff(g: Game, w: World) {
+  const want = new Set<string>()
+  for (const r of g.rooms) {
+    const role = ROOMS[r.type].staff
+    if (!role) continue
+    for (let i = 0; i < r.level; i++) {
+      const id = `st-${r.id}-${i}`
+      want.add(id)
+      if (w.agents.some((a) => a.id === id)) continue
+      const h = (r.id.charCodeAt(r.id.length - 1) + i * 7) % 6
+      w.agents.push({
+        id, kind: 'staff', role, homeId: r.id, floor: r.floor, x: r.slot * SW + 16 + i * 14, steps: [],
+        skin: SKINS[h], cloth: STAFF[role].cloth, hair: HAIR[h % HAIR.length], icon: null, iconT: 0, walking: false, dir: 1,
+        inLift: false, waitT: 0, away: false, sched: schedule(), lastDay: 0, phaseDone: new Set(), speed: WALK * 1.2,
+      })
+    }
   }
+  w.agents = w.agents.filter((a) => a.kind !== 'staff' || want.has(a.id))
+  w.lift.riders = w.lift.riders.filter((id) => w.agents.some((a) => a.id === id))
+}
+
+const isNight = (p: number) => p > 0.88 || p < 0.22
+
+function staffHome(g: Game, a: Agent) {
+  return g.rooms.find((r) => r.id === a.homeId)
+}
+
+function goHome(g: Game, a: Agent) {
+  const home = staffHome(g, a)
+  if (!home) return
+  const idx = Number(a.id.split('-').pop()) || 0
+  const hx = home.slot * SW + 16 + idx * 14
+  if (a.floor === home.floor && Math.abs(a.x - hx) < 2) {
+    a.steps = [{ t: 'wait', dur: 1.5 + Math.random() * 2, icon: Math.random() < 0.15 ? '☕' : undefined }]
+  } else a.steps = route(a.floor, home.floor, hx)
+}
+
+function runStaff(g: Game, w: World, a: Agent, p: number) {
+  // Alerte : le vigile interrompt sa ronde (jamais au milieu d'un trajet en ascenseur).
+  if (a.role === 'guard' && !a.task && a.steps.length && !a.inLift && (a.steps[0].t === 'walk' || a.steps[0].t === 'wait')
+    && w.agents.some((t) => t.kind === 'thief' && !t.caught)) a.steps = []
+  if (a.steps.length) return
+  const claimed = (id: string) => w.agents.some((o) => o !== a && o.kind === 'staff' && o.task === id)
+  a.task = undefined
+  if (a.role === 'tech') {
+    const broken = g.rooms.filter((r) => r.incident && !claimed(r.id))
+      .sort((x, y) => Math.abs(x.floor - a.floor) - Math.abs(y.floor - a.floor))[0]
+    if (broken) {
+      a.task = broken.id; a.carry = 'wrench'
+      a.steps = [...route(a.floor, broken.floor, roomX(broken)), { t: 'fix', roomId: broken.id, dur: 2.2 }]
+      return
+    }
+    a.carry = undefined
+  } else if (a.role === 'janitor') {
+    let best: Room | null = null, score = -Infinity
+    for (const r of g.rooms) {
+      if (dirtOf(r) < 15 || claimed(r.id)) continue
+      const sc = dirtOf(r) - 8 * Math.abs(r.floor - a.floor)
+      if (sc > score) { score = sc; best = r }
+    }
+    if (best) {
+      a.task = best.id; a.carry = 'mop'
+      a.steps = [...route(a.floor, best.floor, roomX(best, 0.3 + Math.random() * 0.4)), { t: 'clean', roomId: best.id }]
+      return
+    }
+    a.carry = undefined
+  } else if (a.role === 'guard') {
+    const thief = w.agents.find((t) => t.kind === 'thief' && !t.caught && !claimed(t.id))
+    if (thief) {
+      a.task = thief.id
+      // Les caméras montrent où il va : on l'attend sur place.
+      const st = thief.steps.find((x) => x.t === 'steal') as { roomId: string } | undefined
+      const r = st && g.rooms.find((x) => x.id === st.roomId)
+      a.steps = r && !thief.inLift && thief.floor !== r.floor
+        ? [...route(a.floor, r.floor, roomX(r)), { t: 'chase', thiefId: thief.id }]
+        : thief.inLift ? [{ t: 'wait', dur: 0.5 }] : [...route(a.floor, thief.floor, thief.x), { t: 'chase', thiefId: thief.id }]
+      say(a, '🚨', 2)
+      return
+    }
+    if (isNight(p)) {
+      // Ronde : un étage au hasard, d'un bout à l'autre.
+      const f = g.bottom + Math.floor(Math.random() * (g.top - g.bottom + 1))
+      a.steps = [...route(a.floor, f, 10 + Math.random() * (SLOTS * SW - 20)), { t: 'wait', dur: 1 + Math.random() * 1.5, icon: Math.random() < 0.3 ? '🔦' : undefined }]
+      return
+    }
+  }
+  goHome(g, a)
+}
+
+/** Les nuits, un cambrioleur peut tenter sa chance là où dorment les loyers. */
+function maybeThief(g: Game, w: World, p: number, day: number) {
+  if (g.top < 3 || w.thiefDay === day || p < 0.9) return
+  w.thiefDay = day
+  const first = !(g.stats.caught || g.stats.stolen)
+  if ((!first && Math.random() > 0.45) || w.agents.some((a) => a.kind === 'thief')) return
+  const loot = g.rooms.filter((r) => r.stored >= 80 && ROOMS[r.type].kind !== 'service').sort((a, b) => b.stored - a.stored)
+  const r = loot[0]
+  if (!r) return
+  w.agents.push({
+    id: uid('x'), kind: 'thief', floor: 0, x: EXIT_X, skin: pick(SKINS), cloth: '#1f1f2b', hair: '#111', icon: '🤫', iconT: 3,
+    steps: [...route(0, r.floor, roomX(r)), { t: 'steal', roomId: r.id, dur: 6 }, ...route(r.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }],
+    walking: false, dir: 1, inLift: false, waitT: 0, away: false, sched: schedule(), lastDay: day, phaseDone: new Set(), speed: WALK * 1.05,
+  })
+}
+
+/** Le joueur tape sur un cambrioleur : il détale (sans vigile, il faut être là au bon moment). */
+export function scareThief(g: Game, w: World, id: string, ev: GEvent[]) {
+  const t = w.agents.find((a) => a.id === id && a.kind === 'thief' && !a.caught)
+  if (!t || t.inLift) return false
+  catchThief(g, w, null, t, ev)
+  return true
+}
+
+function catchThief(g: Game, w: World, guard: Agent | null, t: Agent, ev: GEvent[]) {
+  t.caught = true
+  if (t.loot && t.lootRoom) { const r = g.rooms.find((x) => x.id === t.lootRoom); if (r) r.stored += t.loot }
+  t.loot = 0; t.carry = undefined; t.speed = WALK * 1.7
+  say(t, '😱', 3); if (guard) say(guard, '✋', 2.5)
+  w.queues = Object.fromEntries(Object.entries(w.queues).map(([k, v]) => [k, v.filter((x) => x !== t.id)]))
+  const exit: Step[] = t.inLift ? [] : [...route(t.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
+  if (!t.inLift) t.steps = exit
+  g.stats.caught = (g.stats.caught ?? 0) + 1
+  ev.push({ kind: 'caught', byGuard: !!guard })
 }
 
 /** Chemin d'un étage/position vers un autre (via l'ascenseur si besoin). */
@@ -502,6 +653,9 @@ function findTenant(g: Game, a: Agent) {
   return { room: r, tenant: r?.tenants.find((t) => t.id === a.tenantId) }
 }
 
+const DIRT_PER_USE: Partial<Record<RoomType, number>> = { laverie: 2.5, cafe: 3, sport: 3, bar: 4 }
+function dirty(r: Room | undefined, v: number) { if (r) r.dirt = Math.min(100, dirtOf(r) + v) }
+
 const NEED_ROOM: Record<Need, RoomType> = { food: 'cafe', laundry: 'laverie', sport: 'sport', fun: 'bar' }
 const NEED_ICON: Record<Need, string> = { food: '☕', laundry: '🧺', sport: '🏋️', fun: '🍸' }
 
@@ -515,6 +669,7 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
   // ── Loyers en continu ──
   for (const r of g.rooms) {
     const k = ROOMS[r.type].kind
+    if (k === 'home' && r.tenants.length) r.dirt = Math.min(100, dirtOf(r) + r.tenants.length * 6 * dt / DAY_S)
     if (k !== 'home' && k !== 'parking') continue
     const rent = monthlyRent(g, r)
     const cap = storageCap(g, r)
@@ -543,6 +698,7 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
       const park = tenant.car && ps.spots > 0 ? g.rooms.find((r) => r.type === 'parking') : undefined
       if (tenant.car && !park) { say(a, '🚗❌'); tenant.sat = Math.max(0, tenant.sat - 5) }
       a.carry = 'bag'
+      dirty(g.rooms.find((r) => r.type === 'lobby'), 0.25)
       a.steps = park
         ? [...route(a.floor, park.floor, roomX(park, 0.6)), { t: 'gone' }]
         : [...route(a.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
@@ -598,6 +754,7 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
       const visitors = w.agents.filter((a) => a.kind === 'vis').length
       if (visitors > 14) break
       const s = pick(shops)
+      dirty(g.rooms.find((r) => r.type === 'lobby'), 0.6)
       w.agents.push({
         id: uid('v'), kind: 'vis', floor: 0, x: EXIT_X, skin: pick(SKINS), cloth: pick(CLOTHES), hair: pick(HAIR),
         steps: [...route(0, s.floor, queueX(s, 0)), { t: 'enter', roomId: s.id }, ...route(s.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }],
@@ -607,16 +764,10 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
     }
   }
 
-  // ── Concierge ──
-  const conc = w.agents.find((a) => a.kind === 'concierge')
-  if (conc && !conc.steps.length) {
-    const broken = g.rooms.find((r) => r.incident)
-    const home = g.rooms.find((r) => r.type === 'concierge')
-    if (broken && home) {
-      conc.carry = 'wrench'
-      conc.steps = [...route(conc.floor, broken.floor, roomX(broken)), { t: 'fix', roomId: broken.id, dur: 2.2 }, ...route(broken.floor, home.floor, roomX(home))]
-    } else conc.carry = undefined
-  }
+  // ── Personnel & cambrioleurs ──
+  syncStaff(g, w)
+  for (const a of w.agents) if (a.kind === 'staff') runStaff(g, w, a, p)
+  maybeThief(g, w, p, day)
 
   // ── Postes de service : libération des postes orphelins, fin d'affichage « terminé » ──
   const alive = new Set(w.agents.map((a) => a.id))
@@ -663,6 +814,12 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
   } else if (s.t === 'enter') {
     const r = g.rooms.find((x) => x.id === s.roomId)
     if (!r) { a.steps.shift(); return }
+    // Local sale : les clients de passage tournent les talons.
+    if (dirtOf(r) > 50 && Math.random() < (dirtOf(r) - 50) / 70) {
+      say(a, '🤢', 2.8)
+      if (a.kind === 'vis') { g.stats.lost = (g.stats.lost ?? 0) + 1; a.steps.shift(); return }
+      const { tenant } = findTenant(g, a); if (tenant) tenant.sat = Math.max(0, tenant.sat - 3)
+    }
     const st = stationsOf(w, r)
     const q = w.queues[r.id] ?? (w.queues[r.id] = [])
     const free = st.findIndex((x) => !x.agentId)
@@ -710,7 +867,8 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
     a.dir = -1
     st.t += dt
     if (st.t >= st.dur) {
-      const net = (ROOMS[r.type].price ?? 0) * (1 + 0.25 * (r.level - 1)) * (1 - TAX.bic)
+      const net = (ROOMS[r.type].price ?? 0) * shopPriceMult(r) * (1 - TAX.bic)
+      dirty(r, DIRT_PER_USE[r.type] ?? 3)
       r.stored += net
       r.visits++
       g.shopMonth += net
@@ -730,6 +888,49 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
       if (r) repair(g, r, true)
       a.steps.shift()
     }
+  } else if (s.t === 'clean') {
+    const r = g.rooms.find((x) => x.id === s.roomId)
+    if (!r) { a.steps.shift(); return }
+    r.dirt = Math.max(0, dirtOf(r) - 40 * dt)
+    a.walking = Math.random() < 0.5
+    if (!a.icon) say(a, '🧽', 0.8)
+    if (r.dirt <= 0) { say(a, '✨', 1.4); a.steps.shift(); a.task = undefined }
+  } else if (s.t === 'wait') {
+    if (s.icon && !a.icon) { say(a, s.icon, 1.5); s.icon = undefined }
+    s.dur -= dt
+    if (s.dur <= 0) a.steps.shift()
+  } else if (s.t === 'steal') {
+    const r = g.rooms.find((x) => x.id === s.roomId)
+    s.dur -= dt
+    if (!a.icon) say(a, '💰', 0.8)
+    a.walking = Math.random() < 0.3
+    if (!r) { a.steps.shift(); return }
+    if (s.dur <= 0) {
+      const amount = Math.round(r.stored * 0.7)
+      r.stored -= amount
+      a.loot = amount; a.lootRoom = r.id; a.carry = 'sack'; a.speed = WALK * 1.35
+      r.tenants.forEach((t) => { t.sat = Math.max(0, t.sat - 8) })
+      g.stats.stolen = (g.stats.stolen ?? 0) + amount
+      say(a, '🏃', 2)
+      ev.push({ kind: 'theft', amount, room: r })
+      a.steps.shift()
+    }
+  } else if (s.t === 'chase') {
+    const t = w.agents.find((x) => x.id === s.thiefId)
+    if (!t || t.caught) { a.steps.shift(); a.task = undefined; return }
+    if (t.inLift || t.floor !== a.floor) {
+      // Pas (encore) à cet étage : on attend s'il doit venir voler ici, sinon on le suit.
+      const st = t.steps.find((x) => x.t === 'steal') as { roomId: string } | undefined
+      const r = st && g.rooms.find((x) => x.id === st.roomId)
+      if (r && r.floor === a.floor) return
+      if (!t.inLift) a.steps = [...route(a.floor, t.floor, t.x), { t: 'chase', thiefId: t.id }]
+      return
+    }
+    const dx = t.x - a.x
+    a.dir = dx >= 0 ? 1 : -1
+    if (Math.abs(dx) < 9) { catchThief(g, w, a, t, ev); a.steps.shift(); a.task = undefined; return }
+    a.x += Math.sign(dx) * Math.min(Math.abs(dx), a.speed * 1.35 * dt)
+    a.walking = true
   } else if (s.t === 'gone') {
     a.steps.shift()
     if (a.kind === 'res') a.away = true
@@ -747,8 +948,14 @@ function runLift(g: Game, w: World, dt: number) {
   const speed = LIFT_SPEED * (1 + 0.45 * (g.liftLevel - 1))
   // Nettoyage des appels d'agents disparus
   for (const [f, ids] of L.waiting) L.waiting.set(f, ids.filter((id) => w.agents.some((a) => a.id === id)))
+  // Un passager dont le trajet a changé en cours de route descend au prochain étage.
+  for (const id of L.riders) {
+    const a = w.agents.find((x) => x.id === id)
+    if (a && a.steps[0]?.t !== 'lift') a.steps.unshift({ t: 'lift', to: L.dir > 0 ? Math.ceil(L.y - 0.001) : Math.floor(L.y + 0.001) })
+  }
   const calls = new Set<number>()
-  for (const [f, ids] of L.waiting) if (ids.length) calls.add(f)
+  // Cabine pleine : on ne s'arrête plus pour prendre du monde (sinon blocage).
+  if (L.riders.length < cap) for (const [f, ids] of L.waiting) if (ids.length) calls.add(f)
   for (const id of L.riders) {
     const a = w.agents.find((x) => x.id === id)
     const s = a?.steps[0]
@@ -803,6 +1010,7 @@ function monthRollover(g: Game, w: World, ev: GEvent[]) {
     const noisy = g.rooms.some((x) => ROOMS[x.type].noisy && Math.abs(x.floor - r.floor) <= 1)
     for (const t of [...r.tenants]) {
       let target = 62 + (hasConcierge ? 8 : 0) + (r.level - 1) * 6 - (r.regime === 'lmnp' && r.type !== 'studio' ? 4 : 0)
+      if (dirtOf(r) > 30) target -= (dirtOf(r) - 30) / 3
       if (r.type === 'penthouse') target -= (g.rooms.some((x) => x.type === 'sport') ? 0 : 15) + (noisy ? 15 : 0)
       t.sat += (target - t.sat) * 0.15
       if (r.incident) t.sat -= 8
@@ -817,7 +1025,7 @@ function monthRollover(g: Game, w: World, ev: GEvent[]) {
           if (!a.away) a.steps = [...route(a.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
           else w.agents = w.agents.filter((x) => x.id !== a.id)
         }
-        ev.push({ kind: 'leave', name: t.name, reason: r.incident ? 'un incident non réparé' : noisy ? 'le bruit du bar' : 'son mécontentement' })
+        ev.push({ kind: 'leave', name: t.name, reason: r.incident ? 'un incident non réparé' : dirtOf(r) > 60 ? 'la saleté' : noisy ? 'le bruit du bar' : 'son mécontentement' })
       }
     }
     // Arrivée d'un nouveau locataire
@@ -839,8 +1047,6 @@ function monthRollover(g: Game, w: World, ev: GEvent[]) {
       ev.push({ kind: 'incident', room: r })
     }
   }
-  // Concierge présent dans le monde ?
-  if (hasConcierge && !w.agents.some((a) => a.kind === 'concierge')) w.agents.push(conciergeAgent(g))
   ev.push({ kind: 'month', net: monthlyNet(g), charges: ch })
 }
 
@@ -858,7 +1064,7 @@ export function welcomeTenant(g: Game, w: World, r: Room) {
 }
 
 export function spawnConciergeIfNeeded(g: Game, w: World) {
-  if (g.rooms.some((r) => r.type === 'concierge') && !w.agents.some((a) => a.kind === 'concierge')) w.agents.push(conciergeAgent(g))
+  syncStaff(g, w)
 }
 
 export const NEED_LABEL: Record<Need, string> = { food: 'Manger (café)', laundry: 'Laver son linge', sport: 'Faire du sport', fun: 'Sortir (bar)' }

@@ -9,7 +9,7 @@
 @keyframes iconPop { from { transform: scale(.3); opacity: 0 } to { transform: scale(1); opacity: 1 } }
 .coin-bob { animation: coinBob 1.8s ease-in-out infinite; }
 @keyframes coinBob { 0%,100% { translate: 0 0 } 50% { translate: 0 -4px } }
-.incident { animation: incident 0.9s ease-in-out infinite; }
+.incident { animation: incident 0.9s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 @keyframes incident { 0%,100% { scale: 1 } 50% { scale: 1.15 } }
 .room-pop { animation: roomPop .7s cubic-bezier(.2,1.5,.4,1) both; transform-box: fill-box; transform-origin: 50% 100%; }
 @keyframes roomPop { 0% { transform: scale(.2, .1); opacity: 0 } 60% { transform: scale(1.06, 1.1); opacity: 1 } 100% { transform: scale(1) } }
@@ -21,3 +21,5 @@
 .spin-slow { transform-box: fill-box; transform-origin: center; animation: spin 2s linear infinite; }
 .neon-text { animation: neon 1.6s ease-in-out infinite; filter: drop-shadow(0 0 4px #ff4fd8); }
 .spin-fast { animation: spin .55s linear infinite; }
+.mop-swing { animation: mop-swing .5s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: 50% 0%; }
+@keyframes mop-swing { from { transform: rotate(-22deg); } to { transform: rotate(18deg); } }

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import {
   createGame, createWorld, step, applyOffline, build as simBuild, buildFloor as simFloor, collect as simCollect,
   renovate as simRenovate, repair as simRepair, furnish as simFurnish, upgradeLift as simLift, claimQuest as simClaim,
-  evict as simEvict, fillQuests, checkProgress, welcomeTenant, spawnConciergeIfNeeded, canPlace, roomCost,
+  evict as simEvict, clean as simClean, scareThief, fillQuests, checkProgress, welcomeTenant, spawnConciergeIfNeeded, canPlace, roomCost,
   type Game, type World, type GEvent,
 } from './sim'
 import { ROOMS, FREEDOM_TIERS, type RoomType } from './data'
@@ -40,6 +40,8 @@ interface Store {
   select: (id: string | null) => void
   renovate: (id: string) => void
   repair: (id: string) => void
+  clean: (id: string) => void
+  scare: (agentId: string) => void
   furnish: (id: string) => void
   upgradeLift: () => void
   demolish: (id: string) => void
@@ -78,7 +80,9 @@ export const useRentier = create<Store>((set, get) => {
         const t = FREEDOM_TIERS[e.tier]
         if (t.pct >= 1) { sfxFanfare(); set({ celebrate: e.tier }) }
         else toast({ icon: t.emoji, title: t.title, text: `${Math.round(t.pct * 100)} % de ton train de vie couvert par tes revenus.`, tone: 'good' })
-      } else if (e.kind === 'quest') toast({ icon: '🎯', title: 'Objectif atteint !', text: e.quest.title, tone: 'gold' })
+      } else if (e.kind === 'theft') toast({ icon: '🦹', title: 'Cambriolage !', text: `${Math.round(e.amount)} € volés : ${ROOMS[e.room.type].name}, étage ${e.room.floor}.${e.room.floor >= 0 && !get().game.rooms.some((r) => r.type === 'securite') ? ' Un vigile l’aurait arrêté.' : ''}`, tone: 'warn' })
+      else if (e.kind === 'caught') { sfxUpgrade(); toast(e.byGuard ? { icon: '👮', title: 'Cambrioleur arrêté !', text: 'Ton vigile l’a intercepté.', tone: 'good' } : { icon: '🦹', title: 'Cambrioleur mis en fuite !', text: 'Un poste de sécurité veillera à ta place.', tone: 'good' }) }
+      else if (e.kind === 'quest') toast({ icon: '🎯', title: 'Objectif atteint !', text: e.quest.title, tone: 'gold' })
     }
   }
 
@@ -193,6 +197,16 @@ export const useRentier = create<Store>((set, get) => {
       sfxUpgrade(); haptic(12)
       const ev: GEvent[] = []; checkProgress(g, ev); handle(ev)
       bump()
+    },
+    clean: (id) => {
+      const g = get().game; const r = g.rooms.find((x) => x.id === id)
+      if (!r || !simClean(g, r)) { sfxError(); return }
+      sfxTap(); haptic(10); bump()
+    },
+    scare: (agentId) => {
+      const g = get().game
+      const ev: GEvent[] = []
+      if (scareThief(g, get().world, agentId, ev)) { haptic(20); handle(ev); bump() }
     },
     furnish: (id) => {
       const g = get().game; const r = g.rooms.find((x) => x.id === id)

@@ -8,9 +8,9 @@ import { useRentier } from './store'
 import {
   monthlyRent, monthlyNet, freedom, charges, shopAverage, isUnlocked, taxRate, questProgress, tenantCount,
   avgSat, netWorth, parkingStatus, canRenovate, renovateCost, repairCost, liftCost, buildingValue,
-  NEED_ICON, NEED_LABEL, roomCost, stationCount, stationsOf, SERVICE_TIME, type Game, type Room,
+  NEED_ICON, NEED_LABEL, roomCost, stationCount, stationsOf, SERVICE_TIME, salaries, dirtOf, type Game, type Room, type Agent,
 } from './sim'
-import { ROOMS, BUILD_ORDER, SW, FH, LIFESTYLE, FREEDOM_TIERS, FURNISH_COST, TAX, type RoomType, type Need } from './data'
+import { ROOMS, BUILD_ORDER, SW, FH, LIFESTYLE, FREEDOM_TIERS, FURNISH_COST, TAX, STAFF, CLEAN_COST, type RoomType, type Need } from './data'
 import { Interior } from './Tower'
 import { fmtEur, fmtShort } from '../archipel/format'
 import { sfxTap, sfxTick } from '../archipel/audio'
@@ -202,7 +202,8 @@ export function BuildSheet() {
           const tax = d.kind === 'home' ? (t === 'studio' ? 'LMNP · 2 %' : 'Nu · 30 %') : d.kind === 'shop' ? 'Impôt société 25 %' : d.kind === 'parking' ? 'Fonciers 30 %' : ''
           const yieldLine = d.kind === 'home' ? `Loyer ${fmtEur(d.rent ?? 0)}/mois · ${d.capacity} habitant${(d.capacity ?? 1) > 1 ? 's' : ''}`
             : d.kind === 'shop' ? `${fmtEur(d.price ?? 0)} par client`
-            : d.kind === 'parking' ? `${d.capacity} places à ${fmtEur(d.rent ?? 0)}/mois` : 'Répare les incidents tout seul'
+            : d.kind === 'parking' ? `${d.capacity} places à ${fmtEur(d.rent ?? 0)}/mois`
+            : d.staff ? `${STAFF[d.staff].emoji} 1 ${STAFF[d.staff].title.toLowerCase()} · ${fmtEur(STAFF[d.staff].salary)}/mois` : ''
           return (
             <button key={t} disabled={!unlocked} onClick={() => st.chooseBuild(t)}
               className="w-full relative rounded-3xl bg-white p-3 flex items-center gap-3 text-left shadow-[0_4px_14px_-6px_rgba(15,40,80,0.25)] active:scale-[0.98] transition-transform">
@@ -333,7 +334,51 @@ export function RoomPanel() {
             {ps.cars} voiture{ps.cars > 1 ? 's' : ''} chez tes locataires pour {ps.spots} places.
           </div>
         )}
-        {d.kind === 'service' && <div className="mt-3 text-[13px] text-slate-600">{d.desc}</div>}
+        {d.staff && (() => {
+          const role = d.staff
+          const crew = st.world.agents.filter((a) => a.kind === 'staff' && a.homeId === r.id)
+          const status = (a: Agent) => {
+            const s0 = a.steps[0]
+            const tr = a.task ? g.rooms.find((x) => x.id === a.task) : undefined
+            const where = tr ? `${ROOMS[tr.type].name} (${tr.floor === 0 ? 'RDC' : tr.floor < 0 ? `S${-tr.floor}` : `ét. ${tr.floor}`})` : ''
+            if (role === 'guard' && a.task) return '🚨 Poursuit un cambrioleur'
+            if (s0?.t === 'clean') return `🧽 Nettoie : ${where}`
+            if (s0?.t === 'fix') return `🔧 Répare : ${where}`
+            if (tr) return `${role === 'janitor' ? '🧹' : '🧰'} En route : ${where}`
+            if (role === 'guard' && a.steps.length && a.floor !== r.floor) return '🔦 Ronde de nuit'
+            return a.steps.length ? '🚶 Se déplace' : '☕ En pause'
+          }
+          return (
+            <div className="mt-3 rounded-2xl bg-white border border-slate-100 px-3.5 py-2.5">
+              <div className="text-[12px] text-slate-600">{d.desc}</div>
+              <div className="mt-2 space-y-1">
+                {crew.map((a, i) => (
+                  <div key={a.id} className="flex items-center gap-2">
+                    <span className="text-lg">{STAFF[role].emoji}</span>
+                    <div className="min-w-0">
+                      <div className="font-extrabold text-slate-700 text-[13px] leading-tight">{STAFF[role].title} {crew.length > 1 ? i + 1 : ''}</div>
+                      <div className="text-[11px] font-bold text-slate-500 truncate">{status(a)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-[12px] font-bold text-rose-500">Salaires : −{fmtEur(STAFF[role].salary * r.level)}/mois</div>
+            </div>
+          )
+        })()}
+        {dirtOf(r) >= 15 && (
+          <div className="mt-2 rounded-2xl bg-amber-50 border border-amber-200 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{dirtOf(r) > 60 ? '🤢' : '🧹'}</span>
+              <div className="flex-1">
+                <div className="text-[12px] font-extrabold text-amber-800">Propreté {Math.round(100 - dirtOf(r))} %</div>
+                <div className="h-1.5 mt-1 rounded-full bg-amber-100 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${100 - dirtOf(r)}%`, background: dirtOf(r) > 60 ? '#ef4444' : dirtOf(r) > 35 ? '#f59e0b' : '#22c55e' }} /></div>
+              </div>
+              <button onClick={() => st.clean(r.id)} className="rounded-xl bg-amber-500 text-white font-extrabold text-[12px] px-2.5 py-1.5 active:scale-95">Nettoyer · {fmtEur(CLEAN_COST)}</button>
+            </div>
+            {!g.rooms.some((x) => x.type === 'menage') && <div className="text-[11px] text-amber-700 mt-1">Un local d’entretien nettoie tout l’immeuble automatiquement.</div>}
+          </div>
+        )}
         {r.type === 'lobby' && (
           <div className="mt-3 rounded-2xl bg-white border border-slate-100 px-3.5 py-2.5">
             <div className="font-extrabold text-slate-700 text-[14px]">🛗 Ascenseur niveau {g.liftLevel}</div>
@@ -357,7 +402,7 @@ export function RoomPanel() {
               className="flex-1 rounded-2xl py-3 font-display font-extrabold text-white text-[14px] flex flex-col items-center leading-tight active:scale-[0.97] disabled:opacity-40"
               style={{ background: 'linear-gradient(180deg,#ffb547,#f2792b)' }}>
               <span className="flex items-center gap-1"><ArrowUpCircle size={16} /> Rénover · {fmtShort(renovateCost(r))} €</span>
-              <span className="text-[10px] text-white/85">{d.kind === 'home' ? '+18 % de loyer · locataires ravis' : d.kind === 'shop' ? `+1 ${r.type === 'laverie' ? 'machine' : 'poste'} · +25 % par client` : '+18 % de loyer'}</span>
+              <span className="text-[10px] text-white/85">{d.kind === 'home' ? '+18 % de loyer · locataires ravis' : d.kind === 'shop' ? `+1 ${r.type === 'laverie' ? 'machine' : 'poste'} · +25 % par client` : d.staff ? `+1 ${STAFF[d.staff].title.toLowerCase()}` : '+18 % de loyer'}</span>
             </button>
           )}
         </div>
@@ -423,10 +468,11 @@ export function StatsSheet() {
         <div className="font-extrabold text-slate-700 mb-2">Ton budget mensuel</div>
         <Line label="🏠 Loyers nets d’impôt" value={rents} />
         <Line label="🛍️ Recettes des commerces" value={shops} />
-        <Line label="🧾 Charges de l’immeuble" value={-ch} />
+        <Line label="🧾 Charges de l’immeuble" value={-(ch - salaries(g))} />
+        {salaries(g) > 0 && <Line label="👷 Salaires du personnel" value={-salaries(g)} />}
         <div className="border-t border-slate-100 mt-2 pt-2"><Line label="= Revenus nets" value={monthlyNet(g)} bold /></div>
         <Line label="🎯 Ton train de vie" value={LIFESTYLE} muted />
-        <div className="text-[12px] text-slate-400 mt-2">Impôts payés : {fmtEur(g.stats.taxes)} · {g.stats.moves} déménagement{g.stats.moves > 1 ? 's' : ''} · {g.stats.lost ?? 0} client{(g.stats.lost ?? 0) > 1 ? 's' : ''} perdu{(g.stats.lost ?? 0) > 1 ? 's' : ''} (attente)</div>
+        <div className="text-[12px] text-slate-400 mt-2">Impôts payés : {fmtEur(g.stats.taxes)} · {g.stats.moves} déménagement{g.stats.moves > 1 ? 's' : ''} · {g.stats.lost ?? 0} client{(g.stats.lost ?? 0) > 1 ? 's' : ''} perdu{(g.stats.lost ?? 0) > 1 ? 's' : ''}{(g.stats.caught || g.stats.stolen) ? ` · ${g.stats.caught ?? 0} cambrioleur${(g.stats.caught ?? 0) > 1 ? 's' : ''} arrêté${(g.stats.caught ?? 0) > 1 ? 's' : ''}, ${fmtEur(g.stats.stolen ?? 0)} volés` : ''}</div>
       </div>
       <div className="mt-3 flex gap-2">
         <button onClick={() => st.toggleMute()} className="flex-1 rounded-2xl bg-white py-3 font-bold text-slate-600 flex items-center justify-center gap-2 shadow-sm">

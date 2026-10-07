@@ -7,9 +7,10 @@
 export type RoomType =
   | 'lobby' | 'studio' | 't2' | 'penthouse'
   | 'cafe' | 'laverie' | 'sport' | 'bar'
-  | 'parking' | 'concierge'
+  | 'parking' | 'concierge' | 'menage' | 'securite'
 
 export type Need = 'food' | 'laundry' | 'sport' | 'fun'
+export type StaffRole = 'janitor' | 'tech' | 'guard'
 
 export interface RoomDef {
   type: RoomType
@@ -25,6 +26,7 @@ export interface RoomDef {
   price?: number            // dépense par visite (commerces)
   noisy?: boolean
   unlockFloors?: number     // nombre d'étages requis
+  staff?: StaffRole         // personnel logé (1 par niveau)
   wall: string
   desc: string
 }
@@ -39,10 +41,21 @@ export const ROOMS: Record<RoomType, RoomDef> = {
   sport:     { type: 'sport', name: 'Salle de sport', emoji: '🏋️', w: 2, cost: 9000, kind: 'shop', floor: 'any', serves: 'sport', price: 40, unlockFloors: 3, wall: '#dfe7f7', desc: 'Adorée des locataires aisés. Les gens du quartier s’y abonnent.' },
   bar:       { type: 'bar', name: 'Bar à cocktails', emoji: '🍸', w: 2, cost: 8000, kind: 'shop', floor: 'notBasement', serves: 'fun', price: 55, noisy: true, unlockFloors: 3, wall: '#3b2a4f', desc: 'Très rentable… mais bruyant la nuit pour les logements voisins.' },
   parking:   { type: 'parking', name: 'Parking', emoji: '🅿️', w: 2, cost: 6000, kind: 'parking', floor: 'basement', capacity: 3, rent: 90, wall: '#8a929c', desc: '3 places louées. Les locataires avec voiture en ont besoin.' },
-  concierge: { type: 'concierge', name: 'Conciergerie', emoji: '🧰', w: 1, cost: 7000, kind: 'service', floor: 'notBasement', unlockFloors: 4, wall: '#e7efd9', desc: 'Un concierge répare automatiquement les fuites et pannes.' },
+  concierge: { type: 'concierge', name: 'Atelier technique', emoji: '🧰', w: 1, cost: 6000, kind: 'service', floor: 'any', unlockFloors: 3, staff: 'tech', wall: '#e7efd9', desc: 'Un technicien court réparer les fuites et pannes dès qu’elles arrivent. Locataires plus sereins.' },
+  menage:    { type: 'menage', name: 'Local d’entretien', emoji: '🧹', w: 1, cost: 3500, kind: 'service', floor: 'any', unlockFloors: 2, staff: 'janitor', wall: '#dcecf5', desc: 'Un agent d’entretien fait le tour de l’immeuble et nettoie les pièces sales avant que ça ne dégoûte locataires et clients.' },
+  securite:  { type: 'securite', name: 'Poste de sécurité', emoji: '👮', w: 1, cost: 6000, kind: 'service', floor: 'notBasement', unlockFloors: 3, staff: 'guard', wall: '#dfe4ec', desc: 'Un vigile surveille les caméras et fait des rondes la nuit. Il arrête les cambrioleurs avant qu’ils ne vident tes caisses.' },
 }
 
-export const BUILD_ORDER: RoomType[] = ['studio', 'laverie', 'cafe', 't2', 'parking', 'sport', 'bar', 'concierge', 'penthouse']
+export const BUILD_ORDER: RoomType[] = ['studio', 'laverie', 'cafe', 't2', 'menage', 'parking', 'sport', 'bar', 'concierge', 'securite', 'penthouse']
+
+/** Personnel : salaire mensuel par employé (1 employé par niveau du local). */
+export const STAFF: Record<StaffRole, { title: string; emoji: string; salary: number; cloth: string; cap: string }> = {
+  janitor: { title: 'Agent d’entretien', emoji: '🧹', salary: 300, cloth: '#3a86ff', cap: '#1d4ed8' },
+  tech: { title: 'Technicien', emoji: '🔧', salary: 400, cloth: '#2f6f3e', cap: '#1f4d2b' },
+  guard: { title: 'Vigile', emoji: '👮', salary: 350, cloth: '#273043', cap: '#111827' },
+}
+/** Nettoyage ponctuel par une entreprise extérieure (sans agent d'entretien). */
+export const CLEAN_COST = 120
 
 // ── Géométrie (unités SVG) ───────────────────────────────────────────────────
 export const SLOTS = 5

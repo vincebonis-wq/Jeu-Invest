@@ -5,10 +5,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { useRentier } from './store'
 import {
-  canPlace, monthlyRent, parkingStatus, shaftX, EXIT_X, stationCount, stationX, stationsOf, PATIENCE,
+  canPlace, monthlyRent, parkingStatus, shaftX, EXIT_X, stationCount, stationX, stationsOf, PATIENCE, dirtOf,
   type Agent, type Game, type Room, type Station,
 } from './sim'
-import { ROOMS, SLOTS, SW, SHAFT_W, FH, BW, floorCost, type RoomType } from './data'
+import { ROOMS, SLOTS, SW, SHAFT_W, FH, BW, STAFF, floorCost, type RoomType } from './data'
 import { fmtShort } from '../archipel/format'
 
 const SIDE = 34          // trottoir de chaque côté
@@ -62,7 +62,17 @@ function Person({ a, x, y, small }: { a: Agent; x: number; y: number; small?: bo
       {a.carry === 'wrench' && <rect x={4.5} y={-17} width={2} height={9} rx={1} fill="#9aa5b1" transform="rotate(20,5,-12)" />}
       {a.carry === 'bag' && <rect x={4.4} y={-14} width={5} height={6} rx={1} fill="#6d4c41" />}
       {a.carry === 'basket' && <g><rect x={3.5} y={-15} width={9} height={7} rx={2} fill="#d4a373" stroke="#a0703f" strokeWidth={0.7} /><rect x={4.5} y={-17} width={7} height={3} rx={1.5} fill="#90caf9" /></g>}
-      {a.kind === 'concierge' && <rect x={-5} y={-28.5} width={10} height={2.6} rx={1} fill="#1f4d2b" />}
+      {a.carry === 'mop' && (
+        <g className={a.steps[0]?.t === 'clean' ? 'mop-swing' : undefined}>
+          <rect x={4.6} y={-18} width={1.6} height={18} rx={0.8} fill="#a1887f" />
+          <rect x={1.5} y={-1.5} width={8} height={2.6} rx={1.2} fill="#e0f2fe" stroke="#7dd3fc" strokeWidth={0.6} />
+        </g>
+      )}
+      {a.carry === 'sack' && <g><circle cx={-7} cy={-15} r={5} fill="#8d6e63" /><rect x={-8.5} y={-21} width={3} height={3} rx={1} fill="#6d4c41" /><text x={-7} y={-14} fontSize={5} textAnchor="middle" dominantBaseline="middle" fill="#ffd34d" fontWeight={900}>€</text></g>}
+      {a.kind === 'staff' && a.role && <rect x={-5} y={-28.5} width={10} height={2.6} rx={1} fill={STAFF[a.role].cap} />}
+      {a.kind === 'staff' && a.role === 'guard' && <circle cx={2} cy={-16} r={1.4} fill="#facc15" />}
+      {a.kind === 'staff' && a.role === 'janitor' && <rect x={-4.6} y={-13} width={9.2} height={1.6} fill="#facc15" />}
+      {a.kind === 'thief' && <g><path d="M-5.6,-22 A5.6,5.8 0 0 1 5.6,-22 L5.6,-19.5 L-5.6,-19.5 Z" fill="#14141c" /><rect x={-3} y={-25} width={7} height={2.4} rx={1} fill="#14141c" /><circle cx={2} cy={-23.8} r={0.8} fill="#fff" /></g>}
     </g>
   )
 }
@@ -272,7 +282,56 @@ export function Interior({ r, w, night, skyCol, home, g, st }: { r: Room; w: num
           <text x={33} y={fl - 18} fontSize={9}>🧰</text>
         </g>
       )
+    case 'menage':
+      return (
+        <g>
+          <rect x={0} y={fl} width={w} height={6} fill="#b0bec5" />
+          <rect x={6} y={14} width={34} height={2.5} fill="#90a4ae" />
+          <rect x={6} y={30} width={34} height={2.5} fill="#90a4ae" />
+          {[9, 17, 25, 33].map((kx, i) => <rect key={kx} x={kx} y={6 + (i % 2)} width={5} height={8 - (i % 2)} rx={1.5} fill={['#4dd0e1', '#ffb74d', '#81c784', '#f06292'][i]} />)}
+          {[9, 19, 29].map((kx, i) => <rect key={kx} x={kx} y={22} width={7} height={8} rx={1} fill={['#fff59d', '#b3e5fc', '#ffccbc'][i]} />)}
+          <rect x={w - 20} y={fl - 30} width={1.6} height={30} fill="#a1887f" transform={`rotate(-8,${w - 20},${fl})`} />
+          <rect x={w - 14} y={fl - 28} width={1.6} height={28} fill="#a1887f" transform={`rotate(6,${w - 14},${fl})`} />
+          <path d={`M${w - 30},${fl - 10} L${w - 18},${fl - 10} L${w - 20},${fl} L${w - 28},${fl} Z`} fill="#1e88e5" />
+          <rect x={8} y={fl - 18} width={14} height={18} rx={1} fill="#78909c" />
+          <rect x={14.5} y={fl - 12} width={1} height={4} fill="#cfd8dc" />
+        </g>
+      )
+    case 'securite': {
+      const blink = Math.floor(Date.now() / 700) % 2 === 0
+      return (
+        <g>
+          <rect x={0} y={fl} width={w} height={6} fill="#546e7a" />
+          {[0, 1, 2, 3].map((i) => (
+            <g key={i}>
+              <rect x={8 + (i % 2) * 24} y={8 + Math.floor(i / 2) * 17} width={22} height={15} rx={1.5} fill="#263238" />
+              <rect x={10 + (i % 2) * 24} y={10 + Math.floor(i / 2) * 17} width={18} height={11} fill={night > 0.5 ? '#1b5e20' : '#4b6584'} opacity={0.9} />
+              <rect x={12 + (i % 2) * 24} y={16 + Math.floor(i / 2) * 17 - (i % 3)} width={6} height={4} fill="#a5d6a7" opacity={0.6} />
+            </g>
+          ))}
+          {blink && <circle cx={w - 10} cy={12} r={2.2} fill="#ef4444" />}
+          <rect x={6} y={fl - 14} width={w - 12} height={4} rx={1} fill="#37474f" />
+          <rect x={10} y={fl - 10} width={3} height={10} fill="#263238" /><rect x={w - 13} y={fl - 10} width={3} height={10} fill="#263238" />
+        </g>
+      )
+    }
+    default:
+      return <g />
   }
+}
+
+/** Saleté visible : taches, sac poubelle, mouches. */
+function Dirt({ w, fl, d }: { w: number; fl: number; d: number }) {
+  if (d < 22) return null
+  const k = Math.min(1, (d - 22) / 60)
+  return (
+    <g pointerEvents="none">
+      {[0.22, 0.55, 0.8].map((fx, i) => (d > 22 + i * 18) && <ellipse key={i} cx={w * fx} cy={fl + 1} rx={7 + i * 2} ry={2} fill="#6b4f2a" opacity={0.25 + 0.35 * k} />)}
+      {d > 40 && <g transform={`translate(${w - 14},${fl - 9})`}><path d="M-6,9 Q-7,0 0,-1 Q7,0 6,9 Z" fill="#2e3b2c" /><path d="M-2,-1 L0,-5 L2,-1 Z" fill="#2e3b2c" /></g>}
+      {d > 60 && [0, 1, 2].map((i) => <circle key={i} cx={w - 14 + Math.sin(Date.now() / 260 + i * 2) * 7} cy={fl - 18 + Math.cos(Date.now() / 210 + i) * 4} r={0.9} fill="#111" />)}
+      {d > 75 && <path d={`M${w * 0.3},${fl - 10} q3,-4 0,-8 q-3,-4 0,-8`} stroke="#7cb342" strokeWidth={1.2} fill="none" opacity={0.7} />}
+    </g>
+  )
 }
 
 // ── Composant principal ──────────────────────────────────────────────────────
@@ -393,6 +452,7 @@ export function Tower() {
               <g className={isPop ? 'room-pop' : undefined}>
                 <rect x={0} y={0} width={wpx} height={FH - 8} fill={d.wall} />
                 <Interior r={r} w={wpx} night={sk.night} skyCol={sk.bot} home={home} g={g} st={ROOMS[r.type].kind === 'shop' ? stationsOf(w, r) : undefined} />
+                <Dirt w={wpx} fl={FH - 14} d={dirtOf(r)} />
                 {dark && <rect x={0} y={0} width={wpx} height={FH - 8} fill="#0b1028" opacity={0.35} />}
                 <rect x={0} y={0} width={1.5} height={FH - 8} fill="rgba(0,0,0,0.15)" />
                 {vacant && <g><rect x={wpx / 2 - 22} y={22} width={44} height={14} rx={3} fill="#e63946" /><text x={wpx / 2} y={31.5} fontSize={8} fill="#fff" textAnchor="middle" fontWeight={900}>À LOUER</text></g>}
@@ -435,7 +495,10 @@ export function Tower() {
           }
           const waitK = s0 && s0.t === 'queue' ? Math.min(1, a.waitT / (a.kind === 'res' ? PATIENCE.res : PATIENCE.vis)) : null
           return (
-            <g key={a.id} pointerEvents="none">
+            <g key={a.id} pointerEvents={a.kind === 'thief' && !a.caught ? undefined : 'none'}
+              onClick={a.kind === 'thief' ? (e) => { e.stopPropagation(); useRentier.getState().scare(a.id) } : undefined}
+              style={a.kind === 'thief' ? { cursor: 'pointer' } : undefined}>
+              {a.kind === 'thief' && !a.caught && <circle cx={x} cy={y - 14} r={16} fill="rgba(239,68,68,0.18)" stroke="#ef4444" strokeWidth={1.2} strokeDasharray="3 3" className="incident" />}
               <Person a={a} x={x} y={y} />
               {a.icon && <IconBubble x={x} y={y - 30} icon={a.icon} />}
               {waitK != null && <g transform={`translate(${x - 8},${y - 52})`}><rect width={16} height={3} rx={1.5} fill="rgba(0,0,0,0.25)" /><rect width={16 * (1 - waitK)} height={3} rx={1.5} fill={waitK > 0.66 ? '#ef4444' : waitK > 0.33 ? '#f59e0b' : '#22c55e'} /></g>}
@@ -451,9 +514,22 @@ export function Tower() {
           const out: ReactElement[] = []
           if (r.incident) {
             out.push(
-              <g key="inc" transform={`translate(${x + d.w * SW / 2 - 16},${y0 + 40})`} onClick={(e) => { e.stopPropagation(); useRentier.getState().repair(r.id) }} style={{ cursor: 'pointer' }} className="incident">
-                <circle r={11} fill="#e63946" stroke="#fff" strokeWidth={2.5} />
-                <text y={1} fontSize={11} textAnchor="middle" dominantBaseline="middle">{r.incident.kind === 'fuite' ? '💧' : '⚡'}</text>
+              <g key="inc" transform={`translate(${x + d.w * SW / 2 - 16},${y0 + 40})`} onClick={(e) => { e.stopPropagation(); useRentier.getState().repair(r.id) }} style={{ cursor: 'pointer' }}>
+                <g className="incident">
+                  <circle r={11} fill="#e63946" stroke="#fff" strokeWidth={2.5} />
+                  <text y={1} fontSize={11} textAnchor="middle" dominantBaseline="middle">{r.incident.kind === 'fuite' ? '💧' : '⚡'}</text>
+                </g>
+              </g>,
+            )
+          }
+          const cleaning = w.agents.some((a) => a.kind === 'staff' && a.task === r.id)
+          if (dirtOf(r) >= 45 && !cleaning) {
+            out.push(
+              <g key="dirt" transform={`translate(${X0 + r.slot * SW + 14},${y0 + 40})`} onClick={(e) => { e.stopPropagation(); useRentier.getState().clean(r.id) }} style={{ cursor: 'pointer' }}>
+                <g className="incident">
+                  <circle r={10} fill="#a16207" stroke="#fff" strokeWidth={2.5} />
+                  <text y={1} fontSize={10} textAnchor="middle" dominantBaseline="middle">🧹</text>
+                </g>
               </g>,
             )
           }
