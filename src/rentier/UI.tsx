@@ -3,14 +3,15 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Hammer, Target, PieChart, X, Lock, Coins, Volume2, VolumeX, RotateCcw, ArrowUpCircle, Wrench, Sofa, Star, Check } from 'lucide-react'
+import { Hammer, Target, PieChart, FlaskConical, Users, X, Lock, Coins, Volume2, VolumeX, RotateCcw, ArrowUpCircle, Wrench, Sofa, Star, Check } from 'lucide-react'
 import { useRentier } from './store'
 import {
   monthlyRent, monthlyNet, freedom, charges, shopAverage, isUnlocked, taxRate, questProgress, tenantCount,
   avgSat, netWorth, parkingStatus, canRenovate, renovateCost, repairCost, liftCost, buildingValue,
-  NEED_ICON, NEED_LABEL, roomCost, stationCount, stationsOf, SERVICE_TIME, salaries, dirtOf, type Game, type Room, type Agent,
+  NEED_ICON, NEED_LABEL, roomCost, stationCount, stationsOf, serviceTime, salaries, dirtOf, canResearch, liftNeeds, desksOf,
+  type Game, type Room, type Agent,
 } from './sim'
-import { ROOMS, BUILD_ORDER, SW, FH, LIFESTYLE, FREEDOM_TIERS, FURNISH_COST, TAX, STAFF, CLEAN_COST, type RoomType, type Need } from './data'
+import { ROOMS, BUILD_ORDER, SW, FH, LIFESTYLE, FREEDOM_TIERS, FURNISH_COST, TAX, STAFF, CLEAN_COST, RESEARCH, RP_RATE, liftInstallCost, type RoomType, type Need, type StaffRole } from './data'
 import { Interior } from './Tower'
 import { fmtEur, fmtShort } from '../archipel/format'
 import { sfxTap, sfxTick } from '../archipel/audio'
@@ -87,7 +88,7 @@ export function Dock() {
   const done = g.quests.filter((q) => q.done).length
   const ready = g.rooms.filter((r) => {
     const k = ROOMS[r.type].kind
-    return (k === 'shop' && r.stored >= 20) || ((k === 'home' || k === 'parking') && r.stored >= Math.max(40, monthlyRent(g, r).net * 0.5))
+    return (k === 'shop' && r.stored >= 20) || ((k === 'home' || k === 'parking' || k === 'office') && r.stored >= Math.max(40, monthlyRent(g, r).net * 0.5))
   }).length
   return (
     <div className="absolute bottom-0 inset-x-0 z-30 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pointer-events-none">
@@ -101,7 +102,9 @@ export function Dock() {
       )}
       <div className={`${GLASS} pointer-events-auto max-w-md mx-auto rounded-[28px] h-[68px] flex items-center px-1 relative`}>
         <DockBtn icon={<Target size={22} />} label="Objectifs" badge={done} onClick={() => { sfxTap(); st.openSheet('quests') }} />
-        <div className="w-[96px] shrink-0" />
+        <DockBtn icon={<FlaskConical size={22} />} label="Recherche" badge={RESEARCH.filter((r) => canResearch(g, r.id)).length} onClick={() => { sfxTap(); st.openSheet('research') }} />
+        <div className="w-[88px] shrink-0" />
+        <DockBtn icon={<Users size={22} />} label="Personnel" onClick={() => { sfxTap(); st.openSheet('staff') }} />
         <DockBtn icon={<PieChart size={22} />} label="Patrimoine" onClick={() => { sfxTap(); st.openSheet('stats') }} />
         <button onClick={() => { sfxTap(); st.openSheet('build') }}
           className="absolute left-1/2 -translate-x-1/2 -top-6 w-[78px] h-[78px] rounded-full flex flex-col items-center justify-center text-white active:scale-95 transition-transform build-btn"
@@ -190,7 +193,7 @@ export function BuildSheet() {
   const st = useRentier.getState()
   const g = st.game
   const close = () => st.openSheet(null)
-  const kindLabel: Record<string, string> = { home: 'Logement', shop: 'Commerce', parking: 'Sous-sol', service: 'Service' }
+  const kindLabel: Record<string, string> = { home: 'Logement', shop: 'Commerce', parking: 'Sous-sol', service: 'Service', office: 'Bureaux' }
   return (
     <Sheet title="Construire" onClose={close}>
       <div className="space-y-2.5">
@@ -199,8 +202,8 @@ export function BuildSheet() {
           const unlocked = isUnlocked(g, t)
           const cost = roomCost(g, t)
           const afford = g.cash >= cost
-          const tax = d.kind === 'home' ? (t === 'studio' ? 'LMNP · 2 %' : 'Nu · 30 %') : d.kind === 'shop' ? 'Impôt société 25 %' : d.kind === 'parking' ? 'Fonciers 30 %' : ''
-          const yieldLine = d.kind === 'home' ? `Loyer ${fmtEur(d.rent ?? 0)}/mois · ${d.capacity} habitant${(d.capacity ?? 1) > 1 ? 's' : ''}`
+          const tax = d.kind === 'office' ? 'Fonciers 30 %' : d.kind === 'home' ? (t === 'studio' ? 'LMNP · 2 %' : 'Nu · 30 %') : d.kind === 'shop' ? 'Impôt société 25 %' : d.kind === 'parking' ? 'Fonciers 30 %' : ''
+          const yieldLine = d.kind === 'office' ? `Bail ${fmtEur(d.rent ?? 0)}/mois · ${d.capacity} postes` : d.kind === 'home' ? `Loyer ${fmtEur(d.rent ?? 0)}/mois · ${d.capacity} habitant${(d.capacity ?? 1) > 1 ? 's' : ''}`
             : d.kind === 'shop' ? `${fmtEur(d.price ?? 0)} par client`
             : d.kind === 'parking' ? `${d.capacity} places à ${fmtEur(d.rent ?? 0)}/mois`
             : d.staff ? `${STAFF[d.staff].emoji} 1 ${STAFF[d.staff].title.toLowerCase()} · ${fmtEur(STAFF[d.staff].salary)}/mois` : ''
@@ -220,7 +223,7 @@ export function BuildSheet() {
               <div className={`shrink-0 rounded-xl px-2.5 py-1.5 font-display font-extrabold text-[14px] ${afford ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-400'}`}>{fmtShort(cost)} €</div>
               {!unlocked && (
                 <div className="absolute inset-0 rounded-3xl bg-white/60 flex items-center justify-center gap-2 text-slate-600 font-extrabold text-[13px]">
-                  <Lock size={18} /> Débloqué à {d.unlockFloors} étages
+                  <Lock size={18} /> {d.research && !g.research.includes(d.research) ? `🔬 Recherche : ${RESEARCH.find((x) => x.id === d.research)?.name}` : `Débloqué à ${d.unlockFloors} étages`}
                 </div>
               )}
             </button>
@@ -322,7 +325,7 @@ export function RoomPanel() {
               <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-2xl bg-white border border-slate-100 py-2"><div className="font-display font-extrabold text-[18px] text-slate-700">{busy}/{stationCount(r)}</div><div className="text-[10px] font-bold text-slate-400">{unit}s occupé{busy > 1 ? 'e' : ''}s</div></div>
                 <div className={`rounded-2xl border py-2 ${queue >= 3 ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-100'}`}><div className={`font-display font-extrabold text-[18px] ${queue >= 3 ? 'text-rose-600' : 'text-slate-700'}`}>{queue}</div><div className="text-[10px] font-bold text-slate-400">en attente</div></div>
-                <div className="rounded-2xl bg-white border border-slate-100 py-2"><div className="font-display font-extrabold text-[18px] text-slate-700">{SERVICE_TIME[r.type]} s</div><div className="text-[10px] font-bold text-slate-400">{r.type === 'laverie' ? 'par lavage' : 'par client'}</div></div>
+                <div className="rounded-2xl bg-white border border-slate-100 py-2"><div className="font-display font-extrabold text-[18px] text-slate-700">{serviceTime(g, r.type).toFixed(r.type === 'laverie' ? 0 : 1).replace('.0', '')} s</div><div className="text-[10px] font-bold text-slate-400">{r.type === 'laverie' ? 'par lavage' : 'par client'}</div></div>
               </div>
               {queue >= 2 && <div className="mt-2 text-[12px] text-rose-600 font-bold text-center">Trop d’attente : rénove pour ajouter {unit === 'machine' ? 'une machine' : `un${unit === 'table' ? 'e' : ''} ${unit}`}, ou construis-en un second.</div>}
             </>
@@ -381,13 +384,43 @@ export function RoomPanel() {
         )}
         {r.type === 'lobby' && (
           <div className="mt-3 rounded-2xl bg-white border border-slate-100 px-3.5 py-2.5">
-            <div className="font-extrabold text-slate-700 text-[14px]">🛗 Ascenseur niveau {g.liftLevel}</div>
-            <div className="text-[12px] text-slate-500">Plus rapide et plus grand : moins d’attente, des locataires plus heureux.</div>
-            {g.liftLevel < 3 && (
-              <button onClick={() => st.upgradeLift()} className="w-full mt-2 rounded-xl py-2.5 font-extrabold text-white text-[14px] active:scale-[0.98]" style={{ background: 'linear-gradient(180deg,#ffb547,#f2792b)' }}>
-                Moderniser · {fmtEur(liftCost(g.liftLevel))}
-              </button>
+            {!g.liftOn ? (
+              <>
+                <div className="font-extrabold text-slate-700 text-[14px]">🪜 Pas encore d’ascenseur</div>
+                <div className="text-[12px] text-slate-500">Tout le monde monte à pied : c’est lent et ça fatigue tes locataires.</div>
+                <button onClick={() => st.installLift()} className="w-full mt-2 rounded-xl py-2.5 font-extrabold text-white text-[14px] active:scale-[0.98]" style={{ background: 'linear-gradient(180deg,#ffb547,#f2792b)' }}>
+                  🛗 Installer l’ascenseur · {fmtEur(liftInstallCost(g.top - g.bottom))}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="font-extrabold text-slate-700 text-[14px]">🛗 Ascenseur niveau {g.liftLevel} · étages {g.liftBottom < 0 ? `S${-g.liftBottom}` : 'RDC'} → {g.liftTop}</div>
+                <div className="text-[12px] text-slate-500">Plus rapide et plus grand : moins d’attente, des locataires plus heureux.</div>
+                {g.liftLevel < 3 && (g.research.includes(liftNeeds(g.liftLevel)) ? (
+                  <button onClick={() => st.upgradeLift()} className="w-full mt-2 rounded-xl py-2.5 font-extrabold text-white text-[14px] active:scale-[0.98]" style={{ background: 'linear-gradient(180deg,#ffb547,#f2792b)' }}>
+                    Moderniser · {fmtEur(liftCost(g.liftLevel))}
+                  </button>
+                ) : <div className="mt-2 text-[12px] font-bold text-indigo-600">🔬 Recherche requise : {RESEARCH.find((x) => x.id === liftNeeds(g.liftLevel))?.name}</div>)}
+              </>
             )}
+          </div>
+        )}
+        {r.type === 'bureau' && (() => {
+          const d2 = desksOf(st.world, r)
+          const ids = new Set(d2.filter(Boolean))
+          const workers = st.world.agents.filter((a) => ids.has(a.id))
+          const inHouse = workers.filter((a) => a.kind === 'res').length
+          return (
+            <div className="mt-3 rounded-2xl bg-emerald-50 px-3.5 py-2.5">
+              <div className="font-display font-extrabold text-[20px] text-emerald-600">+{fmtEur(rent.net)}/mois</div>
+              <div className="text-[12px] text-slate-600">Bail commercial (revenus fonciers 30 %). {workers.length}/{d2.length} postes occupés, dont <b>{inHouse}</b> de tes locataires (pas de transports : ils sont plus heureux).</div>
+            </div>
+          )
+        })()}
+        {r.type === 'labo' && (
+          <div className="mt-2 rounded-2xl bg-indigo-50 px-3.5 py-2.5 text-[12px] text-indigo-800">
+            💡 <b>{Math.floor(g.rp)} points</b> de recherche · {r.level} chercheur{r.level > 1 ? 's' : ''} (+{(RP_RATE * r.level * 15).toFixed(0)} pts par jour de travail)
+            <button onClick={() => st.openSheet('research')} className="block w-full mt-2 rounded-xl py-2 font-extrabold text-white bg-indigo-500 active:scale-[0.98]">Ouvrir l’arbre de recherche</button>
           </div>
         )}
 
@@ -411,6 +444,104 @@ export function RoomPanel() {
         )}
       </div>
     </div>
+  )
+}
+
+// ── Recherche ────────────────────────────────────────────────────────────────
+export function ResearchSheet() {
+  useRentier((s) => s.rev)
+  const st = useRentier.getState()
+  const g = st.game
+  const researchers = st.world.agents.filter((a) => a.role === 'researcher')
+  const working = researchers.filter((a) => a.steps[0]?.t === 'work').length
+  return (
+    <Sheet title="Recherche" onClose={() => st.openSheet(null)}>
+      <div className="rounded-3xl p-4 text-white" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+        <div className="text-[12px] font-bold text-white/80 uppercase tracking-wider">Points de recherche</div>
+        <div className="font-display font-extrabold text-[34px] leading-none mt-1">💡 {Math.floor(g.rp)}</div>
+        <div className="text-[12px] text-white/85 mt-1">
+          {researchers.length ? `${researchers.length} chercheur${researchers.length > 1 ? 's' : ''} · ${working} au travail en ce moment` : 'Aucun chercheur : construis un Laboratoire R&D.'}
+        </div>
+      </div>
+      <div className="mt-3 space-y-2">
+        {[...RESEARCH].sort((a, b) => {
+          const rank = (x: typeof a) => (g.research.includes(x.id) ? 2 : x.req && !g.research.includes(x.req) ? 1 : 0)
+          return rank(a) - rank(b) || a.cost - b.cost
+        }).map((r) => {
+          const done = g.research.includes(r.id)
+          const locked = !!r.req && !g.research.includes(r.req)
+          const ok = canResearch(g, r.id)
+          return (
+            <div key={r.id} className={`rounded-2xl p-3 flex items-center gap-3 ${done ? 'bg-emerald-50' : 'bg-white shadow-[0_4px_14px_-6px_rgba(15,40,80,0.2)]'} ${locked ? 'opacity-50' : ''}`}>
+              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xl ${done ? 'bg-emerald-200' : 'bg-indigo-50'}`}>{r.emoji}</div>
+              <div className="flex-1 min-w-0">
+                <div className="font-extrabold text-[14px] text-slate-800 leading-tight">{r.name}</div>
+                <div className="text-[11px] text-slate-500 leading-snug">{locked ? `Nécessite : ${RESEARCH.find((x) => x.id === r.req)?.name}` : r.desc}</div>
+                {!done && !locked && <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-indigo-400" style={{ width: `${Math.min(100, (g.rp / r.cost) * 100)}%` }} /></div>}
+              </div>
+              {done ? <Check className="text-emerald-600" size={22} /> : (
+                <button disabled={!ok} onClick={() => st.research(r.id)} className="shrink-0 rounded-xl px-3 py-2 font-extrabold text-[13px] text-white disabled:bg-slate-300 bg-indigo-500 active:scale-95">💡 {r.cost}</button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </Sheet>
+  )
+}
+
+// ── Personnel ────────────────────────────────────────────────────────────────
+export function staffStatus(g: Game, a: Agent): string {
+  const s0 = a.steps[0]
+  const tr = a.task ? g.rooms.find((x) => x.id === a.task) : undefined
+  const where = tr ? `${ROOMS[tr.type].name} (${tr.floor === 0 ? 'RDC' : tr.floor < 0 ? `S${-tr.floor}` : `ét. ${tr.floor}`})` : ''
+  if (a.away) return '🏠 Rentré chez lui'
+  if (a.role === 'guard' && a.task) return '🚨 Poursuit un cambrioleur'
+  if (s0?.t === 'clean') return `🧽 Nettoie : ${where}`
+  if (s0?.t === 'fix') return `🔧 Répare : ${where}`
+  if (s0?.t === 'work') return '💡 Fait de la recherche'
+  if (s0?.t === 'enter' || s0?.t === 'queue' || s0?.t === 'serve') return '☕ Pause déjeuner'
+  if (s0?.t === 'stairs') return '🪜 Dans l’escalier'
+  if (s0?.t === 'lift' || a.inLift) return '🛗 Prend l’ascenseur'
+  if (tr) return `${a.role === 'janitor' ? '🧹' : '🧰'} En route : ${where}`
+  if (a.role === 'guard' && a.steps.length) return '🔦 Ronde'
+  return a.steps.length ? '🚶 Se déplace' : '☕ En pause'
+}
+
+export function StaffSheet() {
+  useRentier((s) => s.rev)
+  const st = useRentier.getState()
+  const g = st.game
+  const roles: StaffRole[] = ['researcher', 'janitor', 'tech', 'guard']
+  const roomFor: Record<StaffRole, RoomType> = { researcher: 'labo', janitor: 'menage', tech: 'concierge', guard: 'securite' }
+  return (
+    <Sheet title="Personnel" onClose={() => st.openSheet(null)}>
+      <div className="text-[13px] text-slate-500 mb-2">Salaires : <b className="text-rose-500">−{fmtEur(salaries(g))}/mois</b>. Rénove un local pour embaucher (jusqu’à 3 par local).</div>
+      <div className="space-y-2.5">
+        {roles.map((role) => {
+          const crew = st.world.agents.filter((a) => a.kind === 'staff' && a.role === role)
+          const rt = roomFor[role]
+          return (
+            <div key={role} className="rounded-3xl bg-white p-3 shadow-[0_4px_14px_-6px_rgba(15,40,80,0.2)]">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{STAFF[role].emoji}</span>
+                <div className="flex-1">
+                  <div className="font-extrabold text-slate-800 text-[15px]">{STAFF[role].title}{crew.length > 1 ? 's' : ''} · {crew.length}</div>
+                  <div className="text-[11px] text-slate-400 font-bold">{fmtEur(STAFF[role].salary)}/mois chacun · {ROOMS[rt].name}</div>
+                </div>
+              </div>
+              {crew.length === 0 ? (
+                <div className="text-[12px] text-slate-500 mt-1.5">{isUnlocked(g, rt) ? `Construis un ${ROOMS[rt].name.toLowerCase()} pour embaucher.` : `🔒 ${ROOMS[rt].research ? `Recherche : ${RESEARCH.find((x) => x.id === ROOMS[rt].research)?.name}` : `Débloqué à ${ROOMS[rt].unlockFloors} étages`}`}</div>
+              ) : (
+                <div className="mt-1.5 space-y-1">
+                  {crew.map((a, i) => <div key={a.id} className="flex items-center justify-between text-[12px]"><span className="font-bold text-slate-600">#{i + 1}</span><span className="font-bold text-slate-500 truncate ml-2">{staffStatus(g, a)}</span></div>)}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </Sheet>
   )
 }
 
@@ -570,7 +701,7 @@ export function Coach() {
   useRentier((s) => s.rev)
   const st = useRentier.getState()
   const g = st.game
-  if (st.buildType || st.sheet || st.selected || g.questCursor > 5) return null
+  if (st.buildType || st.sheet || st.selected || g.questCursor > 8) return null
   const q = g.quests.find((x) => !x.done)
   if (!q) return null
   const tips: Partial<Record<string, string>> = {
@@ -578,6 +709,8 @@ export function Coach() {
     build: `🔨 Touche « Construire » puis ${q.param ? ROOMS[q.param as RoomType].name : 'une pièce'}`,
     count: '🔨 Construis d’autres studios dans les cases libres',
     floors: '⬆️ Touche « + Étage » sur le toit de l’immeuble',
+    lift: '🛗 Touche « Installer » dans la cage, à droite de l’immeuble',
+    research: '🔬 Ouvre « Recherche » et dépense tes points 💡',
   }
   const tip = tips[q.kind]
   if (!tip) return null

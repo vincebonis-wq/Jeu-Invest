@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useRentier } from './store'
 import { Tower } from './Tower'
-import { Hud, Dock, BuildSheet, RoomPanel, QuestsSheet, StatsSheet, Toasts, Flies, Coach, Intro, Welcome, Celebrate } from './UI'
+import { Hud, Dock, BuildSheet, RoomPanel, QuestsSheet, StatsSheet, ResearchSheet, StaffSheet, Toasts, Flies, Coach, Intro, Welcome, Celebrate } from './UI'
 import '../archipel/archipel.css'
 import './rentier.css'
 
@@ -22,6 +22,8 @@ export function RentierApp() {
       {sheet === 'build' && <BuildSheet />}
       {sheet === 'quests' && <QuestsSheet />}
       {sheet === 'stats' && <StatsSheet />}
+      {sheet === 'research' && <ResearchSheet />}
+      {sheet === 'staff' && <StaffSheet />}
       <Flies />
       <Welcome />
       <Celebrate />

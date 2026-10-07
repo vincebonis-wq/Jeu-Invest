@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import {
   createGame, createWorld, step, applyOffline, build as simBuild, buildFloor as simFloor, collect as simCollect,
   renovate as simRenovate, repair as simRepair, furnish as simFurnish, upgradeLift as simLift, claimQuest as simClaim,
-  evict as simEvict, clean as simClean, scareThief, fillQuests, checkProgress, welcomeTenant, spawnConciergeIfNeeded, canPlace, roomCost,
+  evict as simEvict, clean as simClean, scareThief, migrate, installLift as simInstallLift, extendLift as simExtendLift, doResearch, fillQuests, checkProgress, welcomeTenant, spawnConciergeIfNeeded, canPlace, roomCost,
   type Game, type World, type GEvent,
 } from './sim'
 import { ROOMS, FREEDOM_TIERS, type RoomType } from './data'
@@ -12,7 +12,7 @@ const SAVE_KEY = 'rentier-save-v2'
 
 export interface Toast { id: number; icon: string; title: string; text?: string; tone: 'good' | 'info' | 'warn' | 'gold' }
 export interface Fly { id: number; x: number; y: number; amount: number }
-export type Sheet = null | 'build' | 'quests' | 'stats'
+export type Sheet = null | 'build' | 'quests' | 'stats' | 'research' | 'staff'
 
 interface Store {
   game: Game
@@ -42,6 +42,9 @@ interface Store {
   repair: (id: string) => void
   clean: (id: string) => void
   scare: (agentId: string) => void
+  installLift: () => void
+  extendLift: (up: boolean) => void
+  research: (id: string) => void
   furnish: (id: string) => void
   upgradeLift: () => void
   demolish: (id: string) => void
@@ -59,7 +62,7 @@ interface Store {
 function load(): Game {
   try {
     const raw = localStorage.getItem(SAVE_KEY)
-    if (raw) { const g = JSON.parse(raw) as Game; if (g?.version === 2) return g }
+    if (raw) { const g = JSON.parse(raw) as Game; if (g?.version === 2) return migrate(g) }
   } catch { /* ignore */ }
   return createGame()
 }
@@ -202,6 +205,26 @@ export const useRentier = create<Store>((set, get) => {
       const g = get().game; const r = g.rooms.find((x) => x.id === id)
       if (!r || !simClean(g, r)) { sfxError(); return }
       sfxTap(); haptic(10); bump()
+    },
+    installLift: () => {
+      const g = get().game
+      if (!simInstallLift(g)) { sfxError(); return }
+      sfxBuild(); haptic(20)
+      const ev: GEvent[] = []; checkProgress(g, ev); handle(ev)
+      toast({ icon: '🛗', title: 'Ascenseur installé !', text: 'Fini les escaliers. Pense à le prolonger quand tu construis un étage.', tone: 'good' })
+      bump()
+    },
+    extendLift: (up) => {
+      const g = get().game
+      if (!simExtendLift(g, up)) { sfxError(); return }
+      sfxBuild(); haptic(15); bump()
+    },
+    research: (id) => {
+      const g = get().game
+      if (!doResearch(g, id)) { sfxError(); return }
+      sfxUpgrade(); haptic(20)
+      const ev: GEvent[] = []; checkProgress(g, ev); handle(ev)
+      bump()
     },
     scare: (agentId) => {
       const g = get().game
