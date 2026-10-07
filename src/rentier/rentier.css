@@ -1,0 +1,22 @@
+/* RENTIER INC. — animations */
+.hide-scrollbar { scrollbar-width: none; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.walk-l { animation: walkL .38s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 0; }
+.walk-r { animation: walkR .38s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 0; }
+@keyframes walkL { 0%,100% { transform: rotate(18deg) } 50% { transform: rotate(-18deg) } }
+@keyframes walkR { 0%,100% { transform: rotate(-18deg) } 50% { transform: rotate(18deg) } }
+.icon-pop { animation: iconPop .3s cubic-bezier(.2,1.6,.4,1) both; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes iconPop { from { transform: scale(.3); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+.coin-bob { animation: coinBob 1.8s ease-in-out infinite; }
+@keyframes coinBob { 0%,100% { translate: 0 0 } 50% { translate: 0 -4px } }
+.incident { animation: incident 0.9s ease-in-out infinite; }
+@keyframes incident { 0%,100% { scale: 1 } 50% { scale: 1.15 } }
+.room-pop { animation: roomPop .7s cubic-bezier(.2,1.5,.4,1) both; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes roomPop { 0% { transform: scale(.2, .1); opacity: 0 } 60% { transform: scale(1.06, 1.1); opacity: 1 } 100% { transform: scale(1) } }
+.floor-pop { animation: floorPop .8s cubic-bezier(.2,1.4,.4,1) both; }
+@keyframes floorPop { from { opacity: 0; translate: 0 -30px } to { opacity: 1; translate: 0 0 } }
+.sel-pulse { animation: selp 1.2s ease-in-out infinite; }
+@keyframes selp { 0%,100% { opacity: .5 } 50% { opacity: 1 } }
+.target-pulse { animation: selp 1.4s ease-in-out infinite; }
+.spin-slow { transform-box: fill-box; transform-origin: center; animation: spin 2s linear infinite; }
+.neon-text { animation: neon 1.6s ease-in-out infinite; filter: drop-shadow(0 0 4px #ff4fd8); }
