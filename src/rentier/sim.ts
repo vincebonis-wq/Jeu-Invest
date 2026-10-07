@@ -376,13 +376,13 @@ export type GEvent =
 const SCRIPT: Omit<Quest, 'id'>[] = [
   { kind: 'collect', title: 'Encaisse ton premier loyer', target: 1, reward: 600 },
   { kind: 'build', param: 'laverie', title: 'Construis une laverie', target: 1, reward: 1500 },
+  { kind: 'build', param: 'menage', title: 'Embauche un agent d’entretien', target: 1, reward: 2500 },
   { kind: 'count', param: 'studio', title: 'Possède 3 studios', target: 3, reward: 3000 },
   { kind: 'build', param: 'labo', title: 'Ouvre un laboratoire R&D', target: 1, reward: 2500 },
   { kind: 'build', param: 'cafe', title: 'Ouvre un café', target: 1, reward: 3000 },
   { kind: 'lift', title: 'Installe l’ascenseur', target: 1, reward: 2500 },
   { kind: 'research', title: 'Termine une recherche', target: 1, reward: 2000 },
   { kind: 'floors', title: 'Construis le 2ᵉ étage', target: 2, reward: 4000 },
-  { kind: 'build', param: 'menage', title: 'Embauche un agent d’entretien', target: 1, reward: 2500 },
   { kind: 'tenants', title: 'Loge 6 locataires', target: 6, reward: 2500 },
   { kind: 'basement', title: 'Creuse un sous-sol et ouvre un parking', target: 1, reward: 3000 },
   { kind: 'repair', title: 'Répare un incident', target: 1, reward: 1000 },
@@ -476,6 +476,7 @@ export type Step =
   | { t: 'chase'; thiefId: string }
   | { t: 'stairs'; to: number; said?: boolean }
   | { t: 'work'; roomId: string; idx?: number; until?: number; dur?: number }
+  | { t: 'drive'; carId: string }
   | { t: 'gone' }
   | { t: 'settle' }
 
@@ -521,6 +522,62 @@ export interface World {
   queues: Record<string, string[]>
   thiefDay: number          // dernière nuit où un cambriolage a été tiré au sort
   desks: Record<string, (string | null)[]>
+  cars: Car[]
+}
+
+/** Voiture d'un locataire : garée, qui part par le tunnel du garage, dehors, ou qui revient. */
+export interface Car { id: string; color: string; roomId: string; spot: number; floor: number; x: number; state: 'parked' | 'leave' | 'out' | 'arrive'; dir: 1 | -1 }
+export const GARAGE_X = -46
+const CAR_SPEED = 80
+export const spotX = (r: Room, i: number) => r.slot * SW + 24 + i * 42
+const CAR_COLORS = ['#e63946', '#3a86ff', '#ffbe0b', '#2a9d8f', '#8338ec', '#f4a261', '#ef476f', '#118ab2', '#6d6875', '#06d6a0']
+
+function syncCars(g: Game, w: World) {
+  const owners = g.rooms.flatMap((r) => r.tenants).filter((t) => t.car)
+  w.cars = w.cars.filter((c) => owners.some((t) => t.id === c.id) && g.rooms.some((r) => r.id === c.roomId))
+  // Propriétaire rentré autrement : sa voiture réapparaît garée.
+  for (const c of w.cars) if (c.state === 'out') {
+    const a = w.agents.find((x) => x.tenantId === c.id)
+    const r = g.rooms.find((x) => x.id === c.roomId)
+    if (a && !a.away && r && !a.steps.some((st) => st.t === 'drive')) { c.state = 'parked'; c.x = spotX(r, c.spot); c.floor = r.floor }
+  }
+  const taken = new Set(w.cars.map((c) => `${c.roomId}:${c.spot}`))
+  const spots: { r: Room; i: number }[] = []
+  for (const r of g.rooms) if (r.type === 'parking') for (let i = 0; i < (ROOMS.parking.capacity ?? 3); i++) if (!taken.has(`${r.id}:${i}`)) spots.push({ r, i })
+  for (const t of owners) {
+    if (w.cars.some((c) => c.id === t.id)) continue
+    const sp = spots.shift()
+    if (!sp) break
+    const a = w.agents.find((x) => x.tenantId === t.id)
+    const h = t.id.charCodeAt(t.id.length - 1) + t.id.charCodeAt(t.id.length - 2)
+    w.cars.push({ id: t.id, color: CAR_COLORS[h % CAR_COLORS.length], roomId: sp.r.id, spot: sp.i, floor: sp.r.floor, x: spotX(sp.r, sp.i), state: a?.away ? 'out' : 'parked', dir: -1 })
+  }
+}
+
+function runCars(g: Game, w: World, dt: number) {
+  for (const c of w.cars) {
+    const r = g.rooms.find((x) => x.id === c.roomId)
+    if (!r) continue
+    if (c.state === 'leave') {
+      c.dir = -1
+      c.x -= CAR_SPEED * dt
+      if (c.x <= GARAGE_X - 30) c.state = 'out'
+    } else if (c.state === 'arrive') {
+      const tx = spotX(r, c.spot)
+      c.dir = 1
+      c.x = Math.min(tx, c.x + CAR_SPEED * dt)
+      if (c.x >= tx) {
+        c.state = 'parked'
+        // Le conducteur descend et rentre chez lui.
+        const a = w.agents.find((x) => x.tenantId === c.id)
+        if (a) {
+          const { room, tenant } = findTenant(g, a)
+          a.away = false; a.floor = c.floor; a.x = c.x + 18; a.carry = undefined; a.dir = 1
+          if (room && tenant) a.steps = route(a.floor, room.floor, homeSpot(room, room.tenants.indexOf(tenant)))
+        }
+      }
+    }
+  }
 }
 
 // ── Services (laverie, café, sport, bar) ─────────────────────────────────────
@@ -592,7 +649,7 @@ function homeSpot(r: Room, idx: number) {
 }
 
 export function createWorld(g: Game): World {
-  const w: World = { agents: [], lift: { y: 0, dir: 1, riders: [], stopT: 0, door: 0, waiting: new Map() }, dayIdx: Math.floor(g.month), spawnAcc: 0, stations: {}, queues: {}, thiefDay: -1, desks: {} }
+  const w: World = { agents: [], lift: { y: 0, dir: 1, riders: [], stopT: 0, door: 0, waiting: new Map() }, dayIdx: Math.floor(g.month), spawnAcc: 0, stations: {}, queues: {}, thiefDay: -1, desks: {}, cars: [] }
   setLR(g)
   const p = g.month % 1
   for (const r of g.rooms) r.tenants.forEach((t, i) => {
@@ -605,6 +662,7 @@ export function createWorld(g: Game): World {
     w.agents.push(a)
   })
   syncStaff(g, w)
+  syncCars(g, w)
   return w
 }
 
@@ -668,7 +726,7 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
   } else if (a.role === 'janitor') {
     let best: Room | null = null, score = -Infinity
     for (const r of g.rooms) {
-      if (dirtOf(r) < 15 || claimed(r.id)) continue
+      if (dirtOf(r) < 12 || claimed(r.id)) continue
       const sc = dirtOf(r) - 8 * Math.abs(r.floor - a.floor)
       if (sc > score) { score = sc; best = r }
     }
@@ -803,7 +861,7 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
   // ── Loyers en continu ──
   for (const r of g.rooms) {
     const k = ROOMS[r.type].kind
-    if (k === 'home' && r.tenants.length) r.dirt = Math.min(100, dirtOf(r) + r.tenants.length * 6 * dt / DAY_S)
+    if (k === 'home' && r.tenants.length) r.dirt = Math.min(100, dirtOf(r) + r.tenants.length * 10 * dt / DAY_S)
     if (k !== 'home' && k !== 'parking' && k !== 'office') continue
     const rent = monthlyRent(g, r)
     const cap = storageCap(g, r)
@@ -823,7 +881,11 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
     if (a.kind !== 'res') continue
     const { room, tenant } = findTenant(g, a)
     if (!room || !tenant) continue
-    if (a.lastDay !== day) { a.lastDay = day; a.phaseDone.clear(); a.sched = schedule() }
+    if (a.lastDay !== day) {
+      a.lastDay = day; a.phaseDone.clear(); a.sched = schedule()
+      // Encore dehors à minuit : il rentre tout de suite, et ne repart pas ce jour-là.
+      if (a.away) { a.phaseDone.add('leave'); a.sched.back = 0 }
+    }
     if (a.steps.length) continue
     // Départ au travail
     if (a.sched.works && !a.phaseDone.has('leave') && p >= a.sched.leave && p < a.sched.back) {
@@ -840,23 +902,30 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
         a.steps = [...route(a.floor, desk.r.floor, deskX(desk.r, desk.i)), { t: 'work', roomId: desk.r.id, idx: desk.i, until: a.sched.back }, ...route(desk.r.floor, room.floor, homeSpot(room, idx))]
         continue
       }
-      const ps = parkingStatus(g)
-      const park = tenant.car && ps.spots > 0 ? g.rooms.find((r) => r.type === 'parking') : undefined
-      if (tenant.car && !park) { say(a, '🚗❌'); tenant.sat = Math.max(0, tenant.sat - 5) }
+      const car = tenant.car ? w.cars.find((c) => c.id === tenant.id && c.state === 'parked') : undefined
+      if (tenant.car && !car) { say(a, '🚗❌'); tenant.sat = Math.max(0, tenant.sat - 5) }
       a.carry = 'bag'
-      dirty(g.rooms.find((r) => r.type === 'lobby'), 0.25)
-      a.steps = park
-        ? [...route(a.floor, park.floor, roomX(park, 0.6)), { t: 'gone' }]
-        : [...route(a.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
+      if (car) {
+        a.steps = [...route(a.floor, car.floor, car.x + 18), { t: 'drive', carId: car.id }]
+      } else {
+        dirty(g.rooms.find((r) => r.type === 'lobby'), 0.5)
+        a.steps = [...route(a.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
+      }
       continue
     }
     // Retour
     if (a.away && !a.phaseDone.has('back') && p >= a.sched.back) {
       a.phaseDone.add('back')
-      const park = tenant.car ? g.rooms.find((r) => r.type === 'parking') : undefined
+      const car = w.cars.find((c) => c.id === tenant.id && c.state === 'out')
+      if (car) {
+        // Il revient en voiture : on attend qu'elle soit garée (runCars le fait descendre).
+        const pr = g.rooms.find((x) => x.id === car.roomId)
+        car.state = 'arrive'; car.x = GARAGE_X - 30; car.floor = pr?.floor ?? car.floor
+        continue
+      }
       a.away = false
       a.carry = undefined
-      if (park) { a.floor = park.floor; a.x = roomX(park, 0.6) } else { a.floor = 0; a.x = EXIT_X }
+      a.floor = 0; a.x = EXIT_X
       const idx = room.tenants.indexOf(tenant)
       a.steps = route(a.floor, room.floor, homeSpot(room, idx))
       continue
@@ -916,7 +985,7 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
       const visitors = w.agents.filter((a) => a.kind === 'vis').length
       if (visitors > 14) break
       const s = pick(shops)
-      dirty(g.rooms.find((r) => r.type === 'lobby'), 0.6)
+      dirty(g.rooms.find((r) => r.type === 'lobby'), 1)
       w.agents.push({
         id: uid('v'), kind: 'vis', floor: 0, x: EXIT_X, skin: pick(SKINS), cloth: pick(CLOTHES), hair: pick(HAIR),
         steps: [...route(0, s.floor, queueX(s, 0)), { t: 'enter', roomId: s.id }, ...route(s.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }],
@@ -925,6 +994,10 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
       })
     }
   }
+
+  // ── Voitures ──
+  syncCars(g, w)
+  runCars(g, w, dt)
 
   // ── Personnel & cambrioleurs ──
   syncStaff(g, w)
@@ -1131,9 +1204,17 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
       if (s.idx != null && w.desks[r.id]?.[s.idx] === a.id) w.desks[r.id][s.idx] = null
       a.steps.shift()
     }
+  } else if (s.t === 'drive') {
+    const c = w.cars.find((x) => x.id === s.carId)
+    a.steps.shift()
+    a.away = true
+    // Une vraie journée dehors, même si on part en retard.
+    a.sched.back = Math.min(0.97, Math.max(a.sched.back, (g.month % 1) + 0.2))
+    if (c) { c.state = 'leave'; c.dir = -1 }
   } else if (s.t === 'gone') {
     a.steps.shift()
     if (a.kind === 'res' || a.kind === 'staff') a.away = true
+    if (a.kind === 'res') a.sched.back = Math.min(0.97, Math.max(a.sched.back, (g.month % 1) + 0.2))
     else w.agents = w.agents.filter((x) => x.id !== a.id)
   } else if (s.t === 'settle') {
     a.steps.shift()

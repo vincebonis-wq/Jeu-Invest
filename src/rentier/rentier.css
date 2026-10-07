@@ -23,3 +23,4 @@
 .spin-fast { animation: spin .55s linear infinite; }
 .mop-swing { animation: mop-swing .5s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: 50% 0%; }
 @keyframes mop-swing { from { transform: rotate(-22deg); } to { transform: rotate(18deg); } }
+.wheel { animation: spin .35s linear infinite; transform-box: fill-box; transform-origin: center; }
