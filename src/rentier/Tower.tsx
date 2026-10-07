@@ -5,7 +5,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { useRentier } from './store'
 import {
-  canPlace, monthlyRent, parkingStatus, shaftX, EXIT_X, type Agent, type Game, type Room,
+  canPlace, monthlyRent, parkingStatus, shaftX, EXIT_X, stationCount, stationX, stationsOf, PATIENCE,
+  type Agent, type Game, type Room, type Station,
 } from './sim'
 import { ROOMS, SLOTS, SW, SHAFT_W, FH, BW, floorCost, type RoomType } from './data'
 import { fmtShort } from '../archipel/format'
@@ -60,6 +61,7 @@ function Person({ a, x, y, small }: { a: Agent; x: number; y: number; small?: bo
       {a.carry === 'suitcase' && <g><rect x={5} y={-11} width={6} height={8} rx={1.5} fill="#c0392b" /><rect x={6.8} y={-13} width={2.4} height={2.4} rx={0.8} fill="none" stroke="#7f2318" strokeWidth={0.8} /></g>}
       {a.carry === 'wrench' && <rect x={4.5} y={-17} width={2} height={9} rx={1} fill="#9aa5b1" transform="rotate(20,5,-12)" />}
       {a.carry === 'bag' && <rect x={4.4} y={-14} width={5} height={6} rx={1} fill="#6d4c41" />}
+      {a.carry === 'basket' && <g><rect x={3.5} y={-15} width={9} height={7} rx={2} fill="#d4a373" stroke="#a0703f" strokeWidth={0.7} /><rect x={4.5} y={-17} width={7} height={3} rx={1.5} fill="#90caf9" /></g>}
       {a.kind === 'concierge' && <rect x={-5} y={-28.5} width={10} height={2.6} rx={1} fill="#1f4d2b" />}
     </g>
   )
@@ -88,7 +90,27 @@ function Window({ x, y, w, h, skyCol, lit }: { x: number; y: number; w: number; 
   )
 }
 
-export function Interior({ r, w, night, skyCol, home, g }: { r: Room; w: number; night: number; skyCol: string; home: boolean; g: Game }): ReactElement {
+/** Anneau de progression d'un poste en service (machine, table…). */
+function Progress({ x, y, st }: { x: number; y: number; st: Station }) {
+  if (st.phase === 'done') return <g transform={`translate(${x},${y})`}><circle r={7} fill="#22c55e" stroke="#fff" strokeWidth={1.5} /><text y={0.5} fontSize={8} fill="#fff" textAnchor="middle" dominantBaseline="middle" fontWeight={900}>✓</text></g>
+  if (st.phase !== 'run') return null
+  const k = Math.min(1, st.t / Math.max(0.1, st.dur))
+  const C = 2 * Math.PI * 6
+  const left = Math.max(0, Math.ceil(st.dur - st.t))
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <circle r={8} fill="#fff" stroke="rgba(0,0,0,0.15)" />
+      <circle r={6} fill="none" stroke="#e2e8f0" strokeWidth={2.5} />
+      <circle r={6} fill="none" stroke="#0ea5e9" strokeWidth={2.5} strokeDasharray={`${C * k} ${C}`} transform="rotate(-90)" strokeLinecap="round" />
+      <text y={0.5} fontSize={6.5} fill="#0f172a" textAnchor="middle" dominantBaseline="middle" fontWeight={900}>{left}</text>
+    </g>
+  )
+}
+
+export function Interior({ r, w, night, skyCol, home, g, st }: { r: Room; w: number; night: number; skyCol: string; home: boolean; g: Game; st?: Station[] }): ReactElement {
+  const n = stationCount(r)
+  const sx = (i: number) => stationX(r, i) - r.slot * SW
+  const stOf = (i: number): Station => st?.[i] ?? { agentId: null, t: 0, dur: 0, phase: 'idle', doneT: 0 }
   const h = FH - 8
   const fl = h - 6 // niveau du sol intérieur
   const lit = night > 0.5 && home
@@ -156,34 +178,48 @@ export function Interior({ r, w, night, skyCol, home, g }: { r: Room; w: number;
           <rect x={6} y={fl - 22} width={40} height={4} fill="#d2a679" />
           <rect x={12} y={fl - 34} width={12} height={13} rx={2} fill="#c0c0c0" />
           <rect x={14} y={fl - 30} width={3} height={4} fill="#333" />
-          {[66, 100].map((tx) => <g key={tx}><rect x={tx} y={fl - 14} width={18} height={3} fill="#d2a679" /><rect x={tx + 8} y={fl - 11} width={2} height={11} fill="#6d4c41" /></g>)}
           <rect x={w - 26} y={12} width={18} height={20} fill={skyCol} stroke="#fff" strokeWidth={2} />
+          {Array.from({ length: n }, (_, i) => {
+            const cx = sx(i)
+            return <g key={i}><rect x={cx - 8} y={fl - 14} width={16} height={3} fill="#d2a679" /><rect x={cx - 1} y={fl - 11} width={2} height={11} fill="#6d4c41" /><rect x={cx - 11} y={fl - 8} width={4} height={8} fill="#8d6e63" /><Progress x={cx} y={fl - 44} st={stOf(i)} /></g>
+          })}
         </g>
       )
-    case 'laverie':
+    case 'laverie': {
+      const mw = Math.min(20, (w - 6) / n - 2)
       return (
         <g>
           <rect x={0} y={fl} width={w} height={6} fill="#cfd8dc" />
-          {[8, 34].map((mx) => (
-            <g key={mx}>
-              <rect x={mx} y={fl - 26} width={22} height={26} rx={2} fill="#f5f5f5" stroke="#b0bec5" />
-              <circle cx={mx + 11} cy={fl - 12} r={7} fill="#90caf9" stroke="#78909c" strokeWidth={1.5} />
-              <circle cx={mx + 11} cy={fl - 12} r={4} fill="#bbdefb" className="spin-slow" />
-            </g>
-          ))}
-          <rect x={14} y={12} width={36} height={8} rx={2} fill="#26a69a" />
-          <text x={32} y={17} fontSize={5.5} fill="#fff" textAnchor="middle" fontWeight={800}>LAVERIE</text>
+          <rect x={4} y={8} width={w - 8} height={8} rx={2} fill="#26a69a" />
+          <text x={w / 2} y={13} fontSize={5.5} fill="#fff" textAnchor="middle" fontWeight={800}>LAVERIE</text>
+          {Array.from({ length: n }, (_, i) => {
+            const s = stOf(i)
+            const cx = sx(i)
+            const running = s.phase === 'run'
+            return (
+              <g key={i}>
+                <rect x={cx - mw / 2} y={fl - 26} width={mw} height={26} rx={2} fill="#f5f5f5" stroke="#b0bec5" />
+                <rect x={cx - mw / 2 + 2} y={fl - 24} width={mw - 4} height={3} rx={1} fill={running ? '#22c55e' : '#cfd8dc'} />
+                <circle cx={cx} cy={fl - 11} r={mw * 0.32} fill={running ? '#64b5f6' : '#cfe3f2'} stroke="#78909c" strokeWidth={1.2} />
+                {running && <g className="spin-fast" style={{ transformOrigin: `${cx}px ${fl - 11}px` }}><circle cx={cx - 2} cy={fl - 12} r={1.6} fill="#fff" /><circle cx={cx + 2} cy={fl - 10} r={1.2} fill="#e3f2fd" /><circle cx={cx + 1} cy={fl - 13.5} r={1} fill="#fff" /></g>}
+                <Progress x={cx} y={fl - 36} st={s} />
+              </g>
+            )
+          })}
         </g>
       )
+    }
     case 'sport':
       return (
         <g>
           <rect x={0} y={fl} width={w} height={6} fill="#455a64" />
           <rect x={8} y={10} width={40} height={30} fill="#cfe3f2" stroke="#fff" strokeWidth={2} />
-          <rect x={60} y={fl - 8} width={34} height={8} rx={2} fill="#37474f" />
-          <rect x={88} y={fl - 26} width={4} height={20} fill="#546e7a" />
-          <rect x={86} y={fl - 28} width={10} height={4} rx={1} fill="#263238" />
-          {[16, 26, 36].map((dx) => <g key={dx}><rect x={dx} y={fl - 10} width={8} height={3} fill="#333" /><circle cx={dx} cy={fl - 8.5} r={3} fill="#555" /><circle cx={dx + 8} cy={fl - 8.5} r={3} fill="#555" /></g>)}
+          {Array.from({ length: n }, (_, i) => {
+            const cx = sx(i)
+            return i % 2 === 0
+              ? <g key={i}><rect x={cx - 14} y={fl - 7} width={26} height={7} rx={2} fill="#37474f" /><rect x={cx + 8} y={fl - 24} width={3} height={18} fill="#546e7a" /><rect x={cx + 6} y={fl - 26} width={8} height={3} rx={1} fill="#263238" /><Progress x={cx} y={fl - 44} st={stOf(i)} /></g>
+              : <g key={i}><rect x={cx - 10} y={fl - 9} width={20} height={4} rx={1} fill="#455a64" /><rect x={cx - 8} y={fl - 5} width={2} height={5} fill="#263238" /><rect x={cx + 6} y={fl - 5} width={2} height={5} fill="#263238" /><circle cx={cx - 12} cy={fl - 16} r={3} fill="#555" /><circle cx={cx + 12} cy={fl - 16} r={3} fill="#555" /><rect x={cx - 12} y={fl - 17} width={24} height={2} fill="#333" /><Progress x={cx} y={fl - 44} st={stOf(i)} /></g>
+          })}
           <rect x={w - 22} y={12} width={12} height={8} rx={2} fill="#ef5350" />
         </g>
       )
@@ -196,6 +232,10 @@ export function Interior({ r, w, night, skyCol, home, g }: { r: Room; w: number;
           <rect x={10} y={fl - 18} width={w - 20} height={18} rx={2} fill="#5b3a6b" />
           <rect x={10} y={fl - 20} width={w - 20} height={4} fill="#c79bd8" />
           {Array.from({ length: 7 }, (_, i) => <rect key={i} x={16 + i * 14} y={30} width={4} height={12} rx={1} fill={['#4dd0e1', '#ffb74d', '#81c784', '#e57373'][i % 4]} />)}
+          {Array.from({ length: n }, (_, i) => {
+            const cx = sx(i)
+            return <g key={i}><rect x={cx - 4} y={fl - 10} width={8} height={2.5} rx={1} fill="#c79bd8" /><rect x={cx - 0.8} y={fl - 8} width={1.6} height={8} fill="#8e6aa3" /><Progress x={cx} y={fl - 44} st={stOf(i)} /></g>
+          })}
           {glow && <rect x={0} y={0} width={w} height={h} fill="#ff4fd8" opacity={0.08} />}
         </g>
       )
@@ -352,7 +392,7 @@ export function Tower() {
             <g key={r.id} transform={`translate(${x},${y0})`} onClick={() => useRentier.getState().select(r.id === selected ? null : r.id)} style={{ cursor: 'pointer' }}>
               <g className={isPop ? 'room-pop' : undefined}>
                 <rect x={0} y={0} width={wpx} height={FH - 8} fill={d.wall} />
-                <Interior r={r} w={wpx} night={sk.night} skyCol={sk.bot} home={home} g={g} />
+                <Interior r={r} w={wpx} night={sk.night} skyCol={sk.bot} home={home} g={g} st={ROOMS[r.type].kind === 'shop' ? stationsOf(w, r) : undefined} />
                 {dark && <rect x={0} y={0} width={wpx} height={FH - 8} fill="#0b1028" opacity={0.35} />}
                 <rect x={0} y={0} width={1.5} height={FH - 8} fill="rgba(0,0,0,0.15)" />
                 {vacant && <g><rect x={wpx / 2 - 22} y={22} width={44} height={14} rx={3} fill="#e63946" /><text x={wpx / 2} y={31.5} fontSize={8} fill="#fff" textAnchor="middle" fontWeight={900}>À LOUER</text></g>}
@@ -385,11 +425,20 @@ export function Tower() {
         {/* Habitants & visiteurs */}
         {w.agents.filter((a) => !a.inLift && !(a.kind === 'res' && a.away)).map((a) => {
           const y = baseY(a.floor) - 9
-          const x = X0 + a.x
+          let x = X0 + a.x
+          const s0 = a.steps[0]
+          if (s0 && s0.t === 'lift') {
+            // Les gens attendent l'ascenseur en file, sans se superposer.
+            const q = w.lift.waiting.get(a.floor) ?? []
+            const i = Math.max(0, q.indexOf(a.id))
+            x = X0 + shaftX - 14 - i * 9
+          }
+          const waitK = s0 && s0.t === 'queue' ? Math.min(1, a.waitT / (a.kind === 'res' ? PATIENCE.res : PATIENCE.vis)) : null
           return (
             <g key={a.id} pointerEvents="none">
               <Person a={a} x={x} y={y} />
               {a.icon && <IconBubble x={x} y={y - 30} icon={a.icon} />}
+              {waitK != null && <g transform={`translate(${x - 8},${y - 52})`}><rect width={16} height={3} rx={1.5} fill="rgba(0,0,0,0.25)" /><rect width={16 * (1 - waitK)} height={3} rx={1.5} fill={waitK > 0.66 ? '#ef4444' : waitK > 0.33 ? '#f59e0b' : '#22c55e'} /></g>}
             </g>
           )
         })}
@@ -405,6 +454,16 @@ export function Tower() {
               <g key="inc" transform={`translate(${x + d.w * SW / 2 - 16},${y0 + 40})`} onClick={(e) => { e.stopPropagation(); useRentier.getState().repair(r.id) }} style={{ cursor: 'pointer' }} className="incident">
                 <circle r={11} fill="#e63946" stroke="#fff" strokeWidth={2.5} />
                 <text y={1} fontSize={11} textAnchor="middle" dominantBaseline="middle">{r.incident.kind === 'fuite' ? '💧' : '⚡'}</text>
+              </g>,
+            )
+          }
+          const qn = d.kind === 'shop' ? (w.queues[r.id]?.length ?? 0) : 0
+          if (qn > 0) {
+            const busy = stationsOf(w, r).filter((s) => s.agentId).length
+            out.push(
+              <g key="q" transform={`translate(${X0 + r.slot * SW + d.w * SW - 44},${y0 - 12})`} pointerEvents="none">
+                <rect width={74} height={15} rx={7.5} fill={qn >= 3 ? '#ef4444' : '#f59e0b'} />
+                <text x={37} y={8} fontSize={8} fill="#fff" textAnchor="middle" dominantBaseline="middle" fontWeight={900}>⏳ {qn} en attente · {busy}/{stationCount(r)}</text>
               </g>,
             )
           }

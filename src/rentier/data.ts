@@ -52,15 +52,17 @@ export const FH = 86          // hauteur d'étage
 export const BW = SLOTS * SW + SHAFT_W
 
 // ── Rythme ───────────────────────────────────────────────────────────────────
-export const DAY_S = 36             // 1 cycle jour/nuit = 1 mois = 36 s
+export const DAY_S = 30             // 1 cycle jour/nuit = 1 mois = 30 s
 export const WALK = 46              // px/s
 export const LIFT_SPEED = 1.7       // étages/s
 export const LIFT_CAP = 6
 
-export const START_CASH = 9000
-export const LIFESTYLE = 5000       // train de vie mensuel = cible de liberté
+export const START_CASH = 13000
+export const LIFESTYLE = 8000       // train de vie mensuel = cible de liberté
 /** Chaque logement de plus coûte plus cher : les meilleures affaires partent en premier. */
-export const HOME_COST_GROWTH = 1.27
+export const HOME_COST_GROWTH = 1.34
+/** Les premiers logements gardent leur prix de base : on démarre vite. */
+export const HOME_COST_FREE = 5
 export const SHOP_COST_GROWTH = 1.45
 export const TAX = { lmnp: 0.02, nu: 0.30, bic: 0.25, parking: 0.30 }
 export const FURNISH_COST = (t: RoomType) => (t === 'penthouse' ? 12000 : 3000)

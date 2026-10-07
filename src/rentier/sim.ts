@@ -7,7 +7,7 @@
  */
 
 import {
-  ROOMS, SLOTS, SW, SHAFT_W, DAY_S, WALK, LIFT_SPEED, LIFT_CAP, START_CASH, LIFESTYLE, TAX, HOME_COST_GROWTH, SHOP_COST_GROWTH,
+  ROOMS, SLOTS, SW, SHAFT_W, DAY_S, WALK, LIFT_SPEED, LIFT_CAP, START_CASH, LIFESTYLE, TAX, HOME_COST_GROWTH, HOME_COST_FREE, SHOP_COST_GROWTH,
   FURNISH_COST, floorCost, chargesPerMonth, FREEDOM_TIERS, FIRST_NAMES, SKINS, CLOTHES, HAIR,
   type RoomType, type Need,
 } from './data'
@@ -37,7 +37,7 @@ export interface Game {
   rooms: Room[]
   shopHist: number[]          // recettes nettes des commerces par mois
   shopMonth: number           // recettes du mois en cours
-  stats: { earned: number; taxes: number; charges: number; visits: number; moves: number; repairs: number; collects: number; peak: number }
+  stats: { earned: number; taxes: number; charges: number; visits: number; moves: number; repairs: number; collects: number; peak: number; lost?: number }
   quests: Quest[]
   questCursor: number
   freedomTier: number
@@ -188,7 +188,7 @@ export function storageCap(g: Game, r: Room) {
 /** Prix réel : chaque logement (ou commerce du même type) de plus coûte davantage. */
 export function roomCost(g: Game, type: RoomType) {
   const d = ROOMS[type]
-  if (d.kind === 'home') return Math.round(d.cost * Math.pow(HOME_COST_GROWTH, g.rooms.filter((r) => ROOMS[r.type].kind === 'home').length - 1))
+  if (d.kind === 'home') return Math.round(d.cost * Math.pow(HOME_COST_GROWTH, Math.max(0, g.rooms.filter((r) => ROOMS[r.type].kind === 'home').length - HOME_COST_FREE)))
   if (d.kind === 'shop' || d.kind === 'parking') return Math.round(d.cost * Math.pow(SHOP_COST_GROWTH, g.rooms.filter((r) => r.type === type).length))
   return d.cost
 }
@@ -287,11 +287,11 @@ export type GEvent =
 
 // ── Objectifs ────────────────────────────────────────────────────────────────
 const SCRIPT: Omit<Quest, 'id'>[] = [
-  { kind: 'collect', title: 'Encaisse ton premier loyer', target: 1, reward: 300 },
-  { kind: 'build', param: 'laverie', title: 'Construis une laverie', target: 1, reward: 600 },
-  { kind: 'count', param: 'studio', title: 'Possède 3 studios', target: 3, reward: 1200 },
-  { kind: 'build', param: 'cafe', title: 'Ouvre un café', target: 1, reward: 1500 },
-  { kind: 'floors', title: 'Construis le 2ᵉ étage', target: 2, reward: 2000 },
+  { kind: 'collect', title: 'Encaisse ton premier loyer', target: 1, reward: 600 },
+  { kind: 'build', param: 'laverie', title: 'Construis une laverie', target: 1, reward: 1500 },
+  { kind: 'count', param: 'studio', title: 'Possède 3 studios', target: 3, reward: 3000 },
+  { kind: 'build', param: 'cafe', title: 'Ouvre un café', target: 1, reward: 3000 },
+  { kind: 'floors', title: 'Construis le 2ᵉ étage', target: 2, reward: 4000 },
   { kind: 'tenants', title: 'Loge 6 locataires', target: 6, reward: 2500 },
   { kind: 'basement', title: 'Creuse un sous-sol et ouvre un parking', target: 1, reward: 3000 },
   { kind: 'repair', title: 'Répare un incident', target: 1, reward: 1000 },
@@ -371,7 +371,9 @@ export function applyOffline(g: Game, now: number) {
 export type Step =
   | { t: 'walk'; x: number }
   | { t: 'lift'; to: number }
-  | { t: 'use'; roomId: string; dur: number }
+  | { t: 'enter'; roomId: string }
+  | { t: 'queue'; roomId: string }
+  | { t: 'serve'; roomId: string; idx: number }
   | { t: 'fix'; roomId: string; dur: number }
   | { t: 'gone' }
   | { t: 'settle' }
@@ -391,7 +393,8 @@ export interface Agent {
   dir: 1 | -1
   inLift: boolean
   waitT: number
-  carry?: 'suitcase' | 'wrench' | 'bag'
+  carry?: 'suitcase' | 'wrench' | 'bag' | 'basket'
+  speed: number
   away: boolean
   sched: { leave: number; back: number; evening: number; works: boolean }
   lastDay: number
@@ -400,24 +403,61 @@ export interface Agent {
 
 export interface Lift { y: number; dir: 1 | -1; riders: string[]; stopT: number; waiting: Map<number, string[]> }
 
+/** Poste de service : machine à laver, table de café, appareil de sport, tabouret de bar. */
+export interface Station { agentId: string | null; t: number; dur: number; phase: 'idle' | 'reserved' | 'run' | 'done'; doneT: number }
+
 export interface World {
   agents: Agent[]
   lift: Lift
   dayIdx: number
   spawnAcc: number
+  stations: Record<string, Station[]>
+  queues: Record<string, string[]>
+}
+
+// ── Services (laverie, café, sport, bar) ─────────────────────────────────────
+export const SERVICE_TIME: Partial<Record<RoomType, number>> = { laverie: 8, cafe: 4.5, sport: 6, bar: 6 }
+const BASE_STATIONS: Partial<Record<RoomType, number>> = { laverie: 2, cafe: 3, sport: 2, bar: 4 }
+const SPAN: Partial<Record<RoomType, [number, number]>> = { laverie: [3, 3], cafe: [46, 6], sport: [22, 8], bar: [14, 10] }
+export const PATIENCE = { res: 10, vis: 6 }
+
+export function stationCount(r: Room) {
+  return (BASE_STATIONS[r.type] ?? 0) + (r.level - 1)
+}
+
+/** Position (x locale à l'immeuble) du poste i d'un commerce. */
+export function stationX(r: Room, i: number) {
+  const [a, b] = SPAN[r.type] ?? [6, 6]
+  const w = ROOMS[r.type].w * SW
+  const n = stationCount(r)
+  return r.slot * SW + a + (i + 0.5) * ((w - a - b) / n)
+}
+
+/** File d'attente : devant la porte, côté ascenseur. */
+export function queueX(r: Room, i: number) {
+  return r.slot * SW + ROOMS[r.type].w * SW - 8 + i * 10
+}
+
+export function stationsOf(w: World, r: Room) {
+  const n = stationCount(r)
+  const st = w.stations[r.id] ?? (w.stations[r.id] = [])
+  while (st.length < n) st.push({ agentId: null, t: 0, dur: 0, phase: 'idle', doneT: 0 })
+  return st
 }
 
 function schedule() {
-  return { leave: 0.26 + Math.random() * 0.08, back: 0.58 + Math.random() * 0.08, evening: 0.68 + Math.random() * 0.14, works: Math.random() < 0.82 }
+  return { leave: 0.26 + Math.random() * 0.08, back: 0.58 + Math.random() * 0.08, evening: 0.62 + Math.random() * 0.24, works: Math.random() < 0.82 }
 }
 
 function residentAgent(r: Room, t: Tenant, idx: number): Agent {
   return {
     id: `a-${t.id}`, kind: 'res', tenantId: t.id, homeId: r.id, floor: r.floor, x: homeSpot(r, idx),
     steps: [], skin: t.skin, cloth: t.cloth, hair: t.hair, icon: null, iconT: 0, walking: false, dir: 1,
-    inLift: false, waitT: 0, away: false, sched: schedule(), lastDay: -1, phaseDone: new Set(),
+    inLift: false, waitT: 0, away: false, sched: schedule(), lastDay: -1, phaseDone: new Set(), speed: walkSpeed(),
   }
 }
+
+const walkSpeed = () => WALK * (0.8 + Math.random() * 0.45)
 
 function homeSpot(r: Room, idx: number) {
   const w = ROOMS[r.type].w * SW
@@ -425,7 +465,7 @@ function homeSpot(r: Room, idx: number) {
 }
 
 export function createWorld(g: Game): World {
-  const w: World = { agents: [], lift: { y: 0, dir: 1, riders: [], stopT: 0, waiting: new Map() }, dayIdx: Math.floor(g.month), spawnAcc: 0 }
+  const w: World = { agents: [], lift: { y: 0, dir: 1, riders: [], stopT: 0, waiting: new Map() }, dayIdx: Math.floor(g.month), spawnAcc: 0, stations: {}, queues: {} }
   const p = g.month % 1
   for (const r of g.rooms) r.tenants.forEach((t, i) => {
     const a = residentAgent(r, t, i)
@@ -445,7 +485,7 @@ function conciergeAgent(g: Game): Agent {
   return {
     id: 'concierge', kind: 'concierge', homeId: c.id, floor: c.floor, x: roomX(c), steps: [],
     skin: '#e0a97a', cloth: '#2f6f3e', hair: '#5b3a29', icon: null, iconT: 0, walking: false, dir: 1, inLift: false,
-    waitT: 0, away: false, sched: schedule(), lastDay: 0, phaseDone: new Set(),
+    waitT: 0, away: false, sched: schedule(), lastDay: 0, phaseDone: new Set(), speed: WALK * 1.15,
   }
 }
 
@@ -530,8 +570,15 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
       } else {
         const t = pick(target)
         const idx = room.tenants.indexOf(tenant)
-        a.steps = [...route(a.floor, t.floor, roomX(t, 0.3 + Math.random() * 0.4)), { t: 'use', roomId: t.id, dur: 2.6 }, ...route(t.floor, room.floor, homeSpot(room, idx))]
+        if (need === 'laundry') a.carry = 'basket'
+        a.steps = [...route(a.floor, t.floor, queueX(t, 0)), { t: 'enter', roomId: t.id }, ...route(t.floor, room.floor, homeSpot(room, idx))]
       }
+    }
+    // Petits déplacements chez soi (vivant, mais pas la nuit)
+    if (!a.away && p > 0.24 && p < 0.9 && Math.random() < dt * 0.07) {
+      const wpx = ROOMS[room.type].w * SW
+      a.steps = [{ t: 'walk', x: room.slot * SW + 10 + Math.random() * (wpx - 20) }]
+      continue
     }
     // Sommeil / bruit
     if (!a.away && (p > 0.92 || p < 0.2) && !a.icon) {
@@ -553,8 +600,9 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
       const s = pick(shops)
       w.agents.push({
         id: uid('v'), kind: 'vis', floor: 0, x: EXIT_X, skin: pick(SKINS), cloth: pick(CLOTHES), hair: pick(HAIR),
-        steps: [...route(0, s.floor, roomX(s, 0.25 + Math.random() * 0.5)), { t: 'use', roomId: s.id, dur: 2.4 }, ...route(s.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }],
+        steps: [...route(0, s.floor, queueX(s, 0)), { t: 'enter', roomId: s.id }, ...route(s.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }],
         icon: null, iconT: 0, walking: false, dir: 1, inLift: false, waitT: 0, away: false, sched: schedule(), lastDay: day, phaseDone: new Set(),
+        speed: walkSpeed(), carry: s.type === 'laverie' ? 'basket' : undefined,
       })
     }
   }
@@ -569,6 +617,17 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
       conc.steps = [...route(conc.floor, broken.floor, roomX(broken)), { t: 'fix', roomId: broken.id, dur: 2.2 }, ...route(broken.floor, home.floor, roomX(home))]
     } else conc.carry = undefined
   }
+
+  // ── Postes de service : libération des postes orphelins, fin d'affichage « terminé » ──
+  const alive = new Set(w.agents.map((a) => a.id))
+  for (const id of Object.keys(w.stations)) {
+    if (!g.rooms.some((r) => r.id === id)) { delete w.stations[id]; delete w.queues[id]; continue }
+    for (const st of w.stations[id]) {
+      if (st.agentId && !alive.has(st.agentId)) { st.agentId = null; st.phase = 'idle'; st.t = 0 }
+      if (st.phase === 'done') { st.doneT -= dt; if (st.doneT <= 0) st.phase = 'idle' }
+    }
+  }
+  for (const id of Object.keys(w.queues)) w.queues[id] = w.queues[id].filter((x) => alive.has(x))
 
   // ── Déplacements ──
   for (const a of [...w.agents]) moveAgent(g, w, a, dt, ev)
@@ -588,7 +647,7 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
   if (!s || a.inLift) return
   if (s.t === 'walk') {
     const dx = s.x - a.x
-    const d = WALK * dt
+    const d = (a.speed ?? WALK) * dt
     a.dir = dx >= 0 ? 1 : -1
     if (Math.abs(dx) <= d) { a.x = s.x; a.steps.shift() } else { a.x += Math.sign(dx) * d; a.walking = true }
   } else if (s.t === 'lift') {
@@ -601,20 +660,66 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
       say(a, '😤', 2.5)
       if (a.kind === 'res') { const { tenant } = findTenant(g, a); if (tenant) tenant.sat = Math.max(0, tenant.sat - 4) }
     }
-  } else if (s.t === 'use') {
-    s.dur -= dt
-    if (s.dur <= 0) {
-      const r = g.rooms.find((x) => x.id === s.roomId)
-      if (r) {
-        const net = (ROOMS[r.type].price ?? 0) * (1 + 0.25 * (r.level - 1)) * (1 - TAX.bic)
-        r.stored += net
-        r.visits++
-        g.shopMonth += net
-        g.stats.earned += net
-        g.stats.visits++
-        say(a, a.kind === 'res' ? '😊' : '💶', 1.6)
-        if (a.kind === 'res') { const { tenant } = findTenant(g, a); if (tenant) tenant.sat = Math.min(100, tenant.sat + 4) }
-      }
+  } else if (s.t === 'enter') {
+    const r = g.rooms.find((x) => x.id === s.roomId)
+    if (!r) { a.steps.shift(); return }
+    const st = stationsOf(w, r)
+    const q = w.queues[r.id] ?? (w.queues[r.id] = [])
+    const free = st.findIndex((x) => !x.agentId)
+    if (free >= 0 && q.length === 0) {
+      st[free].agentId = a.id; st[free].phase = 'reserved'; st[free].t = 0
+      a.steps.splice(0, 1, { t: 'walk', x: stationX(r, free) }, { t: 'serve', roomId: r.id, idx: free })
+    } else {
+      q.push(a.id); a.waitT = 0; say(a, '⏳', 999)
+      a.steps.splice(0, 1, { t: 'queue', roomId: r.id })
+    }
+  } else if (s.t === 'queue') {
+    const r = g.rooms.find((x) => x.id === s.roomId)
+    const q = r ? w.queues[r.id] ?? [] : []
+    const pos = q.indexOf(a.id)
+    if (!r || pos < 0) { a.icon = null; a.steps.shift(); return }
+    // Se placer dans la file
+    const qx = queueX(r, pos)
+    const dx = qx - a.x
+    if (Math.abs(dx) > 1) { a.x += Math.sign(dx) * Math.min(Math.abs(dx), (a.speed ?? WALK) * dt); a.walking = true; a.dir = dx > 0 ? 1 : -1 } else a.dir = -1
+    a.waitT += dt
+    const st = stationsOf(w, r)
+    const free = st.findIndex((x) => !x.agentId)
+    if (pos === 0 && free >= 0) {
+      q.shift(); a.icon = null; a.iconT = 0
+      st[free].agentId = a.id; st[free].phase = 'reserved'; st[free].t = 0
+      a.steps.splice(0, 1, { t: 'walk', x: stationX(r, free) }, { t: 'serve', roomId: r.id, idx: free })
+    } else if (a.waitT > (a.kind === 'res' ? PATIENCE.res : PATIENCE.vis)) {
+      // Trop d'attente : on repart, agacé.
+      w.queues[r.id] = q.filter((x) => x !== a.id)
+      say(a, '😤', 2.8)
+      if (a.kind === 'res') { const { tenant } = findTenant(g, a); if (tenant) tenant.sat = Math.max(0, tenant.sat - 7) }
+      else g.stats.lost = (g.stats.lost ?? 0) + 1
+      a.steps.shift()
+    }
+  } else if (s.t === 'serve') {
+    const r = g.rooms.find((x) => x.id === s.roomId)
+    if (!r) { a.steps.shift(); return }
+    const st = stationsOf(w, r)[s.idx]
+    if (!st) { a.steps.shift(); return }
+    if (st.phase !== 'run') {
+      st.phase = 'run'; st.t = 0; st.dur = SERVICE_TIME[r.type] ?? 4
+      if (r.type === 'laverie') a.carry = undefined
+      say(a, r.type === 'cafe' ? '☕' : r.type === 'sport' ? '💪' : r.type === 'bar' ? '🍸' : '🫧', 1.6)
+    }
+    a.dir = -1
+    st.t += dt
+    if (st.t >= st.dur) {
+      const net = (ROOMS[r.type].price ?? 0) * (1 + 0.25 * (r.level - 1)) * (1 - TAX.bic)
+      r.stored += net
+      r.visits++
+      g.shopMonth += net
+      g.stats.earned += net
+      g.stats.visits++
+      st.agentId = null; st.phase = 'done'; st.doneT = 1.2; st.t = 0
+      if (r.type === 'laverie') a.carry = 'basket'
+      say(a, a.kind === 'res' ? '😊' : '💶', 1.6)
+      if (a.kind === 'res') { const { tenant } = findTenant(g, a); if (tenant) tenant.sat = Math.min(100, tenant.sat + 4) }
       a.steps.shift()
     }
   } else if (s.t === 'fix') {
@@ -632,6 +737,7 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
   } else if (s.t === 'settle') {
     a.steps.shift()
   }
+  if (!a.steps.length && a.carry === 'basket' && a.kind === 'res') a.carry = undefined
   void ev
 }
 

@@ -20,3 +20,4 @@
 .target-pulse { animation: selp 1.4s ease-in-out infinite; }
 .spin-slow { transform-box: fill-box; transform-origin: center; animation: spin 2s linear infinite; }
 .neon-text { animation: neon 1.6s ease-in-out infinite; filter: drop-shadow(0 0 4px #ff4fd8); }
+.spin-fast { animation: spin .55s linear infinite; }

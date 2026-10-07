@@ -8,7 +8,7 @@ import { useRentier } from './store'
 import {
   monthlyRent, monthlyNet, freedom, charges, shopAverage, isUnlocked, taxRate, questProgress, tenantCount,
   avgSat, netWorth, parkingStatus, canRenovate, renovateCost, repairCost, liftCost, buildingValue,
-  NEED_ICON, NEED_LABEL, roomCost, type Game, type Room,
+  NEED_ICON, NEED_LABEL, roomCost, stationCount, stationsOf, SERVICE_TIME, type Game, type Room,
 } from './sim'
 import { ROOMS, BUILD_ORDER, SW, FH, LIFESTYLE, FREEDOM_TIERS, FURNISH_COST, TAX, type RoomType, type Need } from './data'
 import { Interior } from './Tower'
@@ -306,13 +306,27 @@ export function RoomPanel() {
           </>
         )}
 
-        {d.kind === 'shop' && (
-          <div className="mt-3 rounded-2xl bg-emerald-50 px-3.5 py-2.5">
-            <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide">Recettes</div>
-            <div className="font-display font-extrabold text-[20px] text-emerald-600 leading-tight">{fmtEur((d.price ?? 0) * (1 + 0.25 * (r.level - 1)) * (1 - TAX.bic))} <span className="text-[12px]">net par client</span></div>
-            <div className="text-[12px] text-slate-500 mt-0.5">{r.visits} clients servis depuis l’ouverture. Locataires et passants viennent ici.</div>
-          </div>
-        )}
+        {d.kind === 'shop' && (() => {
+          const stations = stationsOf(st.world, r)
+          const busy = stations.filter((s) => s.agentId).length
+          const queue = st.world.queues[r.id]?.length ?? 0
+          const unit = r.type === 'laverie' ? 'machine' : r.type === 'cafe' ? 'table' : r.type === 'bar' ? 'tabouret' : 'appareil'
+          return (
+            <>
+              <div className="mt-3 rounded-2xl bg-emerald-50 px-3.5 py-2.5">
+                <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide">Recettes</div>
+                <div className="font-display font-extrabold text-[20px] text-emerald-600 leading-tight">{fmtEur((d.price ?? 0) * (1 + 0.25 * (r.level - 1)) * (1 - TAX.bic))} <span className="text-[12px]">net par client</span></div>
+                <div className="text-[12px] text-slate-500 mt-0.5">{r.visits} clients servis depuis l’ouverture.</div>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-2xl bg-white border border-slate-100 py-2"><div className="font-display font-extrabold text-[18px] text-slate-700">{busy}/{stationCount(r)}</div><div className="text-[10px] font-bold text-slate-400">{unit}s occupé{busy > 1 ? 'e' : ''}s</div></div>
+                <div className={`rounded-2xl border py-2 ${queue >= 3 ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-100'}`}><div className={`font-display font-extrabold text-[18px] ${queue >= 3 ? 'text-rose-600' : 'text-slate-700'}`}>{queue}</div><div className="text-[10px] font-bold text-slate-400">en attente</div></div>
+                <div className="rounded-2xl bg-white border border-slate-100 py-2"><div className="font-display font-extrabold text-[18px] text-slate-700">{SERVICE_TIME[r.type]} s</div><div className="text-[10px] font-bold text-slate-400">{r.type === 'laverie' ? 'par lavage' : 'par client'}</div></div>
+              </div>
+              {queue >= 2 && <div className="mt-2 text-[12px] text-rose-600 font-bold text-center">Trop d’attente : rénove pour ajouter {unit === 'machine' ? 'une machine' : `un${unit === 'table' ? 'e' : ''} ${unit}`}, ou construis-en un second.</div>}
+            </>
+          )
+        })()}
         {d.kind === 'parking' && (
           <div className="mt-3 rounded-2xl bg-emerald-50 px-3.5 py-2.5 text-[13px] text-slate-600">
             <div className="font-display font-extrabold text-[20px] text-emerald-600">+{fmtEur(rent.net)}/mois</div>
@@ -343,7 +357,7 @@ export function RoomPanel() {
               className="flex-1 rounded-2xl py-3 font-display font-extrabold text-white text-[14px] flex flex-col items-center leading-tight active:scale-[0.97] disabled:opacity-40"
               style={{ background: 'linear-gradient(180deg,#ffb547,#f2792b)' }}>
               <span className="flex items-center gap-1"><ArrowUpCircle size={16} /> Rénover · {fmtShort(renovateCost(r))} €</span>
-              <span className="text-[10px] text-white/85">{d.kind === 'home' ? '+18 % de loyer · locataires ravis' : '+25 % par client'}</span>
+              <span className="text-[10px] text-white/85">{d.kind === 'home' ? '+18 % de loyer · locataires ravis' : d.kind === 'shop' ? `+1 ${r.type === 'laverie' ? 'machine' : 'poste'} · +25 % par client` : '+18 % de loyer'}</span>
             </button>
           )}
         </div>
@@ -412,7 +426,7 @@ export function StatsSheet() {
         <Line label="🧾 Charges de l’immeuble" value={-ch} />
         <div className="border-t border-slate-100 mt-2 pt-2"><Line label="= Revenus nets" value={monthlyNet(g)} bold /></div>
         <Line label="🎯 Ton train de vie" value={LIFESTYLE} muted />
-        <div className="text-[12px] text-slate-400 mt-2">Impôts payés depuis le début : {fmtEur(g.stats.taxes)} · {g.stats.moves} déménagement{g.stats.moves > 1 ? 's' : ''}</div>
+        <div className="text-[12px] text-slate-400 mt-2">Impôts payés : {fmtEur(g.stats.taxes)} · {g.stats.moves} déménagement{g.stats.moves > 1 ? 's' : ''} · {g.stats.lost ?? 0} client{(g.stats.lost ?? 0) > 1 ? 's' : ''} perdu{(g.stats.lost ?? 0) > 1 ? 's' : ''} (attente)</div>
       </div>
       <div className="mt-3 flex gap-2">
         <button onClick={() => st.toggleMute()} className="flex-1 rounded-2xl bg-white py-3 font-bold text-slate-600 flex items-center justify-center gap-2 shadow-sm">
