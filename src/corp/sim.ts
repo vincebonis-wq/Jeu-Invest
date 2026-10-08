@@ -58,9 +58,8 @@ export const NIGHT_MULT = 6
 export function isQuietNight(g: Game, w: World) {
   const p = g.day % 1
   const night = p >= WORK_END + 0.07 || p < WORK_START - 0.03
-  // Sans vigile, on laisse au joueur le temps de toucher le voleur avant qu'il ne vole.
-  const thiefToWatch = !g.rooms.some((r) => r.type === 'securite') && w.agents.some((a) => a.kind === 'thief' && !a.caught && !a.loot)
-  return night && !thiefToWatch
+  void w
+  return night
 }
 export function timeScale(g: Game, w: World) {
   return (g.speed ?? 1) * (g.fastNight !== false && isQuietNight(g, w) ? NIGHT_MULT : 1)
