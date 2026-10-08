@@ -104,6 +104,23 @@ function SeatedWorker({ a, cx, fl, boost }: { a: Agent; cx: number; fl: number; 
   )
 }
 
+function CarSprite({ x, y, color, dir, moving, night }: { x: number; y: number; color: string; dir: 1 | -1; moving: boolean; night: number }) {
+  return (
+    <g transform={`translate(${x},${y}) scale(${dir},1)`} pointerEvents="none">
+      <ellipse cx={0} cy={0.5} rx={17} ry={2} fill="rgba(0,0,0,0.25)" />
+      {moving && night > 0.3 && <path d="M15,-6 L40,-11 L40,1 Z" fill="#fff7c2" opacity={0.35} />}
+      <rect x={-16} y={-10} width={32} height={8} rx={3} fill={color} stroke="rgba(0,0,0,0.35)" strokeWidth={0.6} />
+      <path d="M-9,-10 L-6,-16 L7,-16 L11,-10 Z" fill={color} stroke="rgba(0,0,0,0.35)" strokeWidth={0.6} />
+      <path d="M-7.5,-10.5 L-5.2,-15 L0,-15 L0,-10.5 Z M1,-10.5 L1,-15 L6.4,-15 L9.6,-10.5 Z" fill="#cfe8ff" />
+      <rect x={-16} y={-6.5} width={32} height={1.2} fill="rgba(255,255,255,0.35)" />
+      <rect x={14} y={-8.5} width={2.2} height={2} rx={0.6} fill={moving ? '#fff59d' : '#fde68a'} />
+      <rect x={-16.2} y={-8.5} width={2} height={2} rx={0.6} fill="#ef4444" />
+      <g className={moving ? 'wheel' : undefined}><circle cx={-9} cy={-2} r={3} fill="#1f2937" /><circle cx={-9} cy={-2} r={1.2} fill="#9ca3af" /></g>
+      <g className={moving ? 'wheel' : undefined}><circle cx={9} cy={-2} r={3} fill="#1f2937" /><circle cx={9} cy={-2} r={1.2} fill="#9ca3af" /></g>
+    </g>
+  )
+}
+
 function IconBubble({ x, y, icon }: { x: number; y: number; icon: string }) {
   const w = icon.length > 2 ? 30 : 22
   return (
@@ -350,6 +367,58 @@ export function Interior({ r, w, night, skyCol, g, st, seats, boosts }: { r: Roo
           <path d={`M${w - 30},${fl - 13} l3,-8 h3 l3,8 z`} fill="#86efac" opacity={0.85} />
         </g>
       )
+    case 'parking':
+      return (
+        <g>
+          <rect x={0} y={fl} width={w} height={6} fill="#5f666e" />
+          {[0, 1, 2, 3].map((i) => <rect key={i} x={3 + i * 42} y={fl - 1} width={2} height={7} fill="#f1f5f9" />)}
+          {[0, 1, 2].map((i) => <text key={i} x={24 + i * 42} y={fl + 5} fontSize={5} fill="#cbd5e1" textAnchor="middle" fontWeight={900}>{r.slot * 3 + i + 1}</text>)}
+          <rect x={0} y={4} width={w} height={3} fill="#475569" />
+          {[0.25, 0.75].map((k) => <rect key={k} x={w * k - 6} y={7} width={12} height={2} fill={night > 0.3 ? '#fef9c3' : '#e2e8f0'} />)}
+          <rect x={w - 20} y={12} width={12} height={12} rx={2} fill="#1d4ed8" />
+          <text x={w - 14} y={20} fontSize={8} fill="#fff" textAnchor="middle" fontWeight={900}>P</text>
+        </g>
+      )
+    case 'serveurs': {
+      const t = Math.floor(Date.now() / 250)
+      return (
+        <g>
+          <rect x={0} y={fl} width={w} height={6} fill="#334155" />
+          {Array.from({ length: Math.ceil(w / 8) }, (_, i) => <rect key={i} x={i * 8} y={fl} width={4} height={6} fill="#3f4b5e" />)}
+          {[0, 1, 2].map((k) => (
+            <g key={k}>
+              <rect x={5 + k * 20} y={12} width={16} height={fl - 12} rx={1} fill="#0f172a" stroke="#475569" strokeWidth={0.6} />
+              {Array.from({ length: 8 }, (_, i) => (
+                <g key={i}>
+                  <rect x={7 + k * 20} y={14 + i * 6.5} width={12} height={4.5} fill="#1e293b" />
+                  <circle cx={9 + k * 20} cy={16.2 + i * 6.5} r={0.8} fill={(t + i * 3 + k) % 4 ? '#22c55e' : '#38bdf8'} />
+                  <circle cx={11.5 + k * 20} cy={16.2 + i * 6.5} r={0.8} fill={(t + i + k * 2) % 5 ? '#16a34a' : '#f59e0b'} />
+                </g>
+              ))}
+            </g>
+          ))}
+          <text x={w - 8} y={10} fontSize={6} textAnchor="end">❄️</text>
+          <rect x={0} y={0} width={w} height={h} fill="#38bdf8" opacity={0.06} />
+        </g>
+      )
+    }
+    case 'archives':
+      return (
+        <g>
+          <rect x={0} y={fl} width={w} height={6} fill="#8d7b63" />
+          {[0, 1, 2, 3].map((k) => (
+            <g key={k}>
+              <rect x={6 + k * 31} y={10} width={26} height={fl - 10} fill="#78716c" />
+              {[0, 1, 2, 3].map((i) => (
+                <g key={i}>
+                  <rect x={7 + k * 31} y={22 + i * 12} width={24} height={1.6} fill="#57534e" />
+                  {[0, 1, 2, 3].map((b) => <rect key={b} x={8 + k * 31 + b * 6} y={14 + i * 12} width={5} height={8} rx={0.6} fill={['#e7d3a8', '#d6c08f', '#c9b27a', '#ead9b4'][(b + i + k) % 4]} stroke="#a8916a" strokeWidth={0.4} />)}
+                </g>
+              ))}
+            </g>
+          ))}
+        </g>
+      )
     default:
       return <g />
   }
@@ -390,7 +459,8 @@ export function Tower() {
     if (!el || scrolled.current || vh === 1200) return
     scrolled.current = true
     const scale = el.clientWidth / W
-    el.scrollTop = Math.max(0, groundBase * scale - el.clientHeight * 0.74)
+    // Avec un sous-sol, on remonte un peu la vue pour qu'il ne soit pas caché par les boutons.
+    el.scrollTop = Math.max(0, groundBase * scale - el.clientHeight * 0.74 + Math.min(2, -g.bottom) * FH * scale)
   }, [vh, groundBase])
 
   const rooms = g.rooms
@@ -493,7 +563,7 @@ export function Tower() {
             <g key={r.id} transform={`translate(${x},${y0})`} onClick={() => useCorp.getState().select(r.id === selected ? null : r.id)} style={{ cursor: 'pointer' }}>
               <g className={isPop ? 'room-pop' : undefined}>
                 <rect x={0} y={0} width={wpx} height={FH - 8} fill={d.wall} />
-                {r.type !== 'wc' && (
+                {r.type !== 'wc' && r.type !== 'parking' && r.type !== 'serveurs' && (
                   <g pointerEvents="none">
                     <rect x={0} y={FH - 34} width={wpx} height={20} fill={shade(d.wall, 0.9)} />
                     <rect x={0} y={FH - 35.5} width={wpx} height={1.5} fill={shade(d.wall, 1.08)} />
@@ -604,6 +674,19 @@ export function Tower() {
             </g>
           )
         })()}
+
+        {/* Voitures des employés & tunnel du garage */}
+        {w.cars.filter((c) => c.state !== 'out').map((c) => (
+          <CarSprite key={c.id} x={X0 + c.x} y={baseY(c.floor) - 9} color={c.color} dir={c.dir} moving={c.state !== 'parked'} night={sk.night} />
+        ))}
+        {floors.filter((f) => f < 0).map((f) => (
+          <g key={`tun${f}`} pointerEvents="none">
+            <rect x={0} y={baseY(f) - 44} width={X0 - 6} height={36} fill="#1b1410" />
+            <rect x={0} y={baseY(f) - 44} width={X0 - 6} height={36} fill="url(#tunnel)" />
+            <rect x={X0 - 9} y={baseY(f) - 47} width={5} height={39} fill="#f2c94c" />
+            {[0, 1, 2, 3].map((i) => <rect key={i} x={X0 - 9} y={baseY(f) - 45 + i * 10} width={5} height={5} fill="#1f2937" />)}
+          </g>
+        ))}
 
         {/* Habitants & visiteurs */}
         {w.agents.filter((a) => !a.inLift && !a.away && !seated.has(a.id)).map((a) => {
@@ -749,6 +832,9 @@ export function Tower() {
           <radialGradient id="coinGrad" cx="35%" cy="30%">
             <stop offset="0%" stopColor="#fff6c4" /><stop offset="40%" stopColor="#ffd34d" /><stop offset="100%" stopColor="#d18a0d" />
           </radialGradient>
+          <linearGradient id="tunnel" x1="1" y1="0" x2="0" y2="0">
+            <stop offset="0%" stopColor="#3a2e24" /><stop offset="100%" stopColor="#0b0806" />
+          </linearGradient>
           <linearGradient id="tunnel" x1="1" y1="0" x2="0" y2="0">
             <stop offset="0%" stopColor="#3a2e24" /><stop offset="100%" stopColor="#0b0806" />
           </linearGradient>

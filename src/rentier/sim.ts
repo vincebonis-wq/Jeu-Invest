@@ -1008,12 +1008,14 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
   const alive = new Set(w.agents.map((a) => a.id))
   for (const id of Object.keys(w.stations)) {
     if (!g.rooms.some((r) => r.id === id)) { delete w.stations[id]; delete w.queues[id]; continue }
-    for (const st of w.stations[id]) {
-      if (st.agentId && !alive.has(st.agentId)) { st.agentId = null; st.phase = 'idle'; st.t = 0 }
+    w.stations[id].forEach((st, i) => {
+      // Libère le poste si celui qui l'a réservé n'y va plus (parti, trajet annulé…).
+      const holder = st.agentId ? w.agents.find((a) => a.id === st.agentId) : undefined
+      if (st.agentId && !holder?.steps.some((s) => s.t === 'serve' && s.roomId === id && s.idx === i)) { st.agentId = null; if (st.phase !== 'done') st.phase = 'idle'; st.t = 0 }
       if (st.phase === 'done') { st.doneT -= dt; if (st.doneT <= 0) st.phase = 'idle' }
-    }
+    })
   }
-  for (const id of Object.keys(w.queues)) w.queues[id] = w.queues[id].filter((x) => alive.has(x))
+  for (const id of Object.keys(w.queues)) w.queues[id] = w.queues[id].filter((x) => { const a = w.agents.find((q) => q.id === x); return !!a && a.steps[0]?.t === 'queue' && (a.steps[0] as { roomId: string }).roomId === id })
   for (const id of Object.keys(w.desks)) {
     if (!g.rooms.some((r) => r.id === id)) { delete w.desks[id]; continue }
     w.desks[id] = w.desks[id].map((x) => (x && alive.has(x) ? x : null))

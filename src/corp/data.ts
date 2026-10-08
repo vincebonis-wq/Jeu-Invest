@@ -10,6 +10,7 @@ export type RoomType =
   | 'lobby' | 'openspace' | 'bureaupro' | 'direction'
   | 'wc' | 'cafe' | 'pause'
   | 'supervision' | 'menage' | 'it' | 'securite' | 'labo'
+  | 'parking' | 'serveurs' | 'archives'
 
 export type Need = 'bladder' | 'energy' | 'mood'
 export type StaffRole = 'janitor' | 'tech' | 'guard' | 'researcher' | 'supervisor'
@@ -20,8 +21,9 @@ export interface RoomDef {
   emoji: string
   w: number
   cost: number
-  kind: 'fixed' | 'work' | 'facility' | 'service'
-  floor: 'ground' | 'upper' | 'any' | 'notBasement'
+  kind: 'fixed' | 'work' | 'facility' | 'service' | 'support'
+  floor: 'ground' | 'upper' | 'any' | 'notBasement' | 'basement'
+  spots?: number            // places de parking
   desks?: number            // postes de travail
   taskTime?: number         // secondes par dossier
   taskValue?: number        // € par dossier
@@ -48,10 +50,13 @@ export const ROOMS: Record<RoomType, RoomDef> = {
   menage:      { type: 'menage', name: 'Local d’entretien', emoji: '🧹', w: 1, cost: 1500, kind: 'service', floor: 'any', staff: 'janitor', wall: '#dcecf5', desc: 'L’agent d’entretien ramasse papiers, gobelets et peaux de banane, et récure les toilettes.' },
   it:          { type: 'it', name: 'Service informatique', emoji: '🔧', w: 1, cost: 3000, kind: 'service', floor: 'any', staff: 'tech', wall: '#e2e8f0', desc: 'Le technicien court réparer les ordinateurs en panne.' },
   securite:    { type: 'securite', name: 'Poste de sécurité', emoji: '👮', w: 1, cost: 5000, kind: 'service', floor: 'notBasement', staff: 'guard', research: 'securite', wall: '#dfe4ec', desc: 'Le vigile fait des rondes de nuit et arrête les voleurs avant qu’ils ne vident les postes.' },
+  parking:     { type: 'parking', name: 'Parking', emoji: '🅿️', w: 2, cost: 4000, kind: 'support', floor: 'basement', spots: 3, wall: '#8a929c', desc: '3 places. Les employés motorisés arrivent par le garage, à l’heure et de bonne humeur. Sans place, ils tournent pour se garer : en retard et agacés.' },
+  serveurs:    { type: 'serveurs', name: 'Salle des serveurs', emoji: '🗄️', w: 1, cost: 8000, kind: 'support', floor: 'basement', wall: '#1f2937', desc: 'Au frais sous terre : deux fois moins de pannes d’ordinateur dans toute la tour (cumulable deux fois).' },
+  archives:    { type: 'archives', name: 'Archives', emoji: '🗃️', w: 2, cost: 7000, kind: 'support', floor: 'basement', wall: '#d6cfc0', desc: 'Des dossiers bien classés : +10 % sur chaque dossier traité dans toute la tour (jusqu’à 3 salles).' },
   labo:        { type: 'labo', name: 'Laboratoire R&D', emoji: '🔬', w: 1, cost: 4000, kind: 'service', floor: 'notBasement', staff: 'researcher', wall: '#eef2ff', desc: 'Des chercheurs produisent des points de recherche 💡 pour améliorer ton entreprise.' },
 }
 
-export const BUILD_ORDER: RoomType[] = ['openspace', 'wc', 'cafe', 'menage', 'it', 'supervision', 'labo', 'pause', 'bureaupro', 'securite', 'direction']
+export const BUILD_ORDER: RoomType[] = ['openspace', 'wc', 'cafe', 'menage', 'it', 'supervision', 'labo', 'parking', 'serveurs', 'archives', 'pause', 'bureaupro', 'securite', 'direction']
 
 export const STAFF: Record<StaffRole, { title: string; emoji: string; salary: number; cloth: string; cap: string }> = {
   janitor: { title: 'Agent d’entretien', emoji: '🧹', salary: 50, cloth: '#3a86ff', cap: '#1d4ed8' },

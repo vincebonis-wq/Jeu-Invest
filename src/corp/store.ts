@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import {
   createGame, createWorld, step, applyOffline, build as simBuild, buildFloor as simFloor, collect as simCollect,
   renovate as simRenovate, cleanRoom, fixDesk as simFix, upgradeLift as simLift, claimQuest as simClaim, sell as simSell,
-  installLift as simInstallLift, extendLift as simExtendLift, doResearch, scareThief, fillQuests, checkProgress, canPlace, roomCost,
+  migrate, installLift as simInstallLift, extendLift as simExtendLift, doResearch, scareThief, fillQuests, checkProgress, canPlace, roomCost,
   timeScale, type Game, type World, type GEvent,
 } from './sim'
 import { ROOMS, TIERS, type RoomType } from './data'
@@ -65,7 +65,7 @@ interface Store {
 function load(): Game {
   try {
     const raw = localStorage.getItem(SAVE_KEY)
-    if (raw) { const g = JSON.parse(raw) as Game; if (g?.version === 3) return g }
+    if (raw) { const g = JSON.parse(raw) as Game; if (g?.version === 3) return migrate(g) }
   } catch { /* ignore */ }
   return createGame()
 }

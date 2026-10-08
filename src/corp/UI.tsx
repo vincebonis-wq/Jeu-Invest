@@ -7,7 +7,7 @@ import { Hammer, Target, PieChart, FlaskConical, Users, X, Lock, Coins, Volume2,
 import { useCorp } from './store'
 import {
   profitPerDay, dailyCosts, workerSalaries, staffSalaries, buildingCharges, isUnlocked, questProgress, employees, avgMood, netWorth, buildingValue,
-  isQuietNight, NIGHT_MULT, canRenovate, renovateCost, liftCost, liftNeeds, roomCost, stationCount, stationsOf, useTime, canResearch, fileValue, has, tierOf,
+  isQuietNight, NIGHT_MULT, parkingStatus, archivesBonus, serversMult, canRenovate, renovateCost, liftCost, liftNeeds, roomCost, stationCount, stationsOf, useTime, canResearch, fileValue, has, tierOf,
   type Game, type Room, type Agent, type Employee,
 } from './sim'
 import { ROOMS, BUILD_ORDER, SW, FH, TIERS, STAFF, RESEARCH, RP_RATE, CLEAN_COST, FIX_COST, BANK_CAP, liftInstallCost, type RoomType, type StaffRole } from './data'
@@ -203,7 +203,7 @@ export function BuildSheet() {
   const st = useCorp.getState()
   const g = st.game
   const close = () => st.openSheet(null)
-  const kindLabel: Record<string, string> = { work: 'Travail', facility: 'Confort', service: 'Équipe' }
+  const kindLabel: Record<string, string> = { work: 'Travail', facility: 'Confort', service: 'Équipe', support: 'Sous-sol' }
   return (
     <Sheet title="Construire" onClose={close}>
       <div className="space-y-2.5">
@@ -214,7 +214,8 @@ export function BuildSheet() {
           const afford = g.cash >= cost
           const line = d.kind === 'work' ? `${d.desks} postes · ${fmtEur(d.taskValue ?? 0)}/dossier · salaire ${fmtEur(d.salary ?? 0)}/j`
             : d.kind === 'facility' ? `${d.stations} places · ${d.serves === 'bladder' ? 'besoin pressant' : d.serves === 'energy' ? 'énergie' : 'moral'}`
-            : d.staff ? `${STAFF[d.staff].emoji} 1 ${STAFF[d.staff].title.toLowerCase()} · ${fmtEur(STAFF[d.staff].salary)}/jour` : ''
+            : d.staff ? `${STAFF[d.staff].emoji} 1 ${STAFF[d.staff].title.toLowerCase()} · ${fmtEur(STAFF[d.staff].salary)}/jour`
+            : t === 'parking' ? `${d.spots} places · sous-sol uniquement` : t === 'serveurs' ? '−50 % de pannes · sous-sol uniquement' : t === 'archives' ? '+10 % par dossier · sous-sol uniquement' : ''
           return (
             <button key={t} disabled={!unlocked} onClick={() => st.chooseBuild(t)}
               className="w-full relative rounded-3xl bg-white p-3 flex items-center gap-3 text-left shadow-[0_4px_14px_-6px_rgba(15,40,80,0.25)] active:scale-[0.98] transition-transform">
@@ -350,6 +351,14 @@ export function RoomPanel() {
           )
         })()}
 
+        {d.kind === 'support' && (() => {
+          const ps = parkingStatus(g)
+          const text = r.type === 'parking'
+            ? <>🚗 <b>{ps.cars}</b> employés viennent en voiture pour <b>{ps.spots}</b> places. {ps.cars > ps.spots ? <span className="text-rose-600 font-bold">{ps.cars - ps.spots} tournent pour se garer : en retard et agacés.</span> : <span className="text-emerald-600 font-bold">Tout le monde est garé.</span>}</>
+            : r.type === 'serveurs' ? <>🗄️ Pannes d’ordinateur dans toute la tour : <b>×{serversMult(g).toFixed(2).replace('.00', '')}</b> (2 salles maximum).</>
+            : <>🗃️ Bonus sur chaque dossier de la tour : <b>+{Math.round(archivesBonus(g) * 100)} %</b> (3 salles maximum).</>
+          return <div className="mt-3 rounded-2xl bg-white border border-slate-100 px-3.5 py-2.5 text-[13px] text-slate-600">{text}<div className="text-[11px] text-slate-400 mt-1">{d.desc}</div></div>
+        })()}
         {r.trash.length > 0 && (
           <div className="mt-2 rounded-2xl bg-amber-50 border border-amber-200 px-3 py-2 flex items-center gap-2">
             <span className="text-lg">{r.trash.length >= 4 ? '🤢' : '🗑️'}</span>
