@@ -453,6 +453,7 @@ export interface Agent {
   needCd: number           // « je patiente encore un peu »
   sweepDir?: 1 | -1        // sens de balayage de l'agent d'entretien
   prodK?: number           // productivité actuelle (1 = normal)
+  commute?: number         // temps de trajet appris (fraction de journée) : il part plus tôt s'il habite… en haut
   need?: 'pc' | 'wc' | 'coffee' | 'mood' | 'boost' | null   // ce qui le préoccupe (affiché au-dessus de sa tête)
   boostT: number
   needT: number
@@ -687,7 +688,7 @@ function route(fromFloor: number, toFloor: number, toX: number, fromX = 20): Ste
       }
       if (b.kind === 'car') { if (a.kind === 'door' && a.lift === b.lift && a.f === b.f) relax(v, wait(b.lift!, b.f)); continue }
       if (b.f === a.f) relax(v, Math.abs(b.x - a.x) / WALK)
-      else if (a.kind === 'esc' && b.kind === 'esc' && a.room === b.room) relax(v, 1.1)
+      else if (a.kind === 'esc' && b.kind === 'esc' && a.room === b.room) relax(v, 0.9)
       else if (a.kind === 'stair' && b.kind === 'stair' && Math.abs(b.f - a.f) === 1 && Math.abs(b.x - stairX(b.f)) < 0.01 && Math.abs(a.x - stairX(a.f)) < 0.01 && !stairServed(g, Math.min(a.f, b.f))) relax(v, STAIR_S)
     }
   }
@@ -724,7 +725,7 @@ function baseAgent(id: string, kind: Agent['kind'], floor: number, x: number): A
   return {
     id, kind, floor, x, steps: [], skin: pick(SKINS), cloth: '#64748b', hair: pick(HAIR), icon: null, iconT: 0, walking: false, dir: 1,
     inLift: false, waitT: 0, away: false, speed: walkSpeed(), energy: 70 + Math.random() * 30, bladder: Math.random() * 55, boostT: 0, needT: 0,
-    bRate: 0.9 + Math.random() * 1.8, eRate: 1.3 + Math.random() * 1.3, bMax: 70 + Math.random() * 24, needCd: 0,
+    bRate: 0.55 + Math.random() * 1.05, eRate: 0.75 + Math.random() * 0.75, bMax: 70 + Math.random() * 24, needCd: 0,
     prog: Math.random() * 0.5, bagN: 0, arrive: WORK_START + Math.random() * 0.06, leave: WORK_END + Math.random() * 0.04, lastDay: -1, done: new Set(),
   }
 }
@@ -753,7 +754,7 @@ function syncAgents(g: Game, w: World) {
       const a = baseAgent(id, 'staff', r.floor, slotX(r.slot) + 16 + i * 14)
       Object.assign(a, { role, roomId: r.id, cloth: STAFF[role].cloth, speed: WALK * 1.2 })
       if (role === 'supervisor') a.tie = '#111827'
-      a.away = (role === 'researcher' || role === 'supervisor') && offHours(a)
+      a.away = ((role === 'researcher' || role === 'supervisor' || role === 'tech') && offHours(a)) || (role === 'janitor' && !offHours(a))
       w.agents.push(a)
     }
   }
@@ -785,7 +786,8 @@ function runWorker(g: Game, w: World, a: Agent, p: number, day: number) {
   if (a.lastDay !== day) {
     a.lastDay = day; a.done.clear()
     // Venu en voiture sans place de parking : il tourne pour se garer.
-    a.arrive = WORK_START + Math.random() * 0.06 + (e?.car && !car ? 0.06 : 0)
+    // Il part de chez lui assez tôt pour être à son poste vers 8 h, selon le temps de trajet appris.
+    a.arrive = Math.max(0.16, Math.min(WORK_START + 0.06, 0.335 + Math.random() * 0.03 - (a.commute ?? 0.05))) + (e?.car && !car ? 0.05 : 0)
     a.leave = workEnd(g) + Math.random() * 0.03
     if (!a.away && p > WORK_START) a.arrive = Math.min(a.arrive, p)   // déjà au bureau : il y reste
   }
@@ -848,6 +850,7 @@ function workTick(g: Game, w: World, a: Agent, s: Extract<Step, { t: 'work' }>, 
   a.dir = 1
   a.x = deskX(r, s.idx)
   if (p >= a.leave || p < 0.2) { a.steps.shift(); return }
+  if (!a.done.has('desk')) { a.done.add('desk'); if (!a.done.has('lateStart')) a.commute = (a.commute ?? 0.05) * 0.5 + Math.max(0, p - a.arrive) * 0.5 }
   // Besoins
   if (a.needCd > 0) a.needCd -= dt
   else if ((a.bladder >= a.bMax || a.energy <= 22 || e.mood < 38) && needTrip(g, w, a, r, s.idx)) { a.needT = 0; return }
@@ -902,7 +905,7 @@ function moodTick(g: Game, w: World, dt: number) {
     }
     const here = g.rooms.find((x) => x.floor === Math.round(a.floor) && a.x >= slotX(x.slot) && a.x < slotX(x.slot) + ROOMS[x.type].w * SW) ?? r
     const noSpot = e.car && !w.cars.some((c) => c.id === e.id)
-    let target = 74 + (has(g, 'plants') ? 10 : 0) - (noSpot ? 8 : 0) - Math.min(5, here.trash.length) * 6 - (a.needT > 0 ? 22 : 0) - (r.broken[a.idx ?? 0] ? 8 : 0)
+    let target = 74 + (has(g, 'plants') ? 10 : 0) - (noSpot ? 8 : 0) - Math.min(5, here.trash.length) * 3.5 - (a.needT > 0 ? 22 : 0) - (r.broken[a.idx ?? 0] ? 8 : 0)
     if (ROOMS[r.type].type === 'direction' && r.trash.length) target -= 12
     e.mood += (target - e.mood) * dt * 0.06
     e.mood = Math.max(0, Math.min(100, e.mood))
@@ -980,17 +983,33 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
     }
     a.carry = undefined
   } else if (a.role === 'janitor') {
-    // Ménage complet la nuit ; en journée, seulement un passage aux toilettes quand elles sont sales.
-    const office = p > WORK_START && p < workEnd(g)
-    // Chaque agent a sa propre zone d'étages (blocs contigus), et la balaie étage par étage.
+    // Équipe de nuit : ils arrivent le soir et repartent le matin. Le jour, ils dorment chez eux,
+    // sauf un agent « de garde » qui vient seulement si des toilettes deviennent vraiment sales.
+    const office = p > WORK_START + 0.02 && p < workEnd(g)
     const crew = w.agents.filter((x) => x.role === 'janitor').sort((x, y) => (x.id < y.id ? -1 : 1))
     const k = Math.max(0, crew.indexOf(a)), nJ = Math.max(1, crew.length)
+    if (office) {
+      const wcs = g.rooms.filter((r) => r.type === 'wc')
+      const onCall = k === 0 && (wcs.some((r) => r.trash.length >= 3) || (a.done.has('duty') && !a.away && wcs.some((r) => r.trash.length > 0)))
+      if (!onCall) {
+        a.done.delete('duty')
+        if (!a.away) { a.carry = undefined; a.bagN = 0; a.steps = [...routeA(a, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }] }
+        return
+      }
+      if (a.away) { a.away = false; a.floor = 0; a.x = EXIT_X; a.carry = 'trashbag'; say(a, '🚽', 2) }
+      a.done.add('duty')
+    } else if (a.away) {
+      // Début du service de nuit.
+      a.away = false; a.floor = 0; a.x = EXIT_X; a.carry = 'trashbag'; a.bagN = 0
+      a.steps = route(0, home.floor, slotX(home.slot) + 16)
+      return
+    }
     const nF = g.top - g.bottom + 1
     const zLo = g.bottom + Math.floor(k * nF / nJ), zHi = g.bottom + Math.floor((k + 1) * nF / nJ) - 1
     const inZone = (f: number) => f >= zLo && f <= zHi
     const cur = Math.round(a.floor)
-    // Le jour : toilettes dès qu'elles sont sales, et les bureaux vraiment encombrés (3 déchets ou plus).
-    const ok = (r: Room, t: Trash) => !(office && r.type !== 'wc' && r.trash.length < 3) && !claimed(t.id)
+    // Le jour (agent de garde) : uniquement les toilettes.
+    const ok = (r: Room, t: Trash) => !(office && r.type !== 'wc') && !claimed(t.id)
     let best: { r: Room; t: Trash } | null = null
     if (a.bagN < 12) {
       // 1) sur l'étage courant, dans le sens de balayage (sinon on fait demi-tour)
@@ -1193,7 +1212,7 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
     const r = escalatorsOf(g).find((x) => x.id === s.roomId)
     if (!r) { a.steps.splice(0, 1, ...route(a.floor, s.to, a.x, a.x)); return }
     const d = s.to - a.floor
-    const mv = dt / 1.0
+    const mv = dt / 0.8
     if (Math.abs(d) <= mv) { a.floor = s.to; a.steps.shift() } else a.floor += Math.sign(d) * mv
     const e = escX(r)
     const nx = e.lo + (e.hi - e.lo) * Math.max(0, Math.min(1, a.floor - r.floor))

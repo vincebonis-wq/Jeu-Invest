@@ -40,14 +40,14 @@ export interface RoomDef {
 
 export const ROOMS: Record<RoomType, RoomDef> = {
   lobby:       { type: 'lobby', name: 'Accueil', emoji: '🛎️', w: 1, cost: 0, kind: 'fixed', floor: 'ground', wall: '#e9dcc6', desc: 'L’entrée de ta tour.' },
-  openspace:   { type: 'openspace', name: 'Open space', emoji: '🖥️', w: 2, cost: 3000, kind: 'work', floor: 'notBasement', desks: 4, taskTime: 3, taskValue: 40, salary: 40, wall: '#e8eef6', desc: '4 postes de travail. Chaque dossier traité rapporte de l’argent : touche les billets pour encaisser.' },
-  bureaupro:   { type: 'bureaupro', name: 'Bureaux premium', emoji: '💼', w: 2, cost: 12000, kind: 'work', floor: 'notBasement', desks: 3, taskTime: 5, taskValue: 115, salary: 130, research: 'pro', wall: '#e4e0f5', desc: '3 consultants seniors : des dossiers très rentables, mais exigeants (pause, café, propreté).' },
-  direction:   { type: 'direction', name: 'Salle du conseil', emoji: '🏛️', w: 2, cost: 40000, kind: 'work', floor: 'upper', desks: 2, taskTime: 7, taskValue: 420, salary: 400, research: 'board', unlockFloors: 5, wall: '#f3e7cf', desc: '2 directeurs : des contrats énormes. Ils veulent un étage propre et calme.' },
+  openspace:   { type: 'openspace', name: 'Open space', emoji: '🖥️', w: 2, cost: 3000, kind: 'work', floor: 'notBasement', desks: 4, taskTime: 3, taskValue: 23, salary: 40, wall: '#e8eef6', desc: '4 postes de travail. Chaque dossier traité rapporte de l’argent : touche les billets pour encaisser.' },
+  bureaupro:   { type: 'bureaupro', name: 'Bureaux premium', emoji: '💼', w: 2, cost: 12000, kind: 'work', floor: 'notBasement', desks: 3, taskTime: 5, taskValue: 66, salary: 130, research: 'pro', wall: '#e4e0f5', desc: '3 consultants seniors : des dossiers très rentables, mais exigeants (pause, café, propreté).' },
+  direction:   { type: 'direction', name: 'Salle du conseil', emoji: '🏛️', w: 2, cost: 40000, kind: 'work', floor: 'upper', desks: 2, taskTime: 7, taskValue: 240, salary: 400, research: 'board', unlockFloors: 5, wall: '#f3e7cf', desc: '2 directeurs : des contrats énormes. Ils veulent un étage propre et calme.' },
   wc:          { type: 'wc', name: 'Toilettes', emoji: '🚻', w: 1, cost: 1500, kind: 'facility', floor: 'any', serves: 'bladder', stations: 2, useTime: 2.4, wall: '#dff1f5', desc: '2 cabines. Sans toilettes, tes employés souffrent… et travaillent mal. Elles se salissent vite.' },
   cafe:        { type: 'cafe', name: 'Coin café', emoji: '☕', w: 1, cost: 2000, kind: 'facility', floor: 'notBasement', serves: 'energy', stations: 2, useTime: 2.6, wall: '#f6dfc6', desc: 'Une machine à café pour recharger les batteries. Les gobelets finissent par terre.' },
   pause:       { type: 'pause', name: 'Salle de pause', emoji: '🛋️', w: 2, cost: 6000, kind: 'facility', floor: 'notBasement', serves: 'mood', stations: 3, useTime: 4, research: 'pause', wall: '#e3f3e1', desc: 'Canapés et baby-foot : les employés stressés y retrouvent le moral.' },
   supervision: { type: 'supervision', name: 'Bureau du superviseur', emoji: '🧑‍💼', w: 1, cost: 5000, kind: 'service', floor: 'notBasement', staff: 'supervisor', wall: '#efe7da', desc: 'Le superviseur fait la tournée de toute la tour : quand il passe dans un bureau, les employés de ce bureau accélèrent. Mais il ne peut pas être partout à la fois.' },
-  menage:      { type: 'menage', name: 'Local d’entretien', emoji: '🧹', w: 1, cost: 1500, kind: 'service', floor: 'any', staff: 'janitor', wall: '#dcecf5', desc: 'L’agent d’entretien fait le grand ménage la nuit (papiers, gobelets, peaux de banane…) et ne passe en journée que pour les toilettes.' },
+  menage:      { type: 'menage', name: 'Local d’entretien', emoji: '🧹', w: 1, cost: 1500, kind: 'service', floor: 'any', staff: 'janitor', wall: '#dcecf5', desc: 'Équipe de nuit : les agents arrivent le soir pour le grand ménage (papiers, gobelets, peaux de banane…) et repartent le matin. Le jour, un agent de garde ne vient que si des toilettes sont vraiment sales.' },
   it:          { type: 'it', name: 'Service informatique', emoji: '🔧', w: 1, cost: 3000, kind: 'service', floor: 'any', staff: 'tech', wall: '#e2e8f0', desc: 'Le technicien court réparer les ordinateurs en panne.' },
   securite:    { type: 'securite', name: 'Poste de sécurité', emoji: '👮', w: 1, cost: 5000, kind: 'service', floor: 'notBasement', staff: 'guard', research: 'securite', wall: '#dfe4ec', desc: 'Le vigile fait des rondes de nuit et arrête les voleurs avant qu’ils ne vident les postes.' },
   parking:     { type: 'parking', name: 'Parking', emoji: '🅿️', w: 2, cost: 4000, kind: 'support', floor: 'basement', spots: 3, wall: '#8a929c', desc: '3 places. Les employés motorisés arrivent par le garage, à l’heure et de bonne humeur. Sans place, ils tournent pour se garer : en retard et agacés.' },
@@ -107,13 +107,13 @@ export const BW = COL_X_X0 + SHAFT_W
 export const slotX = (s: number) => s * SW + (s >= LEFT_SLOTS ? SHAFT_W : 0)
 
 // ── Rythme ───────────────────────────────────────────────────────────────────
-export const DAY_S = 80             // 1 cycle jour/nuit = 1 journée de travail
+export const DAY_S = 140            // 1 cycle jour/nuit = 1 journée de travail (les trajets restent courts à l'échelle d'une journée)
 export const WORK_START = 0.25      // ≈ 6 h (ils arrivent entre 6 h et 8 h)
 export const WORK_END = 0.78        // ≈ 19 h
-export const WALK = 70
-export const LIFT_SPEED = 2.3
+export const WALK = 105
+export const LIFT_SPEED = 3.2
 export const LIFT_CAP = 10
-export const STAIR_S = 1.7
+export const STAIR_S = 1.2
 
 export const START_CASH = 9000
 export const COST_GROWTH = 1.3
