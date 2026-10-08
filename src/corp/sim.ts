@@ -938,7 +938,8 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
     const zLo = g.bottom + Math.floor(k * nF / nJ), zHi = g.bottom + Math.floor((k + 1) * nF / nJ) - 1
     const inZone = (f: number) => f >= zLo && f <= zHi
     const cur = Math.round(a.floor)
-    const ok = (r: Room, t: Trash) => !(office && (r.type !== 'wc' || r.trash.length < 2)) && !claimed(t.id)
+    // Le jour : toilettes dès qu'elles sont sales, et les bureaux vraiment encombrés (3 déchets ou plus).
+    const ok = (r: Room, t: Trash) => !(office && r.type !== 'wc' && r.trash.length < 3) && !claimed(t.id)
     let best: { r: Room; t: Trash } | null = null
     if (a.bagN < 12) {
       // 1) sur l'étage courant, dans le sens de balayage (sinon on fait demi-tour)
@@ -952,8 +953,8 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
         // 2) l'étage sale le plus proche de sa zone (le jour, toilettes de toute la tour si personne d'autre n'y va)
         let bd = Infinity, tf: number | null = null
         for (const r of g.rooms) {
-          if (!inZone(r.floor) && !(office && r.type === 'wc')) continue
           if (!r.trash.some((t) => ok(r, t))) continue
+          // Sa zone d'abord ; si elle est propre, il va aider ailleurs.
           const d = Math.abs(r.floor - cur) + (inZone(r.floor) ? 0 : 20)
           if (d < bd) { bd = d; tf = r.floor }
         }
@@ -1097,7 +1098,10 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
   if (!s || a.inLift) return
   const p = g.day % 1
   // Fin de journée : inutile de remonter au poste, on rentre directement.
-  if (a.kind === 'worker' && p >= a.leave && (s.t === 'walk' || s.t === 'wait') && a.steps.some((x) => x.t === 'work')) { a.steps = []; return }
+  if (a.kind === 'worker' && p >= a.leave && (s.t === 'walk' || s.t === 'wait' || s.t === 'door' || s.t === 'lift' || s.t === 'queue' || s.t === 'enter') && a.steps.some((x) => x.t === 'work')) {
+    for (const L of Object.values(w.lifts)) for (const [f, ids] of L.waiting) L.waiting.set(f, ids.filter((x) => x !== a.id))
+    a.steps = []; a.icon = null; return
+  }
   if (s.t === 'door') {
     // Porte de l'ascenseur choisi, du côté où l'on se trouve.
     const d = liftDefs(g).find((x) => x.id === s.liftId)!
@@ -1308,8 +1312,11 @@ function runLift(g: Game, w: World, L: Lift, def: LiftDef, dt: number) {
   for (let f = def.bottom; f <= def.top; f++) if (liftStops(def, f)) stops.push(f)
   if (L.y < def.bottom || L.y > def.top) L.y = Math.max(def.bottom, Math.min(def.top, L.y))
   for (const [f, ids] of L.waiting) L.waiting.set(f, ids.filter((id) => { const a = w.agents.find((x) => x.id === id); const s0 = a?.steps[0]; return !!a && !a.inLift && s0?.t === 'lift' && s0.liftId === def.id && a.floor === f }))
+  const pDay = g.day % 1
   for (const id of L.riders) {
     const a = w.agents.find((x) => x.id === id)
+    // Employé qui remontait à son poste alors que la journée est finie : il descend au prochain arrêt.
+    if (a && a.kind === 'worker' && pDay >= a.leave && a.steps.some((x) => x.t === 'work')) a.steps = []
     if (a && a.steps[0]?.t !== 'lift') {
       // Trajet changé en route : il descend au prochain arrêt.
       const ahead = stops.filter((f) => (L.dir > 0 ? f >= L.y - 0.001 : f <= L.y + 0.001))
