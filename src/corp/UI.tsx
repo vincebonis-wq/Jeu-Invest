@@ -3,14 +3,14 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Hammer, Target, PieChart, FlaskConical, Users, X, Lock, Coins, Volume2, VolumeX, RotateCcw, ArrowUpCircle, Star, Check } from 'lucide-react'
+import { Hammer, Target, PieChart, FlaskConical, Users, X, Lock, Volume2, VolumeX, RotateCcw, ArrowUpCircle, Star, Check } from 'lucide-react'
 import { useCorp } from './store'
 import {
   profitPerDay, dailyCosts, workerSalaries, staffSalaries, buildingCharges, isUnlocked, questProgress, employees, avgMood, netWorth, buildingValue,
   isQuietNight, NIGHT_MULT, liftDefs, liftUnlocked, liftInstallPrice, parkingStatus, archivesBonus, serversMult, canRenovate, renovateCost, liftCost, liftNeeds, roomCost, stationCount, stationsOf, useTime, canResearch, fileValue, has, tierOf,
   type Game, type Room, type Agent, type Employee,
 } from './sim'
-import { ROOMS, BUILD_ORDER, SW, FH, TIERS, STAFF, RESEARCH, RP_RATE, CLEAN_COST, FIX_COST, BANK_CAP, type RoomType, type StaffRole } from './data'
+import { ROOMS, BUILD_ORDER, SW, FH, TIERS, STAFF, RESEARCH, RP_RATE, CLEAN_COST, FIX_COST, type RoomType, type StaffRole } from './data'
 import { Interior } from './Tower'
 import { fmtEur, fmtShort } from '../archipel/format'
 import { sfxTap, sfxTick } from '../archipel/audio'
@@ -100,17 +100,8 @@ export function Dock() {
   const g = st.game
   if (st.buildType) return <BuildBar />
   const done = g.quests.filter((q) => q.done).length
-  const ready = g.rooms.filter((r) => r.bank.some((b) => b >= fileValue(g, r) * 0.99)).length
   return (
     <div className="absolute bottom-0 inset-x-0 z-30 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pointer-events-none">
-      {ready >= 2 && !has(g, 'autopay') && (
-        <div className="flex justify-center mb-9">
-          <button onClick={() => st.collectAll()} className="pointer-events-auto rounded-full px-4 py-2 font-display font-extrabold text-emerald-900 flex items-center gap-1.5 shadow-lg active:scale-95 transition-transform pop-in"
-            style={{ background: 'linear-gradient(180deg,#86efac,#22c55e)', border: '2px solid #fff' }}>
-            <Coins size={17} /> Tout encaisser · {ready}
-          </button>
-        </div>
-      )}
       <div className={`${GLASS} pointer-events-auto max-w-md mx-auto rounded-[28px] h-[68px] flex items-center px-1 relative`}>
         <DockBtn icon={<Target size={22} />} label="Objectifs" badge={done} onClick={() => { sfxTap(); st.openSheet('quests') }} />
         <DockBtn icon={<FlaskConical size={22} />} label="Recherche" badge={RESEARCH.filter((r) => canResearch(g, r.id)).length} onClick={() => { sfxTap(); st.openSheet('research') }} />
@@ -215,7 +206,7 @@ export function BuildSheet() {
           const line = d.kind === 'work' ? `${d.desks} postes · ${fmtEur(d.taskValue ?? 0)}/dossier · salaire ${fmtEur(d.salary ?? 0)}/j`
             : d.kind === 'facility' ? `${d.stations} places · ${d.serves === 'bladder' ? 'besoin pressant' : d.serves === 'energy' ? 'énergie' : 'moral'}`
             : d.staff ? `${STAFF[d.staff].emoji} 1 ${STAFF[d.staff].title.toLowerCase()} · ${fmtEur(STAFF[d.staff].salary)}/jour`
-            : t === 'parking' ? `${d.spots} places · sous-sol uniquement` : t === 'serveurs' ? '−50 % de pannes · sous-sol uniquement' : t === 'archives' ? '+10 % par dossier · sous-sol uniquement' : ''
+            : t === 'parking' ? `${d.spots} places · sous-sol uniquement` : t === 'serveurs' ? '−50 % de pannes · sous-sol uniquement' : t === 'archives' ? '+5 % par dossier · sous-sol uniquement' : ''
           return (
             <button key={t} disabled={!unlocked} onClick={() => st.chooseBuild(t)}
               className="w-full relative rounded-3xl bg-white p-3 flex items-center gap-3 text-left shadow-[0_4px_14px_-6px_rgba(15,40,80,0.25)] active:scale-[0.98] transition-transform">
@@ -243,12 +234,11 @@ export function BuildSheet() {
 }
 
 // ── Fiche d'une pièce ────────────────────────────────────────────────────────
-function workerStatus(g: Game, a: Agent | undefined, r: Room, i: number) {
+function workerStatus(a: Agent | undefined, r: Room, i: number) {
   if (!a || a.away) return '🏠 Chez lui'
   const s0 = a.steps[0]
   if (r.broken[i]) return '💥 Ordinateur en panne'
   if (s0?.t === 'work') {
-    if (!has(g, 'autopay') && r.bank[i] >= fileValue(g, r) * BANK_CAP) return '📥 Attend que tu encaisses'
     if (a.needCd > 0) return a.bladder >= a.bMax ? '🚽⏳ Attend que les toilettes se libèrent' : '☕⏳ Attend une place au café'
     if (a.needT > 0) return a.bladder >= a.bMax ? '🚽 Doit aller aux toilettes !' : '🥱 Épuisé'
     return a.boostT > 0 ? '⚡ Boosté par le chef' : '⌨️ Au travail'
@@ -266,7 +256,6 @@ export function RoomPanel() {
   const r = g.rooms.find((x) => x.id === st.selected)
   if (!r) return null
   const d = ROOMS[r.type]
-  const bank = r.bank.reduce((a, b) => a + b, 0)
   return (
     <div className="absolute bottom-0 inset-x-0 z-30 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
       <div className={`${GLASS} max-w-md mx-auto rounded-[28px] p-4 sheet-up max-h-[70vh] overflow-y-auto`}>
@@ -303,7 +292,7 @@ export function RoomPanel() {
                           <span className="text-[11px] font-bold text-slate-400 tabular-nums">{Math.round(e.mood)}</span>
                         </div>
                         <div className="flex items-center justify-between mt-1">
-                          <span className="text-[11px] font-bold text-slate-500">{workerStatus(g, a, r, i)}</span>
+                          <span className="text-[11px] font-bold text-slate-500">{workerStatus(a, r, i)}</span>
                           {a && !a.away && <span className="text-[10px] font-bold text-slate-400">⚡{Math.round(a.energy)} · 🚽{Math.round(a.bladder)}</span>}
                         </div>
                         {r.broken[i] && <button onClick={() => st.fixDesk(r.id, i)} className="w-full mt-1.5 rounded-xl bg-rose-500 text-white font-extrabold text-[12px] py-1.5">🔧 Réparer maintenant · {fmtEur(FIX_COST)}</button>}
@@ -396,17 +385,12 @@ export function RoomPanel() {
         )}
 
         <div className="mt-3 flex gap-2">
-          {bank >= 1 && (
-            <button onClick={(e) => st.collect(r.id, e.clientX, e.clientY)} className="flex-1 rounded-2xl py-3 font-display font-extrabold text-emerald-900 text-[15px] active:scale-[0.97]" style={{ background: 'linear-gradient(180deg,#86efac,#22c55e)' }}>
-              Encaisser {fmtEur(bank)}
-            </button>
-          )}
           {canRenovate(r) && (
             <button onClick={() => st.renovate(r.id)} disabled={g.cash < renovateCost(r)}
               className="flex-1 rounded-2xl py-3 font-display font-extrabold text-white text-[14px] flex flex-col items-center leading-tight active:scale-[0.97] disabled:opacity-40"
               style={{ background: 'linear-gradient(180deg,#ffb547,#f2792b)' }}>
               <span className="flex items-center gap-1"><ArrowUpCircle size={16} /> Améliorer · {fmtShort(renovateCost(r))} €</span>
-              <span className="text-[10px] text-white/85">{d.kind === 'work' ? '+25 % par dossier · moral' : d.kind === 'facility' ? '+1 place' : d.staff ? `+1 ${STAFF[d.staff].title.toLowerCase()}` : ''}</span>
+              <span className="text-[10px] text-white/85">{d.kind === 'work' ? '+15 % par dossier · moral' : d.kind === 'facility' ? '+1 place' : d.staff ? `+1 ${STAFF[d.staff].title.toLowerCase()}` : ''}</span>
             </button>
           )}
         </div>
@@ -697,7 +681,7 @@ export function Coach() {
   const q = g.quests.find((x) => !x.done)
   if (!q) return null
   const tips: Partial<Record<string, string>> = {
-    collect: '👆 Touche les billets verts au-dessus des postes',
+    collect: '💶 L’argent de chaque dossier arrive tout seul',
     build: `🔨 Touche « Construire » puis ${q.param ? ROOMS[q.param as RoomType].name : 'une pièce'}`,
     count: '🔨 Construis un autre open space dans une case libre',
     floors: '⬆️ Touche « + Étage » sur le toit de la tour',
@@ -725,7 +709,7 @@ export function Intro() {
         </div>
         <div className="mt-5 space-y-3">
           <IL icon="🖥️" title="Des employés au travail" text="Ils arrivent le matin, traitent des dossiers à leur poste et repartent le soir." />
-          <IL icon="💵" title="Touche les billets" text="Chaque dossier fait apparaître de l’argent au-dessus du poste. Encaisse-le !" />
+          <IL icon="💵" title="L’argent rentre tout seul" text="Chaque dossier traité rapporte : regarde les « +€ » s’envoler des postes." />
           <IL icon="🚽" title="Prends soin d’eux" text="Toilettes, café, pause, propreté : un employé malheureux travaille mal… puis démissionne." />
           <IL icon="🧑‍💼" title="Monte ton équipe" text="Superviseurs, agents d’entretien, techniciens, chercheurs, vigiles." />
         </div>

@@ -8,7 +8,7 @@
 
 import {
   ROOMS, SLOTS, LEFT_SLOTS, SHAFT_X0, COL_B_X0, COL_X_X0, slotX, SW, SHAFT_W, DAY_S, WALK, LIFT_SPEED, LIFT_CAP, START_CASH, STAIR_S, WORK_START, WORK_END,
-  COST_GROWTH, BANK_CAP, CLEAN_COST, FIX_COST, HIRE_COST, RESEARCH, RP_RATE, STAFF, TIERS, TRASH_KINDS,
+  COST_GROWTH, CLEAN_COST, FIX_COST, HIRE_COST, RESEARCH, RP_RATE, STAFF, TIERS, TRASH_KINDS,
   FIRST_NAMES, SKINS, SHIRTS, TIES, HAIR, liftInstallCost, liftExtendCost, floorCost, chargesPerDay,
   type RoomType, type StaffRole, type TrashKind,
 } from './data'
@@ -78,6 +78,9 @@ export function newEmployee(): Employee {
 /** Anciennes sauvegardes : tirer au sort qui vient en voiture. */
 export function migrate(g: Game) {
   for (const r of g.rooms) for (const e of r.workers) if (e && e.car === undefined) e.car = Math.random() < 0.5
+  // L'argent n'est plus « à encaisser » : ce qui restait sur les postes arrive sur le compte.
+  for (const r of g.rooms) { g.cash += r.bank.reduce((a, b) => a + b, 0); r.bank = r.bank.map(() => 0) }
+  g.research = g.research.filter((x) => x !== 'autopay')
   return g
 }
 
@@ -93,7 +96,6 @@ function makeRoom(type: RoomType, floor: number, slot: number, day: number): Roo
 export function createGame(): Game {
   const lobby: Room = { id: 'lobby', type: 'lobby', floor: 0, slot: 0, level: 1, workers: [], bank: [], broken: [], trash: [], builtAt: 0 }
   const os = makeRoom('openspace', 0, 1, 0)
-  os.bank = [45, 45, 0, 45]
   const g: Game = {
     version: 3, cash: START_CASH, day: 0.27, top: 1, bottom: 0, liftLevel: 1, liftOn: false, liftTop: 0, liftBottom: 0,
     rp: 0, research: [], rooms: [lobby, os], dayEarned: 0, dayHist: [],
@@ -142,10 +144,10 @@ export function isUnlocked(g: Game, t: RoomType) {
 
 // ── Économie ─────────────────────────────────────────────────────────────────
 const countOf = (g: Game, t: RoomType) => g.rooms.filter((r) => r.type === t).length
-export const archivesBonus = (g: Game) => 0.1 * Math.min(3, countOf(g, 'archives'))
+export const archivesBonus = (g: Game) => 0.05 * Math.min(3, countOf(g, 'archives'))
 export const serversMult = (g: Game) => Math.pow(0.5, Math.min(2, countOf(g, 'serveurs')))
 export function valueMult(g: Game, r: Room) {
-  return (has(g, 'training') ? 1.25 : 1) * (1 + 0.25 * (r.level - 1)) * (1 + archivesBonus(g))
+  return (has(g, 'training') ? 1.15 : 1) * (1 + 0.15 * (r.level - 1)) * (1 + archivesBonus(g))
 }
 export const fileValue = (g: Game, r: Room) => (ROOMS[r.type].taskValue ?? 0) * valueMult(g, r)
 
@@ -301,7 +303,6 @@ export type GEvent =
 
 // ── Objectifs ────────────────────────────────────────────────────────────────
 const SCRIPT: Omit<Quest, 'id'>[] = [
-  { kind: 'collect', title: 'Encaisse tes premiers dossiers', target: 1, reward: 500 },
   { kind: 'build', param: 'wc', title: 'Construis des toilettes', target: 1, reward: 1200 },
   { kind: 'build', param: 'cafe', title: 'Installe un coin café', target: 1, reward: 1500 },
   { kind: 'build', param: 'menage', title: 'Embauche un agent d’entretien', target: 1, reward: 1500 },
@@ -429,6 +430,7 @@ export interface Agent {
   eRate: number            // vitesse de fatigue
   bMax: number             // seuil où il se lève pour y aller
   needCd: number           // « je patiente encore un peu »
+  sweepDir?: 1 | -1        // sens de balayage de l'agent d'entretien
   boostT: number
   needT: number
   prog: number
@@ -456,7 +458,9 @@ export interface World {
   queues: Record<string, string[]>
   thiefDay: number
   cars: Car[]
+  pops: { id: number; x: number; floor: number; amount: number; t: number }[]
 }
+let popSeq = 1
 
 /** Voiture d'un employé : garée, qui sort par le tunnel, dehors, ou qui arrive. */
 export interface Car { id: string; color: string; roomId: string; spot: number; floor: number; x: number; state: 'parked' | 'leave' | 'out' | 'arrive'; dir: 1 | -1 }
@@ -713,7 +717,7 @@ function syncAgents(g: Game, w: World) {
 
 const newLift = (): Lift => ({ y: 0, dir: 1, riders: [], stopT: 0, door: 0, waiting: new Map() })
 export function createWorld(g: Game): World {
-  const w: World = { agents: [], lifts: { A: newLift(), B: newLift(), X: newLift() }, stations: {}, queues: {}, thiefDay: -1, cars: [] }
+  const w: World = { agents: [], lifts: { A: newLift(), B: newLift(), X: newLift() }, stations: {}, queues: {}, thiefDay: -1, cars: [], pops: [] }
   setLR(g, w)
   syncAgents(g, w)
   syncCars(g, w)
@@ -806,9 +810,7 @@ function workTick(g: Game, w: World, a: Agent, s: Extract<Step, { t: 'work' }>, 
   if (unmet && !a.icon && Math.random() < dt * 0.35) say(a, a.bladder >= a.bMax ? '🚽❗' : '🥱', 1.8)
   // Panne ?
   if (r.broken[s.idx]) { if (!a.icon && Math.random() < dt * 0.5) say(a, '❓', 1.5); return }
-  // Plateau plein : il attend qu'on encaisse.
   const val = fileValue(g, r)
-  if (!has(g, 'autopay') && r.bank[s.idx] >= val * BANK_CAP) { if (!a.icon && Math.random() < dt * 0.3) say(a, '📥', 1.6); return }
   // Travail
   const speed = (0.55 + e.mood / 100 * 0.65) * (has(g, 'pc') ? 1.2 : 1) * (has(g, 'screens') ? 1.25 : 1)
     * (a.boostT > 0 ? 1.7 : 1) * (unmet ? 0.5 : 1)
@@ -816,7 +818,10 @@ function workTick(g: Game, w: World, a: Agent, s: Extract<Step, { t: 'work' }>, 
   a.prog += dt * speed / (ROOMS[r.type].taskTime ?? 4)
   if (a.prog >= 1) {
     a.prog -= 1
-    if (has(g, 'autopay')) g.cash += val; else r.bank[s.idx] += val
+    // Comme dans les jeux de bureau classiques : l'argent arrive tout seul, un « +40 € » s'envole du poste.
+    g.cash += val
+    w.pops.push({ id: popSeq++, x: deskX(r, s.idx), floor: r.floor, amount: val, t: 0 })
+    if (w.pops.length > 40) w.pops.shift()
     g.dayEarned += val
     g.stats.earned += val
     g.stats.files++
@@ -926,12 +931,41 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
   } else if (a.role === 'janitor') {
     // Ménage complet la nuit ; en journée, seulement un passage aux toilettes quand elles sont sales.
     const office = p > WORK_START && p < workEnd(g)
-    let best: { r: Room; t: Trash } | null = null, bd = Infinity
-    if (a.bagN < 8) for (const r of g.rooms) for (const t of r.trash) {
-      if (office && (r.type !== 'wc' || r.trash.length < 2)) continue
-      if (claimed(t.id)) continue
-      const d = Math.abs(r.floor - a.floor) * 300 + Math.abs(t.x - a.x)
-      if (d < bd) { bd = d; best = { r, t } }
+    // Chaque agent a sa propre zone d'étages (blocs contigus), et la balaie étage par étage.
+    const crew = w.agents.filter((x) => x.role === 'janitor').sort((x, y) => (x.id < y.id ? -1 : 1))
+    const k = Math.max(0, crew.indexOf(a)), nJ = Math.max(1, crew.length)
+    const nF = g.top - g.bottom + 1
+    const zLo = g.bottom + Math.floor(k * nF / nJ), zHi = g.bottom + Math.floor((k + 1) * nF / nJ) - 1
+    const inZone = (f: number) => f >= zLo && f <= zHi
+    const cur = Math.round(a.floor)
+    const ok = (r: Room, t: Trash) => !(office && (r.type !== 'wc' || r.trash.length < 2)) && !claimed(t.id)
+    let best: { r: Room; t: Trash } | null = null
+    if (a.bagN < 12) {
+      // 1) sur l'étage courant, dans le sens de balayage (sinon on fait demi-tour)
+      const here = g.rooms.filter((r) => r.floor === cur && inZone(cur)).flatMap((r) => r.trash.filter((t) => ok(r, t)).map((t) => ({ r, t })))
+      if (here.length) {
+        const dir = a.sweepDir ?? 1
+        const ahead = here.filter((c) => (c.t.x - a.x) * dir >= -2).sort((p1, p2) => Math.abs(p1.t.x - a.x) - Math.abs(p2.t.x - a.x))
+        if (ahead.length) best = ahead[0]
+        else { a.sweepDir = (-dir) as 1 | -1; best = here.sort((p1, p2) => Math.abs(p1.t.x - a.x) - Math.abs(p2.t.x - a.x))[0] }
+      } else {
+        // 2) l'étage sale le plus proche de sa zone (le jour, toilettes de toute la tour si personne d'autre n'y va)
+        let bd = Infinity, tf: number | null = null
+        for (const r of g.rooms) {
+          if (!inZone(r.floor) && !(office && r.type === 'wc')) continue
+          if (!r.trash.some((t) => ok(r, t))) continue
+          const d = Math.abs(r.floor - cur) + (inZone(r.floor) ? 0 : 20)
+          if (d < bd) { bd = d; tf = r.floor }
+        }
+        if (tf != null) {
+          // Balayage en serpentin : il commence par un bout de l'étage et va jusqu'à l'autre,
+          // en alternant le sens d'un étage à l'autre.
+          const dir = (-(a.sweepDir ?? -1)) as 1 | -1
+          a.sweepDir = dir
+          const cands = g.rooms.filter((r) => r.floor === tf).flatMap((r) => r.trash.filter((t) => ok(r, t)).map((t) => ({ r, t })))
+          best = cands.sort((p1, p2) => (p1.t.x - p2.t.x) * dir)[0] ?? null
+        }
+      }
     }
     if (best) {
       const { r, t } = best as { r: Room; t: Trash }
@@ -968,8 +1002,10 @@ function maybeThief(g: Game, w: World, p: number, day: number) {
   w.thiefDay = day
   const first = !(g.stats.caught || g.stats.stolen)
   if ((!first && Math.random() > 0.4) || w.agents.some((a) => a.kind === 'thief')) return
-  const r = g.rooms.filter((x) => x.bank.reduce((a, b) => a + b, 0) >= 100).sort((a, b) => b.bank.reduce((x, y) => x + y, 0) - a.bank.reduce((x, y) => x + y, 0))[0]
-  if (!r) return
+  // Il vise un bureau au hasard pour fouiller les tiroirs et la petite caisse.
+  const offices = g.rooms.filter((x) => ROOMS[x.type].kind === 'work')
+  const r = offices[Math.floor(Math.random() * offices.length)]
+  if (!r || g.cash < 300) return
   const t = baseAgent(uid('x'), 'thief', 0, EXIT_X)
   Object.assign(t, { cloth: '#1f1f2b', hair: '#111', speed: WALK * 1.05 })
   say(t, '🤫', 3)
@@ -1007,7 +1043,7 @@ export function scareThief(g: Game, w: World, id: string, ev: GEvent[]) {
 }
 function catchThief(g: Game, _w: World, guard: Agent | null, t: Agent, ev: GEvent[]) {
   t.caught = true
-  if (t.loot && t.lootRoom) { const r = roomOf(g, t.lootRoom); if (r && r.bank.length) r.bank[0] += t.loot }
+  if (t.loot) g.cash += t.loot
   t.loot = 0; t.carry = undefined; t.speed = WALK * 1.7
   say(t, '😱', 3); if (guard) say(guard, '✋', 2.5)
   if (!t.inLift) t.steps = [...routeA(t, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
@@ -1033,6 +1069,8 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
   }
   maybeThief(g, w, p, day)
   detectThieves(g, w, dt)
+  for (const q of w.pops) q.t += dt
+  w.pops = w.pops.filter((q) => q.t < 1.4)
 
   // Postes de service : libération des postes orphelins
   for (const id of Object.keys(w.stations)) {
@@ -1224,8 +1262,9 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
     a.walking = Math.random() < 0.3
     if (!r) { a.steps.shift(); return }
     if (s.dur <= 0) {
-      const amount = Math.round(r.bank.reduce((x, y) => x + y, 0) * 0.7)
-      r.bank = r.bank.map((b) => b * 0.3)
+      const amount = Math.round(Math.min(g.cash * 0.06, 4000 + g.cash * 0.01))
+      g.cash -= amount
+      if (r.broken.length) r.broken[Math.floor(Math.random() * r.broken.length)] = true   // il a forcé un poste
       a.loot = amount; a.lootRoom = r.id; a.carry = 'sack'; a.speed = WALK * 1.35
       g.stats.stolen += amount
       say(a, '🏃', 2)

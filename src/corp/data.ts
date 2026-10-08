@@ -41,8 +41,8 @@ export interface RoomDef {
 export const ROOMS: Record<RoomType, RoomDef> = {
   lobby:       { type: 'lobby', name: 'Accueil', emoji: '🛎️', w: 1, cost: 0, kind: 'fixed', floor: 'ground', wall: '#e9dcc6', desc: 'L’entrée de ta tour.' },
   openspace:   { type: 'openspace', name: 'Open space', emoji: '🖥️', w: 2, cost: 3000, kind: 'work', floor: 'notBasement', desks: 4, taskTime: 3, taskValue: 40, salary: 40, wall: '#e8eef6', desc: '4 postes de travail. Chaque dossier traité rapporte de l’argent : touche les billets pour encaisser.' },
-  bureaupro:   { type: 'bureaupro', name: 'Bureaux premium', emoji: '💼', w: 2, cost: 12000, kind: 'work', floor: 'notBasement', desks: 3, taskTime: 5, taskValue: 150, salary: 130, research: 'pro', wall: '#e4e0f5', desc: '3 consultants seniors : des dossiers très rentables, mais exigeants (pause, café, propreté).' },
-  direction:   { type: 'direction', name: 'Salle du conseil', emoji: '🏛️', w: 2, cost: 40000, kind: 'work', floor: 'upper', desks: 2, taskTime: 7, taskValue: 600, salary: 400, research: 'board', unlockFloors: 5, wall: '#f3e7cf', desc: '2 directeurs : des contrats énormes. Ils veulent un étage propre et calme.' },
+  bureaupro:   { type: 'bureaupro', name: 'Bureaux premium', emoji: '💼', w: 2, cost: 12000, kind: 'work', floor: 'notBasement', desks: 3, taskTime: 5, taskValue: 115, salary: 130, research: 'pro', wall: '#e4e0f5', desc: '3 consultants seniors : des dossiers très rentables, mais exigeants (pause, café, propreté).' },
+  direction:   { type: 'direction', name: 'Salle du conseil', emoji: '🏛️', w: 2, cost: 40000, kind: 'work', floor: 'upper', desks: 2, taskTime: 7, taskValue: 420, salary: 400, research: 'board', unlockFloors: 5, wall: '#f3e7cf', desc: '2 directeurs : des contrats énormes. Ils veulent un étage propre et calme.' },
   wc:          { type: 'wc', name: 'Toilettes', emoji: '🚻', w: 1, cost: 1500, kind: 'facility', floor: 'any', serves: 'bladder', stations: 2, useTime: 2.4, wall: '#dff1f5', desc: '2 cabines. Sans toilettes, tes employés souffrent… et travaillent mal. Elles se salissent vite.' },
   cafe:        { type: 'cafe', name: 'Coin café', emoji: '☕', w: 1, cost: 2000, kind: 'facility', floor: 'notBasement', serves: 'energy', stations: 2, useTime: 2.6, wall: '#f6dfc6', desc: 'Une machine à café pour recharger les batteries. Les gobelets finissent par terre.' },
   pause:       { type: 'pause', name: 'Salle de pause', emoji: '🛋️', w: 2, cost: 6000, kind: 'facility', floor: 'notBasement', serves: 'mood', stations: 3, useTime: 4, research: 'pause', wall: '#e3f3e1', desc: 'Canapés et baby-foot : les employés stressés y retrouvent le moral.' },
@@ -52,7 +52,7 @@ export const ROOMS: Record<RoomType, RoomDef> = {
   securite:    { type: 'securite', name: 'Poste de sécurité', emoji: '👮', w: 1, cost: 5000, kind: 'service', floor: 'notBasement', staff: 'guard', research: 'securite', wall: '#dfe4ec', desc: 'Le vigile fait des rondes de nuit et arrête les voleurs avant qu’ils ne vident les postes.' },
   parking:     { type: 'parking', name: 'Parking', emoji: '🅿️', w: 2, cost: 4000, kind: 'support', floor: 'basement', spots: 3, wall: '#8a929c', desc: '3 places. Les employés motorisés arrivent par le garage, à l’heure et de bonne humeur. Sans place, ils tournent pour se garer : en retard et agacés.' },
   serveurs:    { type: 'serveurs', name: 'Salle des serveurs', emoji: '🗄️', w: 1, cost: 8000, kind: 'support', floor: 'basement', wall: '#1f2937', desc: 'Au frais sous terre : deux fois moins de pannes d’ordinateur dans toute la tour (cumulable deux fois).' },
-  archives:    { type: 'archives', name: 'Archives', emoji: '🗃️', w: 2, cost: 7000, kind: 'support', floor: 'basement', wall: '#d6cfc0', desc: 'Des dossiers bien classés : +10 % sur chaque dossier traité dans toute la tour (jusqu’à 3 salles).' },
+  archives:    { type: 'archives', name: 'Archives', emoji: '🗃️', w: 2, cost: 7000, kind: 'support', floor: 'basement', wall: '#d6cfc0', desc: 'Des dossiers bien classés : +5 % sur chaque dossier traité dans toute la tour (jusqu’à 3 salles).' },
   escalator:   { type: 'escalator', name: 'Escalator', emoji: '↗️', w: 1, cost: 3500, kind: 'transport', floor: 'any', research: 'escalators', wall: '#e5e7eb', desc: 'Relie cet étage à celui du dessus, dans les deux sens. Idéal pour les petits trajets : on évite d’attendre l’ascenseur.' },
   labo:        { type: 'labo', name: 'Laboratoire R&D', emoji: '🔬', w: 1, cost: 4000, kind: 'service', floor: 'notBasement', staff: 'researcher', wall: '#eef2ff', desc: 'Des chercheurs produisent des points de recherche 💡 pour améliorer ton entreprise.' },
 }
@@ -81,12 +81,11 @@ export const RESEARCH: ResearchDef[] = [
   { id: 'screens', name: 'Double écran', emoji: '🖥️', desc: '+25 % de vitesse de traitement.', cost: 33, req: 'pc' },
   { id: 'pro', name: 'Bureaux premium', emoji: '💼', desc: 'Débloque les bureaux premium et leurs consultants.', cost: 36 },
   { id: 'badge', name: 'Badgeuse', emoji: '⏰', desc: 'Tout le monde arrive à l’heure : la journée de travail dure une heure de plus.', cost: 33 },
-  { id: 'training', name: 'Formation continue', emoji: '🎓', desc: 'Chaque dossier rapporte 25 % de plus.', cost: 42 },
+  { id: 'training', name: 'Formation continue', emoji: '🎓', desc: 'Chaque dossier rapporte 15 % de plus.', cost: 42 },
   { id: 'servers', name: 'Serveurs maison', emoji: '🗄️', desc: 'Encore deux fois moins de pannes, réparations deux fois plus rapides.', cost: 39, req: 'pc' },
   { id: 'lift2', name: 'Ascenseur rapide', emoji: '🛗', desc: 'Permet de moderniser les ascenseurs (niveau 2).', cost: 24 },
   { id: 'escalators', name: 'Escalators', emoji: '↗️', desc: 'Débloque les escalators : un étage de plus sans attendre l’ascenseur.', cost: 18 },
   { id: 'express', name: 'Ascenseur express', emoji: '⚡', desc: 'Débloque une cage express : très rapide, elle ne s’arrête qu’au hall, tous les 4 étages et au dernier.', cost: 45, req: 'lift2' },
-  { id: 'autopay', name: 'Virement automatique', emoji: '🏦', desc: 'L’argent des dossiers arrive directement sur ton compte (plus besoin de toucher les billets).', cost: 60 },
   { id: 'lift3', name: 'Ascenseur haute vitesse', emoji: '🚀', desc: 'Permet le niveau 3 des ascenseurs.', cost: 60, req: 'lift2' },
   { id: 'board', name: 'Conseil d’administration', emoji: '🏛️', desc: 'Débloque la salle du conseil et ses directeurs (5 étages requis).', cost: 90, req: 'pro' },
 ]
@@ -117,7 +116,7 @@ export const LIFT_CAP = 8
 export const STAIR_S = 1.7
 
 export const START_CASH = 9000
-export const COST_GROWTH = 1.22
+export const COST_GROWTH = 1.3
 export const BANK_CAP = 6           // dossiers non encaissés avant que l'employé ne s'arrête
 export const CLEAN_COST = 40
 export const FIX_COST = 120

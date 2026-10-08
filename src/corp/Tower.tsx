@@ -759,25 +759,8 @@ export function Tower() {
           const y0 = baseY(r.floor) - FH
           const out: ReactElement[] = []
           if (d.kind === 'work') {
-            const val = fileValue(g, r)
-            r.bank.forEach((b, i) => {
+            r.broken.forEach((_b, i) => {
               const cx = X0 + deskX(r, i) + 4
-              if (b >= val * 0.99) {
-                const n = Math.min(BANK_CAP, Math.floor(b / val + 0.01))
-                const full = n >= BANK_CAP
-                out.push(
-                  <g key={`b${i}`} transform={`translate(${cx},${y0 + 22})`} onClick={(e) => { e.stopPropagation(); useCorp.getState().collect(r.id, e.clientX, e.clientY) }} style={{ cursor: 'pointer' }} className="coin-bob">
-                    <circle r={12} fill="transparent" />
-                    {Array.from({ length: Math.min(4, n) }, (_, k) => (
-                      <g key={k} transform={`translate(${k * 1.2},${-k * 2.4})`}>
-                        <rect x={-8} y={-4.5} width={16} height={9} rx={1.5} fill={full ? '#fbbf24' : '#4ade80'} stroke={full ? '#b45309' : '#15803d'} strokeWidth={0.8} />
-                        <circle cx={0} cy={0} r={2.6} fill="none" stroke={full ? '#b45309' : '#15803d'} strokeWidth={0.7} />
-                      </g>
-                    ))}
-                    <text x={0} y={1} fontSize={4.5} textAnchor="middle" dominantBaseline="middle" fill={full ? '#78350f' : '#14532d'} fontWeight={900} transform={`translate(${Math.min(3, n - 1) * 1.2},${-Math.min(3, n - 1) * 2.4})`}>{fmtShort(b)}</text>
-                  </g>,
-                )
-              }
               if (r.broken[i] && !w.agents.some((a) => a.task === `${r.id}:${i}`)) {
                 out.push(
                   <g key={`x${i}`} transform={`translate(${cx + 4},${y0 + 46})`} onClick={(e) => { e.stopPropagation(); useCorp.getState().fixDesk(r.id, i) }} style={{ cursor: 'pointer' }}>
@@ -806,6 +789,16 @@ export function Tower() {
             )
           }
           return <g key={`o${r.id}`}>{out}</g>
+        })}
+
+        {/* L'argent qui rentre tout seul : « +40 € » qui s'envole de chaque poste */}
+        {w.pops.map((q) => {
+          const k = q.t / 1.4
+          return (
+            <g key={q.id} transform={`translate(${X0 + q.x + 4},${baseY(q.floor) - FH + 30 - k * 22})`} opacity={k < 0.15 ? k / 0.15 : 1 - Math.max(0, k - 0.6) / 0.4} pointerEvents="none">
+              <text x={0} y={0} fontSize={8.5} textAnchor="middle" fontWeight={900} fill="#16a34a" stroke="#fff" strokeWidth={2.2} paintOrder="stroke" fontFamily="Baloo 2, system-ui">+{fmtShort(q.amount)} €</text>
+            </g>
+          )
         })}
 
         {/* Ascenseurs : installer / prolonger */}
