@@ -60,6 +60,10 @@ export function Hud() {
           <div className={`font-display font-extrabold text-[24px] tabular-nums leading-none ${cash < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{fmtEur(cash)}</div>
         </div>
         <div className="flex-1" />
+        <button onClick={() => { sfxTap(); useCorp.getState().setAskNew(true) }} aria-label="Nouvelle partie" title="Nouvelle partie"
+          className={`${GLASS} pointer-events-auto rounded-2xl w-[46px] h-[46px] flex items-center justify-center text-slate-600 active:scale-90 transition-transform`}>
+          <RotateCcw size={20} strokeWidth={2.5} />
+        </button>
         <div className={`${GLASS} rounded-2xl px-3 py-1.5 text-right`}>
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 leading-none">{DAYS[d % 7]} · jour {d + 1}</div>
           <div className="text-[14px] font-extrabold text-slate-700 leading-tight mt-0.5">{isNight ? '🌙' : '☀️'} {String(hour).padStart(2, '0')}h</div>
@@ -528,7 +532,6 @@ export function StatsSheet() {
   useCorp((s) => s.rev)
   const st = useCorp.getState()
   const g = st.game
-  const [confirmReset, setConfirmReset] = useState(false)
   const hist = g.dayHist.slice(-7)
   const maxAbs = Math.max(1, ...hist.map((x) => Math.abs(x)))
   return (
@@ -568,9 +571,8 @@ export function StatsSheet() {
         <button onClick={() => st.toggleMute()} className="flex-1 rounded-2xl bg-white py-3 font-bold text-slate-600 flex items-center justify-center gap-2 shadow-sm">
           {g.muted ? <VolumeX size={18} /> : <Volume2 size={18} />} Son {g.muted ? 'coupé' : 'activé'}
         </button>
-        <button onClick={() => (confirmReset ? (st.reset(), st.openSheet(null)) : setConfirmReset(true))}
-          className={`flex-1 rounded-2xl py-3 font-bold flex items-center justify-center gap-2 shadow-sm ${confirmReset ? 'bg-rose-500 text-white' : 'bg-white text-slate-600'}`}>
-          <RotateCcw size={18} /> {confirmReset ? 'Confirmer ?' : 'Recommencer'}
+        <button onClick={() => st.setAskNew(true)} className="flex-1 rounded-2xl bg-white py-3 font-bold text-slate-600 flex items-center justify-center gap-2 shadow-sm">
+          <RotateCcw size={18} /> Nouvelle partie
         </button>
       </div>
       <div className="text-center mt-4 mb-2 text-[12px] text-slate-400 space-x-3">
@@ -723,6 +725,28 @@ export function Welcome() {
         <div className="text-slate-500 text-[14px]">Ton équipe a travaillé {Math.round(w.days)} jour{w.days >= 1.5 ? 's' : ''} sans toi.</div>
         <div className="my-5 rounded-3xl bg-emerald-50 py-4"><div className="font-display font-extrabold text-[38px] text-emerald-500 leading-none">+{fmtEur(w.gained)}</div></div>
         <button onClick={close} className="w-full rounded-2xl py-4 font-display font-extrabold text-[18px] text-emerald-900" style={{ background: 'linear-gradient(180deg,#86efac,#22c55e)' }}>Encaisser</button>
+      </div>
+    </div>
+  )
+}
+
+/** Confirmation avant de tout recommencer. */
+export function NewGameDialog() {
+  const ask = useCorp((s) => s.askNew)
+  useCorp((s) => s.rev)
+  if (!ask) return null
+  const st = useCorp.getState()
+  const g = st.game
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/50 fade-in" onClick={() => st.setAskNew(false)}>
+      <div className="w-full max-w-sm bg-white rounded-[32px] p-6 text-center shadow-2xl pop-in" onClick={(e) => e.stopPropagation()}>
+        <div className="text-5xl">🔄</div>
+        <div className="font-display font-extrabold text-[26px] text-slate-800 mt-1 leading-tight">Nouvelle partie ?</div>
+        <div className="text-slate-500 text-[14px] mt-2">Ta tour actuelle sera effacée : {employees(g)} employé{employees(g) > 1 ? 's' : ''}, {g.top + 1} niveau{g.top > 0 ? 'x' : ''}, {fmtEur(g.cash)} en caisse, jour {Math.floor(g.day) + 1}.</div>
+        <button onClick={() => st.reset()} className="w-full mt-5 rounded-2xl py-3.5 font-display font-extrabold text-[17px] text-white active:scale-[0.97]" style={{ background: 'linear-gradient(180deg,#fb7185,#e11d48)' }}>
+          Oui, tout recommencer
+        </button>
+        <button onClick={() => st.setAskNew(false)} className="w-full mt-2 rounded-2xl py-3 font-bold text-[15px] text-slate-600 bg-slate-100 active:scale-[0.97]">Continuer ma partie</button>
       </div>
     </div>
   )

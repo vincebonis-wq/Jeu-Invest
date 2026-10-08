@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useCorp } from './store'
 import { Tower } from './Tower'
-import { Hud, Dock, BuildSheet, RoomPanel, QuestsSheet, StatsSheet, ResearchSheet, StaffSheet, Toasts, Flies, Coach, Intro, Welcome, Celebrate } from './UI'
+import { Hud, Dock, BuildSheet, RoomPanel, QuestsSheet, StatsSheet, ResearchSheet, StaffSheet, Toasts, Flies, Coach, Intro, Welcome, Celebrate, NewGameDialog } from './UI'
 import '../archipel/archipel.css'
 import '../rentier/rentier.css'
 import './corp.css'
@@ -28,6 +28,7 @@ export function CorpApp() {
       <Flies />
       <Welcome />
       <Celebrate />
+      <NewGameDialog />
       {!introDone && <Intro />}
     </div>
   )

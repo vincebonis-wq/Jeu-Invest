@@ -28,6 +28,7 @@ interface Store {
   floorPop: Record<number, number>
   welcome: { days: number; gained: number } | null
   celebrate: number | null
+  askNew: boolean
 
   start: () => void
   collect: (roomId: string, x: number, y: number) => void
@@ -56,6 +57,7 @@ interface Store {
   finishIntro: () => void
   toggleMute: () => void
   reset: () => void
+  setAskNew: (v: boolean) => void
 }
 
 function load(): Game {
@@ -102,6 +104,7 @@ export const useCorp = create<Store>((set, get) => {
     floorPop: {},
     welcome: null,
     celebrate: null,
+    askNew: false,
 
     start: () => {
       if (running) return
@@ -249,9 +252,13 @@ export const useCorp = create<Store>((set, get) => {
     closeCelebrate: () => set({ celebrate: null }),
     finishIntro: () => { const g = get().game; g.introDone = true; save(g); bump() },
     toggleMute: () => { const g = get().game; g.muted = !g.muted; setMuted(g.muted); save(g); bump() },
+    /** Nouvelle partie : tout repart de zéro, écran d'accueil compris. */
     reset: () => {
-      const g = createGame(); g.introDone = true; save(g)
-      set({ game: g, world: createWorld(g), selected: null, sheet: null, toasts: [], popped: {}, floorPop: {} })
+      const old = get().game
+      const g = createGame(); g.muted = old.muted; save(g)
+      sfxTap()
+      set({ game: g, world: createWorld(g), selected: null, sheet: null, toasts: [], flies: [], popped: {}, floorPop: {}, buildType: null, target: null, welcome: null, celebrate: null, askNew: false })
     },
+    setAskNew: (v) => set({ askNew: v, sheet: null, selected: null, buildType: null, target: null }),
   }
 })
