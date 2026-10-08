@@ -25,11 +25,13 @@ export interface Room {
   builtAt: number
 }
 /** Escalator : relie l'étage `floor` à celui du dessus, posé par-dessus la case `slot` (il ne prend pas de place). */
-export interface Escalator { id: string; floor: number; slot: number }
+export type OverlayKind = 'escalator' | 'pole' | 'hook'
+export interface Escalator { id: string; floor: number; slot: number; kind?: OverlayKind }
+export const isOverlay = (t: RoomType) => t === 'escalator' || t === 'pole' || t === 'hook'
 export const escalatorsOf = (g: Game) => g.escalators ?? (g.escalators = [])
 
 export interface Quest { id: string; title: string; kind: QuestKind; target: number; param?: string; reward: number; done?: boolean }
-export type QuestKind = 'collect' | 'build' | 'count' | 'floors' | 'employees' | 'profit' | 'lift' | 'research'
+export type QuestKind = 'collect' | 'build' | 'count' | 'floors' | 'employees' | 'profit' | 'lift' | 'research' | 'tech'
 
 export interface Game {
   version: 3
@@ -56,6 +58,7 @@ export interface Game {
   lastSeen: number
   introDone: boolean
   muted: boolean
+  won?: number                // jour de la victoire (Domination mondiale)
   speed?: number              // vitesse choisie : 1, 2 ou 4
   fastNight?: boolean         // nuit accélérée (activée par défaut)
 }
@@ -138,7 +141,7 @@ export function canPlace(g: Game, type: RoomType, floor: number, slot: number) {
   if (d.floor === 'upper' && floor < 1) return false
   if (d.floor === 'notBasement' && floor < 0) return false
   if (d.floor === 'basement' && floor >= 0) return false
-  if (type === 'escalator') {
+  if (isOverlay(type)) {
     // Posé par-dessus les pièces : il faut juste un étage au-dessus et pas déjà un escalator ici.
     return floor < g.top && !escalatorsOf(g).some((e) => e.floor === floor && e.slot === slot)
   }
@@ -157,8 +160,13 @@ export function isUnlocked(g: Game, t: RoomType) {
 const countOf = (g: Game, t: RoomType) => g.rooms.filter((r) => r.type === t).length
 export const archivesBonus = (g: Game) => 0.05 * Math.min(3, countOf(g, 'archives'))
 export const serversMult = (g: Game) => Math.pow(0.5, Math.min(2, countOf(g, 'serveurs')))
+/** Comptables au travail en ce moment : +4 % chacun sur tous les dossiers (max +40 %). */
+export function accountingBonus() {
+  const n = WREF ? WREF.agents.filter((a) => a.role === 'accountant' && a.steps[0]?.t === 'account').length : 0
+  return Math.min(0.4, 0.04 * n)
+}
 export function valueMult(g: Game, r: Room) {
-  return (has(g, 'training') ? 1.15 : 1) * (1 + 0.15 * (r.level - 1)) * (1 + archivesBonus(g))
+  return (has(g, 'training') ? 1.15 : 1) * (1 + 0.15 * (r.level - 1)) * (1 + archivesBonus(g)) * (1 + accountingBonus())
 }
 export const fileValue = (g: Game, r: Room) => (ROOMS[r.type].taskValue ?? 0) * valueMult(g, r)
 
@@ -214,8 +222,8 @@ export function avgMood(g: Game) {
 // ── Actions joueur ───────────────────────────────────────────────────────────
 export function roomCost(g: Game, type: RoomType) {
   const d = ROOMS[type]
-  const n = type === 'escalator' ? escalatorsOf(g).length : g.rooms.filter((r) => r.type === type).length
-  return Math.round(d.cost * Math.pow(d.kind === 'work' ? COST_GROWTH : type === 'escalator' ? 1.15 : 1.35, n))
+  const n = isOverlay(type) ? escalatorsOf(g).filter((e) => (e.kind ?? 'escalator') === type).length : g.rooms.filter((r) => r.type === type).length
+  return Math.round(d.cost * Math.pow(d.kind === 'work' ? COST_GROWTH : isOverlay(type) ? 1.15 : 1.35, n))
 }
 
 export function build(g: Game, type: RoomType, floor: number, slot: number) {
@@ -223,7 +231,7 @@ export function build(g: Game, type: RoomType, floor: number, slot: number) {
   if (!canPlace(g, type, floor, slot) || g.cash < cost || !isUnlocked(g, type)) return null
   g.cash -= cost
   const r = makeRoom(type, floor, slot, g.day)
-  if (type === 'escalator') { escalatorsOf(g).push({ id: r.id, floor, slot }); return r }
+  if (isOverlay(type)) { escalatorsOf(g).push({ id: r.id, floor, slot, kind: type as OverlayKind }); return r }
   g.rooms.push(r)
   return r
 }
@@ -232,7 +240,7 @@ export function removeEscalator(g: Game, id: string) {
   const e = escalatorsOf(g).find((x) => x.id === id)
   if (!e) return 0
   g.escalators = escalatorsOf(g).filter((x) => x.id !== id)
-  const v = Math.round(ROOMS.escalator.cost * 0.5)
+  const v = Math.round(ROOMS[e.kind ?? 'escalator'].cost * 0.5)
   g.cash += v
   return v
 }
@@ -321,6 +329,7 @@ export type GEvent =
   | { kind: 'theft'; amount: number; room: Room }
   | { kind: 'caught'; byGuard: boolean }
   | { kind: 'day'; net: number }
+  | { kind: 'victory' }
 
 // ── Objectifs ────────────────────────────────────────────────────────────────
 const SCRIPT: Omit<Quest, 'id'>[] = [
@@ -346,6 +355,8 @@ const SCRIPT: Omit<Quest, 'id'>[] = [
   { kind: 'profit', title: 'Atteins 8 000 € de bénéfice par jour', target: 8000, reward: 25000 },
   { kind: 'build', param: 'direction', title: 'Installe le conseil d’administration', target: 1, reward: 40000 },
   { kind: 'profit', title: 'Atteins 20 000 € de bénéfice par jour', target: 20000, reward: 60000 },
+  { kind: 'employees', title: 'Atteins 150 employés', target: 150, reward: 80000 },
+  { kind: 'tech', param: 'domination', title: 'Lance le projet « Domination mondiale »', target: 1, reward: 250000 },
 ]
 function generated(n: number): Omit<Quest, 'id'> {
   const k = Math.pow(2, n + 1)
@@ -370,6 +381,7 @@ export function questProgress(g: Game, q: Quest) {
     case 'profit': return g.dayHist.length ? g.dayHist[g.dayHist.length - 1] : 0
     case 'lift': return g.liftOn ? 1 : 0
     case 'research': return g.research.length
+    case 'tech': return has(g, q.param ?? '') ? 1 : 0
   }
 }
 export function claimQuest(g: Game, id: string) {
@@ -381,6 +393,7 @@ export function claimQuest(g: Game, id: string) {
   return q.reward
 }
 export function checkProgress(g: Game, ev: GEvent[]) {
+  if (has(g, 'domination') && g.won == null) { g.won = g.day; ev.push({ kind: 'victory' }) }
   const nw = netWorth(g)
   if (nw > g.stats.peak) g.stats.peak = nw
   if (g.dayHist.length) {
@@ -416,6 +429,8 @@ export type Step =
   | { t: 'dump'; dur: number }
   | { t: 'coach'; targetId: string; dur: number }
   | { t: 'research'; roomId: string; dur: number }
+  | { t: 'account'; roomId: string; dur: number }
+  | { t: 'calm'; targetId: string; dur: number }
   | { t: 'wait'; dur: number; icon?: string }
   | { t: 'steal'; roomId: string; dur: number }
   | { t: 'chase'; thiefId: string }
@@ -454,7 +469,9 @@ export interface Agent {
   sweepDir?: 1 | -1        // sens de balayage de l'agent d'entretien
   prodK?: number           // productivité actuelle (1 = normal)
   commute?: number         // temps de trajet appris (fraction de journée) : il part plus tôt s'il habite… en haut
-  need?: 'pc' | 'wc' | 'coffee' | 'mood' | 'boost' | null   // ce qui le préoccupe (affiché au-dessus de sa tête)
+  stress: number           // monte en travaillant ; on le fait baisser en salle de pause ou avec les RH
+  sMax: number             // seuil où il va décompresser
+  need?: 'pc' | 'wc' | 'coffee' | 'mood' | 'stress' | 'boost' | null   // ce qui le préoccupe (affiché au-dessus de sa tête)
   boostT: number
   needT: number
   prog: number
@@ -539,7 +556,7 @@ function runCars(g: Game, w: World, dt: number) {
         const wr = a && roomOf(g, a.roomId)
         if (a && wr && a.idx != null) {
           a.away = false; a.floor = c.floor; a.x = c.x + 18; a.dir = 1; a.carry = 'bag'
-          a.energy = 75 + Math.random() * 25; a.bladder = Math.random() * 70
+          a.energy = 75 + Math.random() * 25; a.bladder = Math.random() * 70; a.stress = 5 + Math.random() * 20
           a.steps = [...routeA(a, wr.floor, deskX(wr, a.idx)), { t: 'work', roomId: wr.id, idx: a.idx }]
         }
       }
@@ -616,7 +633,9 @@ export function extendLift(g: Game, up: boolean, id: LiftId = 'A') {
 }
 
 /** Escalator d'une pièce : bas à gauche (étage r.floor), haut à droite (étage r.floor + 1). */
-export const escX = (r: { slot: number }) => ({ lo: slotX(r.slot) + 9, hi: slotX(r.slot) + SW - 9 })
+export const escX = (r: { slot: number; kind?: OverlayKind }) => (r.kind && r.kind !== 'escalator'
+  ? { lo: slotX(r.slot) + SW / 2, hi: slotX(r.slot) + SW / 2 }
+  : { lo: slotX(r.slot) + 9, hi: slotX(r.slot) + SW - 9 })
 
 let G: Game | null = null
 let WREF: World | null = null
@@ -654,7 +673,7 @@ function route(fromFloor: number, toFloor: number, toX: number, fromX = 20): Ste
   const from = Math.round(fromFloor), to = Math.round(toFloor)
   if (from === to || !G) return [{ t: 'walk', x: toX }]
   const g = G
-  type N = { f: number; x: number; kind: 'p' | 'door' | 'car' | 'esc' | 'stair' | 'goal'; lift?: LiftId; room?: string }
+  type N = { f: number; x: number; kind: 'p' | 'door' | 'car' | 'esc' | 'stair' | 'goal'; lift?: LiftId; room?: string; ok?: OverlayKind }
   const nodes: N[] = [{ f: from, x: fromX, kind: 'p' }, { f: to, x: toX, kind: 'goal' }]
   const defs = liftDefs(g).filter((d) => d.on && d.top > d.bottom)
   for (const d of defs) for (let f = d.bottom; f <= d.top; f++) if (liftStops(d, f)) {
@@ -662,7 +681,7 @@ function route(fromFloor: number, toFloor: number, toX: number, fromX = 20): Ste
   }
   for (const r of escalatorsOf(g)) if (r.floor < g.top) {
     const e = escX(r)
-    nodes.push({ f: r.floor, x: e.lo, kind: 'esc', room: r.id }, { f: r.floor + 1, x: e.hi, kind: 'esc', room: r.id })
+    nodes.push({ f: r.floor, x: e.lo, kind: 'esc', room: r.id, ok: r.kind ?? 'escalator' }, { f: r.floor + 1, x: e.hi, kind: 'esc', room: r.id, ok: r.kind ?? 'escalator' })
   }
   for (let k = g.bottom; k < g.top; k++) if (!stairServed(g, k)) nodes.push({ f: k, x: stairX(k), kind: 'stair' }, { f: k + 1, x: stairX(k + 1), kind: 'stair' })
   const n = nodes.length
@@ -688,7 +707,12 @@ function route(fromFloor: number, toFloor: number, toX: number, fromX = 20): Ste
       }
       if (b.kind === 'car') { if (a.kind === 'door' && a.lift === b.lift && a.f === b.f) relax(v, wait(b.lift!, b.f)); continue }
       if (b.f === a.f) relax(v, Math.abs(b.x - a.x) / WALK)
-      else if (a.kind === 'esc' && b.kind === 'esc' && a.room === b.room) relax(v, 0.9)
+      else if (a.kind === 'esc' && b.kind === 'esc' && a.room === b.room) {
+        // Escalator : deux sens ; barre de pompier : descente seulement ; monte-charge : montée seulement.
+        if (a.ok === 'pole') { if (b.f < a.f) relax(v, 0.35) }
+        else if (a.ok === 'hook') { if (b.f > a.f) relax(v, 0.5) }
+        else relax(v, 0.9)
+      }
       else if (a.kind === 'stair' && b.kind === 'stair' && Math.abs(b.f - a.f) === 1 && Math.abs(b.x - stairX(b.f)) < 0.01 && Math.abs(a.x - stairX(a.f)) < 0.01 && !stairServed(g, Math.min(a.f, b.f))) relax(v, STAIR_S)
     }
   }
@@ -726,6 +750,7 @@ function baseAgent(id: string, kind: Agent['kind'], floor: number, x: number): A
     id, kind, floor, x, steps: [], skin: pick(SKINS), cloth: '#64748b', hair: pick(HAIR), icon: null, iconT: 0, walking: false, dir: 1,
     inLift: false, waitT: 0, away: false, speed: walkSpeed(), energy: 70 + Math.random() * 30, bladder: Math.random() * 55, boostT: 0, needT: 0,
     bRate: 0.55 + Math.random() * 1.05, eRate: 0.75 + Math.random() * 0.75, bMax: 70 + Math.random() * 24, needCd: 0,
+    stress: 5 + Math.random() * 20, sMax: 58 + Math.random() * 22,
     prog: Math.random() * 0.5, bagN: 0, arrive: WORK_START + Math.random() * 0.06, leave: WORK_END + Math.random() * 0.04, lastDay: -1, done: new Set(),
   }
 }
@@ -754,7 +779,7 @@ function syncAgents(g: Game, w: World) {
       const a = baseAgent(id, 'staff', r.floor, slotX(r.slot) + 16 + i * 14)
       Object.assign(a, { role, roomId: r.id, cloth: STAFF[role].cloth, speed: WALK * 1.2 })
       if (role === 'supervisor') a.tie = '#111827'
-      a.away = ((role === 'researcher' || role === 'supervisor' || role === 'tech') && offHours(a)) || (role === 'janitor' && !offHours(a))
+      a.away = ((role === 'researcher' || role === 'supervisor' || role === 'tech' || role === 'hr' || role === 'accountant') && offHours(a)) || (role === 'janitor' && !offHours(a))
       w.agents.push(a)
     }
   }
@@ -812,7 +837,7 @@ function runWorker(g: Game, w: World, a: Agent, p: number, day: number) {
     }
     if (e?.car) say(a, '🚗😤', 2.5)
     a.away = false; a.floor = 0; a.x = EXIT_X; a.carry = 'bag'
-    a.energy = 75 + Math.random() * 25; a.bladder = Math.random() * 70
+    a.energy = 75 + Math.random() * 25; a.bladder = Math.random() * 70; a.stress = 5 + Math.random() * 20
     a.steps = [...route(0, r.floor, deskX(r, a.idx)), { t: 'work', roomId: r.id, idx: a.idx }]
     return
   }
@@ -826,15 +851,18 @@ function needTrip(g: Game, w: World, a: Agent, r: Room, idx: number): boolean {
   let type: RoomType | null = null
   if (a.bladder >= a.bMax) type = 'wc'
   else if (a.energy <= 22) type = 'cafe'
-  else if (e && e.mood < 38 && !a.done.has('pause') && g.rooms.some((x) => x.type === 'pause')) { type = 'pause'; a.done.add('pause') }
+  else if (g.rooms.some((x) => x.type === 'pause') && (a.stress >= a.sMax || (e && e.mood < 38 && !a.done.has('pauseMood')))) {
+    type = 'pause'
+    if (a.stress < a.sMax) a.done.add('pauseMood')   // pause « moral » : une fois par jour
+  }
   if (!type) return false
   // Le local le moins encombré à distance raisonnable (étages, file d'attente, places occupées).
   const load = (x: Room) => (w.queues[x.id]?.length ?? 0) + stationsOf(w, x).filter((st) => st.agentId).length / stationCount(x)
   const target = g.rooms.filter((x) => x.type === type).sort((x, y) => Math.abs(x.floor - a.floor) * 2.5 + load(x) * 2.5 - (Math.abs(y.floor - a.floor) * 2.5 + load(y) * 2.5))[0]
   if (!target) return false
   // Tout est pris et ce n'est pas encore urgent : il patiente encore un peu à son poste.
-  const urgent = type === 'wc' ? a.bladder >= Math.min(99, a.bMax + 14) : a.energy <= 12
-  if (type !== 'pause' && !urgent && (w.queues[target.id]?.length ?? 0) >= 1 && stationsOf(w, target).every((st) => st.agentId)) {
+  const urgent = type === 'wc' ? a.bladder >= Math.min(99, a.bMax + 14) : type === 'cafe' ? a.energy <= 12 : a.stress >= 92
+  if (!urgent && (w.queues[target.id]?.length ?? 0) >= 1 && stationsOf(w, target).every((st) => st.agentId)) {
     a.needCd = 2 + Math.random() * 3.5
     if (!a.icon && Math.random() < 0.5) say(a, type === 'wc' ? '🚽⏳' : '☕⏳', 1.6)
     return false
@@ -853,19 +881,23 @@ function workTick(g: Game, w: World, a: Agent, s: Extract<Step, { t: 'work' }>, 
   if (!a.done.has('desk')) { a.done.add('desk'); if (!a.done.has('lateStart')) a.commute = (a.commute ?? 0.05) * 0.5 + Math.max(0, p - a.arrive) * 0.5 }
   // Besoins
   if (a.needCd > 0) a.needCd -= dt
-  else if ((a.bladder >= a.bMax || a.energy <= 22 || e.mood < 38) && needTrip(g, w, a, r, s.idx)) { a.needT = 0; return }
+  else if ((a.bladder >= a.bMax || a.energy <= 22 || (e.mood < 38 && !a.done.has('pauseMood')) || a.stress >= a.sMax) && needTrip(g, w, a, r, s.idx)) { a.needT = 0; return }
   const unmet = a.bladder >= Math.min(99, a.bMax + 14) || a.energy <= 12
   a.needT = unmet ? a.needT + dt : 0
   if (unmet && !a.icon && Math.random() < dt * 0.35) say(a, a.bladder >= a.bMax ? '🚽❗' : '🥱', 1.8)
   // Ce qui le préoccupe, visible au-dessus de sa tête, et qui freine son travail progressivement.
-  a.need = r.broken[s.idx] ? 'pc' : a.bladder >= a.bMax * 0.85 ? 'wc' : a.energy < 35 ? 'coffee' : e.mood < 40 ? 'mood' : a.boostT > 0 ? 'boost' : null
+  // Stress : monte en travaillant, plus vite sous la pression du chef, dans un bureau sale ou devant un poste en panne.
+  a.stress = Math.min(100, a.stress + dt * 0.7 * (a.boostT > 0 ? 1.8 : 1) * (r.trash.length >= 3 ? 1.3 : 1) * (r.broken[s.idx] ? 1.6 : 1) * (has(g, 'zen') ? 0.7 : 1) * (has(g, 'plants') ? 0.9 : 1))
+  if (a.stress >= 100 && !a.done.has('burnout')) { a.done.add('burnout'); e.mood = Math.max(0, e.mood - 15); say(a, '🤯', 2.5) }
+  a.need = r.broken[s.idx] ? 'pc' : a.bladder >= a.bMax * 0.85 ? 'wc' : a.stress >= 70 ? 'stress' : a.energy < 35 ? 'coffee' : e.mood < 40 ? 'mood' : a.boostT > 0 ? 'boost' : null
   const wcK = a.bladder >= Math.min(99, a.bMax + 14) ? 0.4 : a.bladder >= a.bMax ? 0.7 : a.bladder >= a.bMax * 0.85 ? 0.9 : 1
   const enK = a.energy < 12 ? 0.4 : a.energy < 22 ? 0.65 : a.energy < 35 ? 0.85 : 1
   // Panne ?
   if (r.broken[s.idx]) { a.prodK = 0; if (!a.icon && Math.random() < dt * 0.5) say(a, '❓', 1.5); return }
   const val = fileValue(g, r)
   // Travail
-  const relK = (0.55 + e.mood / 100 * 0.65) * (a.boostT > 0 ? 1.7 : 1) * wcK * enK
+  const stK = a.stress >= 95 ? 0.6 : a.stress >= 85 ? 0.8 : a.stress >= 70 ? 0.92 : 1
+  const relK = (0.55 + e.mood / 100 * 0.65) * (a.boostT > 0 ? 1.7 : 1) * wcK * enK * stK
   a.prodK = relK
   const speed = relK * (has(g, 'pc') ? 1.2 : 1) * (has(g, 'screens') ? 1.25 : 1)
   if (a.boostT > 0) a.boostT -= dt
@@ -905,7 +937,7 @@ function moodTick(g: Game, w: World, dt: number) {
     }
     const here = g.rooms.find((x) => x.floor === Math.round(a.floor) && a.x >= slotX(x.slot) && a.x < slotX(x.slot) + ROOMS[x.type].w * SW) ?? r
     const noSpot = e.car && !w.cars.some((c) => c.id === e.id)
-    let target = 74 + (has(g, 'plants') ? 10 : 0) - (noSpot ? 8 : 0) - Math.min(5, here.trash.length) * 3.5 - (a.needT > 0 ? 22 : 0) - (r.broken[a.idx ?? 0] ? 8 : 0)
+    let target = 74 - (a.stress >= 80 ? 14 : a.stress >= 60 ? 6 : 0) + (has(g, 'plants') ? 10 : 0) - (noSpot ? 8 : 0) - Math.min(5, here.trash.length) * 3.5 - (a.needT > 0 ? 22 : 0) - (r.broken[a.idx ?? 0] ? 8 : 0)
     if (ROOMS[r.type].type === 'direction' && r.trash.length) target -= 12
     e.mood += (target - e.mood) * dt * 0.06
     e.mood = Math.max(0, Math.min(100, e.mood))
@@ -936,11 +968,37 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
   if (!home) return
   // Chercheurs et superviseurs ont des horaires de bureau.
   // Chercheurs, superviseurs et techniciens ont des horaires de bureau.
-  if (a.role === 'researcher' || a.role === 'supervisor' || a.role === 'tech') {
+  if (a.role === 'researcher' || a.role === 'supervisor' || a.role === 'tech' || a.role === 'hr' || a.role === 'accountant') {
     const on = p > WORK_START + 0.01 && p < workEnd(g)
     if (!on) { if (!a.away) { a.carry = 'bag'; a.steps = [...routeA(a, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }] } return }
     if (a.away) { a.away = false; a.floor = 0; a.x = EXIT_X; a.carry = 'bag'; a.steps = route(0, home.floor, slotX(home.slot) + 20); return }
     a.carry = undefined
+  }
+  if (a.role === 'accountant') {
+    const idx = Number(a.id.split('-').pop()) || 0
+    const hx = slotX(home.slot) + 16 + idx * 14
+    if (Math.round(a.floor) !== home.floor || Math.abs(a.x - hx) > 2) { a.steps = routeA(a, home.floor, hx); return }
+    a.steps = [{ t: 'account', roomId: home.id, dur: 4 + Math.random() * 4 }]
+    return
+  }
+  if (a.role === 'hr') {
+    // Va voir l'employé le plus stressé ou le plus malheureux (en tenant compte du trajet).
+    let best: Agent | null = null, sc = -Infinity
+    for (const x of w.agents) {
+      if (x.kind !== 'worker' || x.away || x.inLift || x.steps[0]?.t !== 'work' || claimed(x.id)) continue
+      const e = empOf(g, x)
+      const need = Math.max(x.stress - 55, e ? 50 - e.mood : 0)
+      if (need <= 0) continue
+      const v = need * 2 - Math.abs(Math.round(x.floor) - a.floor) * 8 - Math.abs(x.x - a.x) / 25
+      if (v > sc) { sc = v; best = x }
+    }
+    if (best) {
+      a.task = best.id; a.carry = 'clipboard'
+      a.steps = [...routeA(a, Math.round(best.floor), best.x - 12), { t: 'calm', targetId: best.id, dur: 1.8 }]
+      return
+    }
+    goHome(g, a)
+    return
   }
   if (a.role === 'researcher') {
     const idx = Number(a.id.split('-').pop()) || 0
@@ -1212,8 +1270,9 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
     const r = escalatorsOf(g).find((x) => x.id === s.roomId)
     if (!r) { a.steps.splice(0, 1, ...route(a.floor, s.to, a.x, a.x)); return }
     const d = s.to - a.floor
-    const mv = dt / 0.8
+    const mv = dt / (r.kind === 'pole' ? 0.3 : r.kind === 'hook' ? 0.45 : 0.8)
     if (Math.abs(d) <= mv) { a.floor = s.to; a.steps.shift() } else a.floor += Math.sign(d) * mv
+    if (r.kind === 'pole' && !a.icon) say(a, '🔥', 0.6)
     const e = escX(r)
     const nx = e.lo + (e.hi - e.lo) * Math.max(0, Math.min(1, a.floor - r.floor))
     if (Math.abs(nx - a.x) > 0.01) a.dir = nx > a.x ? 1 : -1
@@ -1284,7 +1343,11 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
         a.energy = has(g, 'espresso') ? 100 : 88
         a.carry = 'cup'
         if (Math.random() < 0.3 && r.trash.length < 8) dropTrash(r, stationX(r, s.idx) + 8, 'cup')
-      } else if (r.type === 'pause' && e) e.mood = Math.min(100, e.mood + 28)
+      } else if (r.type === 'pause') {
+        a.stress = Math.max(0, a.stress - (has(g, 'zen') ? 85 : 70) - 10 * (r.level - 1))
+        if (e) e.mood = Math.min(100, e.mood + 12)
+      }
+      if (r.type === 'cafe') a.stress = Math.max(0, a.stress - 25)
       say(a, r.type === 'pause' ? '😊' : '👍', 1.3)
       a.steps.shift()
     }
@@ -1325,6 +1388,24 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
       for (const t of w.agents) if (t.kind === 'worker' && t.roomId === s.targetId && t.steps[0]?.t === 'work' && Math.round(t.floor) === Math.round(a.floor)) {
         t.boostT = has(g, 'coaching') ? 12 : 7
         say(t, '⚡', 1.6)
+      }
+      a.steps.shift(); a.task = undefined
+    }
+  } else if (s.t === 'account') {
+    a.dir = -1
+    if (!a.icon && Math.random() < dt * 0.2) say(a, Math.random() < 0.5 ? '🧮' : '📊', 1.3)
+    s.dur -= dt
+    if (s.dur <= 0 || p > workEnd(g)) a.steps.shift()
+  } else if (s.t === 'calm') {
+    const t = w.agents.find((x) => x.id === s.targetId)
+    s.dur -= dt
+    a.dir = 1
+    if (!a.icon) say(a, '💬', 0.8)
+    if (s.dur <= 0) {
+      if (t && Math.round(t.floor) === Math.round(a.floor)) {
+        t.stress = Math.max(0, t.stress - 40)
+        const e = empOf(g, t); if (e) e.mood = Math.min(100, e.mood + 12)
+        say(t, '😌', 1.6)
       }
       a.steps.shift(); a.task = undefined
     }

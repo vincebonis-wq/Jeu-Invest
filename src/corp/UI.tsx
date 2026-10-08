@@ -266,14 +266,14 @@ export function RoomPanel() {
       <div className="absolute bottom-0 inset-x-0 z-30 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
         <div className={`${GLASS} max-w-md mx-auto rounded-[28px] p-4 sheet-up`}>
           <div className="flex items-start gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl">↗️</div>
+            <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl">{ROOMS[e.kind ?? 'escalator'].emoji}</div>
             <div className="flex-1">
-              <div className="font-display font-extrabold text-[19px] text-slate-800 leading-tight">Escalator</div>
-              <div className="text-[12px] text-slate-500">{e.floor === 0 ? 'RDC' : e.floor < 0 ? `S${-e.floor}` : `Étage ${e.floor}`} ↔ {e.floor + 1 === 0 ? 'RDC' : `étage ${e.floor + 1}`} · posé par-dessus, dans les deux sens · {users} personne{users > 1 ? 's' : ''} dessus</div>
+              <div className="font-display font-extrabold text-[19px] text-slate-800 leading-tight">{ROOMS[e.kind ?? 'escalator'].name}</div>
+              <div className="text-[12px] text-slate-500">{e.floor === 0 ? 'RDC' : e.floor < 0 ? `S${-e.floor}` : `Étage ${e.floor}`} ↔ {e.floor + 1 === 0 ? 'RDC' : `étage ${e.floor + 1}`} · {e.kind === 'pole' ? 'descente seulement' : e.kind === 'hook' ? 'montée seulement' : 'dans les deux sens'} · {users} personne{users > 1 ? 's' : ''} dessus</div>
             </div>
             <button onClick={() => st.select(null)} className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><X size={18} /></button>
           </div>
-          <button onClick={() => st.removeEscalator(e.id)} className="w-full mt-3 text-[12px] text-slate-400 underline">Retirer cet escalator (+{fmtEur(Math.round(ROOMS.escalator.cost * 0.5))})</button>
+          <button onClick={() => st.removeEscalator(e.id)} className="w-full mt-3 text-[12px] text-slate-400 underline">Retirer (+{fmtEur(Math.round(ROOMS[e.kind ?? 'escalator'].cost * 0.5))})</button>
         </div>
       </div>
     )
@@ -478,6 +478,8 @@ export function staffStatus(_g: Game, a: Agent): string {
   if (s0?.t === 'fix') return '🔧 Répare un ordinateur'
   if (s0?.t === 'coach') return '📣 Motive un employé'
   if (s0?.t === 'research') return '💡 Fait de la recherche'
+  if (s0?.t === 'account') return '🧮 Fait les comptes'
+  if (s0?.t === 'calm') return '💬 Rassure un employé stressé'
   if (s0?.t === 'stairs') return '🪜 Dans l’escalier'
   if (s0?.t === 'lift' || a.inLift) return '🛗 Prend l’ascenseur'
   if (a.task) return a.role === 'janitor' ? '🧹 Va ramasser un déchet' : a.role === 'tech' ? '🧰 Va réparer un poste' : a.role === 'supervisor' ? '📋 Fait sa tournée' : '🚶 En route'
@@ -489,8 +491,8 @@ export function StaffSheet() {
   useCorp((s) => s.rev)
   const st = useCorp.getState()
   const g = st.game
-  const roles: StaffRole[] = ['supervisor', 'janitor', 'tech', 'researcher', 'guard']
-  const roomFor: Record<StaffRole, RoomType> = { supervisor: 'supervision', janitor: 'menage', tech: 'it', researcher: 'labo', guard: 'securite' }
+  const roles: StaffRole[] = ['supervisor', 'hr', 'accountant', 'janitor', 'tech', 'researcher', 'guard']
+  const roomFor: Record<StaffRole, RoomType> = { supervisor: 'supervision', hr: 'rh', accountant: 'compta', janitor: 'menage', tech: 'it', researcher: 'labo', guard: 'securite' }
   const workers = st.world.agents.filter((a) => a.kind === 'worker')
   const atDesk = workers.filter((a) => !a.away && a.steps[0]?.t === 'work').length
   return (
@@ -767,6 +769,39 @@ export function Welcome() {
       </div>
     </div>
   )
+}
+
+/** Victoire : le projet « Domination mondiale » est terminé. */
+export function Victory() {
+  const v = useCorp((s) => s.victory)
+  useCorp((s) => s.rev)
+  if (!v) return null
+  const st = useCorp.getState()
+  const g = st.game
+  const days = Math.floor(g.won ?? g.day) + 1
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 fade-in overflow-hidden">
+      {Array.from({ length: 80 }, (_, i) => <span key={i} className="confetti" style={{ left: `${(i * 37) % 100}%`, background: ['#fbbf24', '#34d399', '#60a5fa', '#f472b6', '#a78bfa'][i % 5], animationDelay: `${(i % 15) / 10}s`, animationDuration: `${2.5 + (i % 7) / 3}s` }} />)}
+      <div className="relative w-full max-w-sm bg-white rounded-[32px] p-6 text-center shadow-2xl pop-in">
+        <div className="text-6xl">🌍</div>
+        <div className="font-display font-extrabold text-[28px] leading-tight text-slate-800 mt-2">Domination mondiale !</div>
+        <div className="text-slate-500 text-[14px] mt-1">Ta boîte est devenue la première entreprise du monde.</div>
+        <div className="grid grid-cols-2 gap-2 mt-4 text-left">
+          <Stat label="Jours" value={`${days}`} />
+          <Stat label="Employés" value={`${employees(g)}`} />
+          <Stat label="Bénéfice / jour" value={`${fmtShort(profitPerDay(g))} €`} />
+          <Stat label="Valeur" value={`${fmtShort(netWorth(g))} €`} />
+          <Stat label="Dossiers traités" value={fmtShort(g.stats.files)} />
+          <Stat label="Étages" value={`${g.top + 1}`} />
+        </div>
+        <button onClick={() => st.closeVictory()} className="w-full mt-5 rounded-2xl py-3.5 font-display font-extrabold text-[17px] text-white" style={{ background: 'linear-gradient(180deg,#34d399,#059669)' }}>Continuer en mode libre</button>
+        <button onClick={() => { st.closeVictory(); st.setAskNew(true) }} className="w-full mt-2 rounded-2xl py-3 font-bold text-[15px] text-slate-600 bg-slate-100">Nouvelle partie (battre mon record)</button>
+      </div>
+    </div>
+  )
+}
+function Stat({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-2xl bg-slate-50 px-3 py-2"><div className="text-[10px] font-bold uppercase text-slate-400">{label}</div><div className="font-display font-extrabold text-[17px] text-slate-800">{value}</div></div>
 }
 
 /** Confirmation avant de tout recommencer. */

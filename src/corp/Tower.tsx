@@ -88,7 +88,7 @@ function Person({ a, x, y, small }: { a: Agent; x: number; y: number; small?: bo
 }
 
 /** Employé assis à son poste, de profil, qui tape sur son clavier. */
-const NEED_ICON: Record<string, string> = { pc: '💻', wc: '🚽', coffee: '☕', mood: '😠', boost: '⚡' }
+const NEED_ICON: Record<string, string> = { pc: '💻', wc: '🚽', coffee: '☕', mood: '😠', stress: '😩', boost: '⚡' }
 
 function SeatedWorker({ a, cx, fl, boost }: { a: Agent; cx: number; fl: number; boost: boolean }) {
   const pk = a.prodK ?? 1
@@ -312,9 +312,38 @@ export function Interior({ r, w, night, skyCol, g, st, seats, boosts }: { r: Roo
           <rect x={w / 2 - 16} y={10} width={32} height={18} rx={1.5} fill="#111827" /><rect x={w / 2 - 14} y={12} width={28} height={14} fill={night > 0.5 ? '#1e3a8a' : '#38bdf8'} />
           {Array.from({ length: n }, (_, i) => {
             const cx = sx(i)
-            return <g key={i}><rect x={cx - 11} y={fl - 10} width={22} height={10} rx={3} fill="#16a34a" /><rect x={cx - 11} y={fl - 16} width={22} height={7} rx={3} fill="#22c55e" /><rect x={cx - 13} y={fl - 12} width={4} height={12} rx={2} fill="#15803d" /><rect x={cx + 9} y={fl - 12} width={4} height={12} rx={2} fill="#15803d" /><Progress x={cx} y={fl - 30} st={stOf(i)} /></g>
+            const play = stOf(i).phase === 'run'
+            // Canapés, puis baby-foot (niveau 2) et borne d'arcade (niveau 3).
+            if (i === 3) return <g key={i}><rect x={cx - 9} y={fl - 14} width={18} height={8} rx={1.5} fill="#166534" stroke="#a16207" strokeWidth={1.2} /><line x1={cx - 9} y1={fl - 11} x2={cx + 9} y2={fl - 11} stroke="#d4d4d8" strokeWidth={0.6} /><line x1={cx - 9} y1={fl - 9} x2={cx + 9} y2={fl - 9} stroke="#d4d4d8" strokeWidth={0.6} />{play && <circle cx={cx + Math.sin(Date.now() / 150) * 6} cy={fl - 10} r={0.9} fill="#fff" />}<rect x={cx - 8} y={fl - 6} width={2} height={6} fill="#78350f" /><rect x={cx + 6} y={fl - 6} width={2} height={6} fill="#78350f" /><Progress x={cx} y={fl - 30} st={stOf(i)} /></g>
+            if (i === 4) return <g key={i}><rect x={cx - 6} y={fl - 26} width={12} height={26} rx={1.5} fill="#7c3aed" /><rect x={cx - 4} y={fl - 23} width={8} height={7} fill={play ? '#22d3ee' : '#1e1b4b'} /><circle cx={cx - 2} cy={fl - 12} r={1.2} fill="#ef4444" /><circle cx={cx + 2} cy={fl - 12} r={1.2} fill="#facc15" /><Progress x={cx} y={fl - 34} st={stOf(i)} /></g>
+            return <g key={i}><rect x={cx - 9} y={fl - 10} width={18} height={10} rx={3} fill="#16a34a" /><rect x={cx - 9} y={fl - 16} width={18} height={7} rx={3} fill="#22c55e" /><rect x={cx - 11} y={fl - 12} width={4} height={12} rx={2} fill="#15803d" /><rect x={cx + 7} y={fl - 12} width={4} height={12} rx={2} fill="#15803d" /><Progress x={cx} y={fl - 30} st={stOf(i)} /></g>
           })}
           <circle cx={8} cy={fl - 14} r={6} fill="#4ade80" /><rect x={5} y={fl - 9} width={6} height={9} rx={1} fill="#b45309" />
+        </g>
+      )
+    case 'rh':
+      return (
+        <g>
+          <rect x={0} y={fl} width={w} height={6} fill="#d6a4b8" />
+          <rect x={6} y={9} width={24} height={16} rx={1} fill="#fff" stroke="#f9a8d4" />
+          <text x={18} y={19.5} fontSize={7} textAnchor="middle">❤️</text>
+          <rect x={34} y={10} width={22} height={14} rx={2} fill="#fce7f3" stroke="#f472b6" />
+          <text x={45} y={19} fontSize={4.3} fill="#9d174d" textAnchor="middle" fontWeight={900}>BIEN-ÊTRE</text>
+          <rect x={8} y={fl - 12} width={30} height={3} rx={1} fill="#9d174d" /><rect x={10} y={fl - 9} width={26} height={9} fill="#831843" />
+          <rect x={44} y={fl - 13} width={14} height={13} rx={4} fill="#f472b6" />
+          <circle cx={w - 7} cy={fl - 14} r={5} fill="#22c55e" /><rect x={w - 9} y={fl - 9} width={4} height={9} rx={1} fill="#b45309" />
+        </g>
+      )
+    case 'compta':
+      return (
+        <g>
+          <rect x={0} y={fl} width={w} height={6} fill="#6b7280" />
+          <rect x={6} y={9} width={30} height={17} rx={1} fill="#fff" stroke="#6ee7b7" />
+          {[0, 1, 2, 3, 4].map((i) => <rect key={i} x={9 + i * 5} y={23 - (i * 7) % 12 - 2} width={3.5} height={(i * 7) % 12 + 2} fill="#10b981" />)}
+          <rect x={40} y={9} width={18} height={20} rx={1} fill="#e5e7eb" stroke="#9ca3af" />
+          {[0, 1, 2].map((i) => <rect key={i} x={42} y={12 + i * 6} width={14} height={4} rx={0.6} fill="#d1d5db" />)}
+          <rect x={4} y={fl - 13} width={w - 8} height={3} rx={1} fill="#374151" />
+          {[0, 1, 2].map((i) => <g key={i}><rect x={10 + i * 16} y={fl - 19} width={7} height={6} rx={1} fill="#111827" /><rect x={11 + i * 16} y={fl - 18} width={5} height={2} fill="#34d399" /></g>)}
         </g>
       )
     case 'supervision':
@@ -678,6 +707,35 @@ export function Tower() {
         {/* Escalators : posés par-dessus les pièces, de l'étage au suivant */}
         {escalatorsOf(g).map((e) => {
           const x0 = X0 + slotX(e.slot), yb = baseY(e.floor)
+          const sel0 = selected === `esc:${e.id}`
+          const pick = (ev: { stopPropagation: () => void }) => { ev.stopPropagation(); useCorp.getState().select(sel0 ? null : `esc:${e.id}`) }
+          if (e.kind === 'pole') {
+            // Barre de pompier : on glisse de l'étage du dessus vers celui-ci.
+            const cx = x0 + SW / 2
+            return (
+              <g key={`esc${e.id}`} onClick={pick} style={{ cursor: 'pointer' }}>
+                <ellipse cx={cx} cy={yb - FH - 4} rx={9} ry={2.5} fill="#111827" />
+                <rect x={cx - 1.6} y={yb - FH - 6} width={3.2} height={FH - 6} rx={1.6} fill="url(#brass)" />
+                <ellipse cx={cx} cy={yb - 12.5} rx={8} ry={1.8} fill="#ef4444" opacity={0.85} />
+                <rect x={cx - 9} y={yb - FH + 6} width={18} height={6} rx={2} fill="#dc2626" /><text x={cx} y={yb - FH + 10.3} fontSize={4} fill="#fff" textAnchor="middle" fontWeight={900}>↓ POMPIER</text>
+                {sel0 && <rect x={cx - 11} y={yb - FH} width={22} height={FH - 8} fill="none" stroke="#fff" strokeWidth={2} rx={3} className="sel-pulse" />}
+              </g>
+            )
+          }
+          if (e.kind === 'hook') {
+            // Monte-charge express : câble, poulie et plateforme.
+            const cx = x0 + SW / 2
+            const bob = Math.sin(now / 300 + e.slot) * 2
+            return (
+              <g key={`esc${e.id}`} onClick={pick} style={{ cursor: 'pointer' }}>
+                <circle cx={cx} cy={yb - FH + 3} r={3.2} fill="#475569" stroke="#cbd5e1" strokeWidth={0.8} />
+                <line x1={cx} y1={yb - FH + 3} x2={cx} y2={yb - 26 + bob} stroke="#1f2937" strokeWidth={1} />
+                <rect x={cx - 7} y={yb - 26 + bob} width={14} height={2.6} rx={1} fill="#f59e0b" stroke="#92400e" strokeWidth={0.6} />
+                <rect x={cx - 9} y={yb - FH + 9} width={18} height={6} rx={2} fill="#d97706" /><text x={cx} y={yb - FH + 13.3} fontSize={4} fill="#fff" textAnchor="middle" fontWeight={900}>↑ EXPRESS</text>
+                {sel0 && <rect x={cx - 11} y={yb - FH} width={22} height={FH - 8} fill="none" stroke="#fff" strokeWidth={2} rx={3} className="sel-pulse" />}
+              </g>
+            )
+          }
           const x1 = x0 + 9, x2 = x0 + SW - 9, y1 = yb - 14, y2 = yb - FH + 2
           const off = (now / 90) % 1
           const n = 11
@@ -958,6 +1016,9 @@ export function Tower() {
         <rect x={X0 - 6} y={groundBase - 52} width={6} height={44} fill="#5b3a29" />
 
         <defs>
+          <linearGradient id="brass" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#a16207" /><stop offset="50%" stopColor="#fde68a" /><stop offset="100%" stopColor="#a16207" />
+          </linearGradient>
           <radialGradient id="coinGrad" cx="35%" cy="30%">
             <stop offset="0%" stopColor="#fff6c4" /><stop offset="40%" stopColor="#ffd34d" /><stop offset="100%" stopColor="#d18a0d" />
           </radialGradient>

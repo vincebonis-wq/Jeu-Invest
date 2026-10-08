@@ -28,6 +28,7 @@ interface Store {
   floorPop: Record<number, number>
   welcome: { days: number; gained: number } | null
   celebrate: number | null
+  victory: boolean
   askNew: boolean
 
   start: () => void
@@ -55,6 +56,7 @@ interface Store {
   removeFly: (id: number) => void
   closeWelcome: () => void
   closeCelebrate: () => void
+  closeVictory: () => void
   finishIntro: () => void
   toggleMute: () => void
   setSpeed: (s: number) => void
@@ -83,6 +85,7 @@ export const useCorp = create<Store>((set, get) => {
       if (e.kind === 'quit') toast({ icon: '😤', title: `${e.name} démissionne`, text: 'Moral au plus bas : toilettes, café, propreté ?', tone: 'warn' })
       else if (e.kind === 'theft') toast({ icon: '🦹', title: 'Vol au bureau !', text: `${Math.round(e.amount)} € dérobés : ${ROOMS[e.room.type].name}.`, tone: 'warn' })
       else if (e.kind === 'caught') { sfxUpgrade(); toast(e.byGuard ? { icon: '👮', title: 'Voleur arrêté !', text: 'Ton vigile l’a intercepté.', tone: 'good' } : { icon: '🦹', title: 'Voleur mis en fuite !', text: 'Un poste de sécurité veillera à ta place.', tone: 'good' }) }
+      else if (e.kind === 'victory') { sfxFanfare(); set({ victory: true }) }
       else if (e.kind === 'tier') {
         const t = TIERS[e.tier]
         sfxFanfare()
@@ -107,6 +110,7 @@ export const useCorp = create<Store>((set, get) => {
     floorPop: {},
     welcome: null,
     celebrate: null,
+    victory: false,
     askNew: false,
 
     start: () => {
@@ -122,7 +126,7 @@ export const useCorp = create<Store>((set, get) => {
         const dt = Math.min(0.1, (now - last) / 1000)
         last = now
         const st = get()
-        if (st.game.introDone && !st.welcome && st.celebrate == null && document.visibilityState === 'visible') {
+        if (st.game.introDone && !st.welcome && st.celebrate == null && !st.victory && document.visibilityState === 'visible') {
           const ev: GEvent[] = []
           // Accéléré : plusieurs petits pas de simulation par image.
           let rem = dt * timeScale(st.game, st.world)
@@ -260,6 +264,7 @@ export const useCorp = create<Store>((set, get) => {
       if (w) { sfxCoin(); set({ flies: [...get().flies, { id: flySeq++, x: window.innerWidth / 2, y: window.innerHeight / 2, amount: w.gained }] }) }
     },
     closeCelebrate: () => set({ celebrate: null }),
+    closeVictory: () => set({ victory: false }),
     finishIntro: () => { const g = get().game; g.introDone = true; save(g); bump() },
     toggleMute: () => { const g = get().game; g.muted = !g.muted; setMuted(g.muted); save(g); bump() },
     setSpeed: (s) => { const g = get().game; g.speed = s; sfxTap(); save(g); bump() },
