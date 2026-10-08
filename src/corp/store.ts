@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import {
   createGame, createWorld, step, applyOffline, build as simBuild, buildFloor as simFloor, collect as simCollect,
   renovate as simRenovate, cleanRoom, fixDesk as simFix, upgradeLift as simLift, claimQuest as simClaim, sell as simSell,
-  migrate, installLift as simInstallLift, extendLift as simExtendLift, doResearch, scareThief, fillQuests, checkProgress, canPlace, roomCost,
+  migrate, removeEscalator as simRemoveEsc, installLift as simInstallLift, extendLift as simExtendLift, doResearch, scareThief, fillQuests, checkProgress, canPlace, roomCost,
   timeScale, type Game, type World, type GEvent, type LiftId,
 } from './sim'
 import { ROOMS, TIERS, type RoomType } from './data'
@@ -48,6 +48,7 @@ interface Store {
   research: (id: string) => void
   scare: (agentId: string) => void
   sell: (id: string) => void
+  removeEscalator: (id: string) => void
   claim: (id: string, x: number, y: number) => void
   openSheet: (s: Sheet) => void
   dismissToast: (id: number) => void
@@ -235,6 +236,11 @@ export const useCorp = create<Store>((set, get) => {
     sell: (id) => {
       const g = get().game; const r = g.rooms.find((x) => x.id === id)
       if (!r || !simSell(g, r)) { sfxError(); return }
+      sfxCoin(); bump({ selected: null })
+    },
+    removeEscalator: (id) => {
+      const g = get().game
+      if (!simRemoveEsc(g, id)) { sfxError(); return }
       sfxCoin(); bump({ selected: null })
     },
     claim: (id, x, y) => {

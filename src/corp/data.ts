@@ -53,7 +53,7 @@ export const ROOMS: Record<RoomType, RoomDef> = {
   parking:     { type: 'parking', name: 'Parking', emoji: '🅿️', w: 2, cost: 4000, kind: 'support', floor: 'basement', spots: 3, wall: '#8a929c', desc: '3 places. Les employés motorisés arrivent par le garage, à l’heure et de bonne humeur. Sans place, ils tournent pour se garer : en retard et agacés.' },
   serveurs:    { type: 'serveurs', name: 'Salle des serveurs', emoji: '🗄️', w: 1, cost: 8000, kind: 'support', floor: 'basement', wall: '#1f2937', desc: 'Au frais sous terre : deux fois moins de pannes d’ordinateur dans toute la tour (cumulable deux fois).' },
   archives:    { type: 'archives', name: 'Archives', emoji: '🗃️', w: 2, cost: 7000, kind: 'support', floor: 'basement', wall: '#d6cfc0', desc: 'Des dossiers bien classés : +5 % sur chaque dossier traité dans toute la tour (jusqu’à 3 salles).' },
-  escalator:   { type: 'escalator', name: 'Escalator', emoji: '↗️', w: 1, cost: 3500, kind: 'transport', floor: 'any', research: 'escalators', wall: '#e5e7eb', desc: 'Relie cet étage à celui du dessus, dans les deux sens. Idéal pour les petits trajets : on évite d’attendre l’ascenseur.' },
+  escalator:   { type: 'escalator', name: 'Escalator', emoji: '↗️', w: 1, cost: 3500, kind: 'transport', floor: 'any', research: 'escalators', wall: '#e5e7eb', desc: 'Posé par-dessus les bureaux (il ne prend pas de case) : relie cet étage à celui du dessus, dans les deux sens. Idéal pour les petits trajets.' },
   labo:        { type: 'labo', name: 'Laboratoire R&D', emoji: '🔬', w: 1, cost: 4000, kind: 'service', floor: 'notBasement', staff: 'researcher', wall: '#eef2ff', desc: 'Des chercheurs produisent des points de recherche 💡 pour améliorer ton entreprise.' },
 }
 
@@ -85,7 +85,7 @@ export const RESEARCH: ResearchDef[] = [
   { id: 'servers', name: 'Serveurs maison', emoji: '🗄️', desc: 'Encore deux fois moins de pannes, réparations deux fois plus rapides.', cost: 39, req: 'pc' },
   { id: 'lift2', name: 'Ascenseur rapide', emoji: '🛗', desc: 'Permet de moderniser les ascenseurs (niveau 2).', cost: 24 },
   { id: 'escalators', name: 'Escalators', emoji: '↗️', desc: 'Débloque les escalators : un étage de plus sans attendre l’ascenseur.', cost: 18 },
-  { id: 'express', name: 'Ascenseur express', emoji: '⚡', desc: 'Débloque une cage express : très rapide, elle ne s’arrête qu’au hall, tous les 4 étages et au dernier.', cost: 45, req: 'lift2' },
+  { id: 'express', name: 'Ascenseur express', emoji: '⚡', desc: 'Débloque une cage express : très rapide, elle ne s’arrête qu’au hall, tous les 3 étages et au dernier.', cost: 45, req: 'lift2' },
   { id: 'lift3', name: 'Ascenseur haute vitesse', emoji: '🚀', desc: 'Permet le niveau 3 des ascenseurs.', cost: 60, req: 'lift2' },
   { id: 'board', name: 'Conseil d’administration', emoji: '🏛️', desc: 'Débloque la salle du conseil et ses directeurs (5 étages requis).', cost: 90, req: 'pro' },
 ]
@@ -112,7 +112,7 @@ export const WORK_START = 0.25      // ≈ 6 h (ils arrivent entre 6 h et 8 h)
 export const WORK_END = 0.78        // ≈ 19 h
 export const WALK = 70
 export const LIFT_SPEED = 2.3
-export const LIFT_CAP = 8
+export const LIFT_CAP = 10
 export const STAIR_S = 1.7
 
 export const START_CASH = 9000

@@ -24,6 +24,10 @@ export interface Room {
   trash: Trash[]
   builtAt: number
 }
+/** Escalator : relie l'étage `floor` à celui du dessus, posé par-dessus la case `slot` (il ne prend pas de place). */
+export interface Escalator { id: string; floor: number; slot: number }
+export const escalatorsOf = (g: Game) => g.escalators ?? (g.escalators = [])
+
 export interface Quest { id: string; title: string; kind: QuestKind; target: number; param?: string; reward: number; done?: boolean }
 export type QuestKind = 'collect' | 'build' | 'count' | 'floors' | 'employees' | 'profit' | 'lift' | 'research'
 
@@ -39,6 +43,7 @@ export interface Game {
   liftBottom: number
   lift2?: { on: boolean; top: number; bottom: number }     // ascenseur n°2 (bout de l'aile droite)
   express?: { on: boolean; top: number; bottom: number }   // ascenseur express
+  escalators?: Escalator[]                                  // posés par-dessus les pièces
   rp: number
   research: string[]
   rooms: Room[]
@@ -81,6 +86,9 @@ export function migrate(g: Game) {
   // L'argent n'est plus « à encaisser » : ce qui restait sur les postes arrive sur le compte.
   for (const r of g.rooms) { g.cash += r.bank.reduce((a, b) => a + b, 0); r.bank = r.bank.map(() => 0) }
   g.research = g.research.filter((x) => x !== 'autopay')
+  // Les escalators ne sont plus des pièces : ils passent par-dessus.
+  for (const r of g.rooms.filter((x) => x.type === 'escalator')) escalatorsOf(g).push({ id: r.id, floor: r.floor, slot: r.slot })
+  g.rooms = g.rooms.filter((x) => x.type !== 'escalator')
   return g
 }
 
@@ -130,7 +138,10 @@ export function canPlace(g: Game, type: RoomType, floor: number, slot: number) {
   if (d.floor === 'upper' && floor < 1) return false
   if (d.floor === 'notBasement' && floor < 0) return false
   if (d.floor === 'basement' && floor >= 0) return false
-  if (type === 'escalator' && floor >= g.top) return false   // il faut un étage au-dessus
+  if (type === 'escalator') {
+    // Posé par-dessus les pièces : il faut juste un étage au-dessus et pas déjà un escalator ici.
+    return floor < g.top && !escalatorsOf(g).some((e) => e.floor === floor && e.slot === slot)
+  }
   for (let i = 0; i < d.w; i++) if (roomAt(g, floor, slot + i)) return false
   return true
 }
@@ -203,8 +214,8 @@ export function avgMood(g: Game) {
 // ── Actions joueur ───────────────────────────────────────────────────────────
 export function roomCost(g: Game, type: RoomType) {
   const d = ROOMS[type]
-  const n = g.rooms.filter((r) => r.type === type).length
-  return Math.round(d.cost * Math.pow(d.kind === 'work' ? COST_GROWTH : 1.35, n))
+  const n = type === 'escalator' ? escalatorsOf(g).length : g.rooms.filter((r) => r.type === type).length
+  return Math.round(d.cost * Math.pow(d.kind === 'work' ? COST_GROWTH : type === 'escalator' ? 1.15 : 1.35, n))
 }
 
 export function build(g: Game, type: RoomType, floor: number, slot: number) {
@@ -212,8 +223,18 @@ export function build(g: Game, type: RoomType, floor: number, slot: number) {
   if (!canPlace(g, type, floor, slot) || g.cash < cost || !isUnlocked(g, type)) return null
   g.cash -= cost
   const r = makeRoom(type, floor, slot, g.day)
+  if (type === 'escalator') { escalatorsOf(g).push({ id: r.id, floor, slot }); return r }
   g.rooms.push(r)
   return r
+}
+
+export function removeEscalator(g: Game, id: string) {
+  const e = escalatorsOf(g).find((x) => x.id === id)
+  if (!e) return 0
+  g.escalators = escalatorsOf(g).filter((x) => x.id !== id)
+  const v = Math.round(ROOMS.escalator.cost * 0.5)
+  g.cash += v
+  return v
 }
 
 export function buildFloor(g: Game, up: boolean) {
@@ -431,6 +452,8 @@ export interface Agent {
   bMax: number             // seuil où il se lève pour y aller
   needCd: number           // « je patiente encore un peu »
   sweepDir?: 1 | -1        // sens de balayage de l'agent d'entretien
+  prodK?: number           // productivité actuelle (1 = normal)
+  need?: 'pc' | 'wc' | 'coffee' | 'mood' | 'boost' | null   // ce qui le préoccupe (affiché au-dessus de sa tête)
   boostT: number
   needT: number
   prog: number
@@ -553,8 +576,8 @@ export function liftDefs(g: Game): LiftDef[] {
     { id: 'X', name: 'Ascenseur express', x0: COL_X_X0, on: !!g.express?.on, top: g.express?.top ?? 0, bottom: g.express?.bottom ?? 0, express: true },
   ]
 }
-/** L'express ne s'arrête qu'au hall, tous les 4 étages, et en bout de course. */
-export const liftStops = (d: LiftDef, f: number) => f >= d.bottom && f <= d.top && (!d.express || f === 0 || f === d.top || f === d.bottom || (f > 0 && f % 4 === 0))
+/** L'express ne s'arrête qu'au hall, tous les 3 étages, et en bout de course. */
+export const liftStops = (d: LiftDef, f: number) => f >= d.bottom && f <= d.top && (!d.express || f === 0 || f === d.top || f === d.bottom || (f > 0 && f % 3 === 0))
 export const liftCap = (g: Game, d: LiftDef) => LIFT_CAP + (g.liftLevel - 1) * 3 + (d.express ? 6 : 0)
 export const liftSpeed = (g: Game, d: LiftDef) => LIFT_SPEED * (1 + 0.45 * (g.liftLevel - 1)) * (d.express ? 2.2 : 1)
 export const liftUnlocked = (g: Game, id: LiftId) => id === 'A' ? true : id === 'B' ? g.top >= 3 : has(g, 'express') && g.top >= 4
@@ -592,7 +615,7 @@ export function extendLift(g: Game, up: boolean, id: LiftId = 'A') {
 }
 
 /** Escalator d'une pièce : bas à gauche (étage r.floor), haut à droite (étage r.floor + 1). */
-export const escX = (r: Room) => ({ lo: slotX(r.slot) + 9, hi: slotX(r.slot) + SW - 9 })
+export const escX = (r: { slot: number }) => ({ lo: slotX(r.slot) + 9, hi: slotX(r.slot) + SW - 9 })
 
 let G: Game | null = null
 let WREF: World | null = null
@@ -636,7 +659,7 @@ function route(fromFloor: number, toFloor: number, toX: number, fromX = 20): Ste
   for (const d of defs) for (let f = d.bottom; f <= d.top; f++) if (liftStops(d, f)) {
     nodes.push({ f, x: d.x0 + SHAFT_W / 2, kind: 'door', lift: d.id }, { f, x: d.x0 + SHAFT_W / 2, kind: 'car', lift: d.id })
   }
-  for (const r of g.rooms) if (r.type === 'escalator' && r.floor < g.top) {
+  for (const r of escalatorsOf(g)) if (r.floor < g.top) {
     const e = escX(r)
     nodes.push({ f: r.floor, x: e.lo, kind: 'esc', room: r.id }, { f: r.floor + 1, x: e.hi, kind: 'esc', room: r.id })
   }
@@ -664,7 +687,7 @@ function route(fromFloor: number, toFloor: number, toX: number, fromX = 20): Ste
       }
       if (b.kind === 'car') { if (a.kind === 'door' && a.lift === b.lift && a.f === b.f) relax(v, wait(b.lift!, b.f)); continue }
       if (b.f === a.f) relax(v, Math.abs(b.x - a.x) / WALK)
-      else if (a.kind === 'esc' && b.kind === 'esc' && a.room === b.room) relax(v, 1.4)
+      else if (a.kind === 'esc' && b.kind === 'esc' && a.room === b.room) relax(v, 1.1)
       else if (a.kind === 'stair' && b.kind === 'stair' && Math.abs(b.f - a.f) === 1 && Math.abs(b.x - stairX(b.f)) < 0.01 && Math.abs(a.x - stairX(a.f)) < 0.01 && !stairServed(g, Math.min(a.f, b.f))) relax(v, STAIR_S)
     }
   }
@@ -831,12 +854,17 @@ function workTick(g: Game, w: World, a: Agent, s: Extract<Step, { t: 'work' }>, 
   const unmet = a.bladder >= Math.min(99, a.bMax + 14) || a.energy <= 12
   a.needT = unmet ? a.needT + dt : 0
   if (unmet && !a.icon && Math.random() < dt * 0.35) say(a, a.bladder >= a.bMax ? '🚽❗' : '🥱', 1.8)
+  // Ce qui le préoccupe, visible au-dessus de sa tête, et qui freine son travail progressivement.
+  a.need = r.broken[s.idx] ? 'pc' : a.bladder >= a.bMax * 0.85 ? 'wc' : a.energy < 35 ? 'coffee' : e.mood < 40 ? 'mood' : a.boostT > 0 ? 'boost' : null
+  const wcK = a.bladder >= Math.min(99, a.bMax + 14) ? 0.4 : a.bladder >= a.bMax ? 0.7 : a.bladder >= a.bMax * 0.85 ? 0.9 : 1
+  const enK = a.energy < 12 ? 0.4 : a.energy < 22 ? 0.65 : a.energy < 35 ? 0.85 : 1
   // Panne ?
-  if (r.broken[s.idx]) { if (!a.icon && Math.random() < dt * 0.5) say(a, '❓', 1.5); return }
+  if (r.broken[s.idx]) { a.prodK = 0; if (!a.icon && Math.random() < dt * 0.5) say(a, '❓', 1.5); return }
   const val = fileValue(g, r)
   // Travail
-  const speed = (0.55 + e.mood / 100 * 0.65) * (has(g, 'pc') ? 1.2 : 1) * (has(g, 'screens') ? 1.25 : 1)
-    * (a.boostT > 0 ? 1.7 : 1) * (unmet ? 0.5 : 1)
+  const relK = (0.55 + e.mood / 100 * 0.65) * (a.boostT > 0 ? 1.7 : 1) * wcK * enK
+  a.prodK = relK
+  const speed = relK * (has(g, 'pc') ? 1.2 : 1) * (has(g, 'screens') ? 1.25 : 1)
   if (a.boostT > 0) a.boostT -= dt
   a.prog += dt * speed / (ROOMS[r.type].taskTime ?? 4)
   if (a.prog >= 1) {
@@ -1162,10 +1190,10 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
       }
     }
   } else if (s.t === 'escal') {
-    const r = roomOf(g, s.roomId)
+    const r = escalatorsOf(g).find((x) => x.id === s.roomId)
     if (!r) { a.steps.splice(0, 1, ...route(a.floor, s.to, a.x, a.x)); return }
     const d = s.to - a.floor
-    const mv = dt / 1.3
+    const mv = dt / 1.0
     if (Math.abs(d) <= mv) { a.floor = s.to; a.steps.shift() } else a.floor += Math.sign(d) * mv
     const e = escX(r)
     const nx = e.lo + (e.hi - e.lo) * Math.max(0, Math.min(1, a.floor - r.floor))

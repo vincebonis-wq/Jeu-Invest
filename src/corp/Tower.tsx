@@ -5,7 +5,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { useCorp } from './store'
 import {
-  canPlace, shaftX, EXIT_X, liftDefs, liftStops, liftUnlocked, liftInstallPrice, liftExtendPrice, stationCount, stationX, stationsOf, PATIENCE, stairX, stairServed, deskX, fileValue, has,
+  canPlace, shaftX, EXIT_X, escalatorsOf, liftDefs, liftStops, liftUnlocked, liftInstallPrice, liftExtendPrice, stationCount, stationX, stationsOf, PATIENCE, stairX, stairServed, deskX, fileValue, has,
   type Agent, type Game, type Room, type Station,
 } from './sim'
 import { ROOMS, SLOTS, SW, SHAFT_W, SHAFT_X0, slotX, FH, BW, STAFF, BANK_CAP, WORK_START, WORK_END, floorCost, type RoomType, type TrashKind } from './data'
@@ -88,9 +88,25 @@ function Person({ a, x, y, small }: { a: Agent; x: number; y: number; small?: bo
 }
 
 /** Employé assis à son poste, de profil, qui tape sur son clavier. */
+const NEED_ICON: Record<string, string> = { pc: '💻', wc: '🚽', coffee: '☕', mood: '😠', boost: '⚡' }
+
 function SeatedWorker({ a, cx, fl, boost }: { a: Agent; cx: number; fl: number; boost: boolean }) {
+  const pk = a.prodK ?? 1
+  const col = pk >= 1.05 ? '#22c55e' : pk >= 0.8 ? '#84cc16' : pk >= 0.55 ? '#f59e0b' : '#ef4444'
+  const need = a.need && a.need !== 'boost' ? a.need : null
   return (
     <g transform={`translate(${cx - 7},${fl})`}>
+      {/* Avancement du dossier en cours : la vitesse de remplissage montre sa productivité */}
+      <g transform="translate(1.6,-40)" pointerEvents="none">
+        <rect x={-8} y={0} width={16} height={2.6} rx={1.3} fill="rgba(15,23,42,0.35)" />
+        <rect x={-8} y={0} width={16 * Math.min(1, a.prog)} height={2.6} rx={1.3} fill={col} />
+      </g>
+      {need && (
+        <g transform="translate(1.6,-50)" pointerEvents="none">
+          <rect x={-7} y={-6} width={14} height={11} rx={5.5} fill={need === 'pc' || pk < 0.55 ? '#fee2e2' : '#fff'} stroke={need === 'pc' || pk < 0.55 ? '#ef4444' : 'rgba(0,0,0,0.15)'} strokeWidth={0.8} />
+          <text x={0} y={0} fontSize={7.5} textAnchor="middle" dominantBaseline="middle">{NEED_ICON[need]}</text>
+        </g>
+      )}
       <rect x={-2} y={-11} width={9} height={2.5} rx={1} fill="#1f2937" />
       <rect x={1.5} y={-8.5} width={1.6} height={8.5} fill="#334155" />
       <rect x={-4} y={-25} width={3} height={15} rx={1.5} fill="#334155" />
@@ -461,16 +477,40 @@ export function Tower() {
   const { game: g, world: w, buildType, target, selected, popped, floorPop } = st
   const scroller = useRef<HTMLDivElement>(null)
   const [vh, setVh] = useState(1200)
-  const [k, setK] = useState(1)
+  const [base, setBase] = useState(1)
+  // Zoom (boutons + / − et pincement à deux doigts), mémorisé.
+  const [zoom, setZoomState] = useState(() => { try { return Math.min(2.6, Math.max(1, Number(localStorage.getItem('openspace-zoom')) || 1)) } catch { return 1 } })
+  const k = base * zoom
+  const anchor = useRef<{ cx: number; cy: number; ux: number; uy: number } | null>(null)
+  const setZoom = (nz: number, cx?: number, cy?: number) => {
+    const el = scroller.current
+    const z = Math.min(2.6, Math.max(1, nz))
+    if (!el || Math.abs(z - zoom) < 0.001) return
+    const fx = cx ?? el.clientWidth / 2, fy = cy ?? el.clientHeight / 2
+    // Point du dessin sous le doigt / au centre : il doit rester au même endroit à l'écran.
+    anchor.current = { cx: fx, cy: fy, ux: (el.scrollLeft + fx) / k, uy: (el.scrollTop + fy) / k }
+    setZoomState(z)
+    try { localStorage.setItem('openspace-zoom', String(z)) } catch { /* ignore */ }
+  }
+  useLayoutEffect(() => {
+    const el = scroller.current, a = anchor.current
+    if (!el || !a) return
+    anchor.current = null
+    el.scrollLeft = a.ux * k - a.cx
+    el.scrollTop = a.uy * k - a.cy
+  }, [k])
   useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return
     // Échelle : sur téléphone, la moitié gauche + la cage remplissent l'écran ; on glisse pour voir l'autre côté.
-    const upd = () => { const kk = Math.min(1.6, el.clientWidth / VIEW_W); setK(kk); setVh(el.clientHeight / kk) }
+    const upd = () => { const kk = Math.min(1.6, el.clientWidth / VIEW_W); setBase(kk); setVh(el.clientHeight / kk) }
     upd()
     const ro = new ResizeObserver(upd); ro.observe(el)
     return () => ro.disconnect()
   }, [])
+  // Pincement à deux doigts
+  const pinch = useRef<{ d: number; z: number } | null>(null)
+  const touchDist = (t: React.TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
   const { groundBase, H, baseY } = geo(g, vh)
   const p = g.day % 1
   const sk = sky(p)
@@ -517,8 +557,18 @@ export function Tower() {
   const defs = liftDefs(g)
 
   return (
+    <>
     <div ref={scroller} className="absolute inset-0 overflow-auto hide-scrollbar"
-      style={{ background: `linear-gradient(180deg, ${sk.top} 0%, ${sk.bot} 70%)` }}>
+      style={{ background: `linear-gradient(180deg, ${sk.top} 0%, ${sk.bot} 70%)`, touchAction: 'pan-x pan-y' }}
+      onTouchStart={(e) => { if (e.touches.length === 2) pinch.current = { d: touchDist(e.touches), z: zoom } }}
+      onTouchMove={(e) => {
+        if (e.touches.length !== 2 || !pinch.current) return
+        const r = scroller.current!.getBoundingClientRect()
+        const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left, my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top
+        setZoom(pinch.current.z * touchDist(e.touches) / pinch.current.d, mx, my)
+      }}
+      onTouchEnd={(e) => { if (e.touches.length < 2) pinch.current = null }}
+      onWheel={(e) => { if (e.ctrlKey || e.metaKey) { const r = scroller.current!.getBoundingClientRect(); setZoom(zoom * (e.deltaY < 0 ? 1.1 : 0.9), e.clientX - r.left, e.clientY - r.top) } }}>
       <svg viewBox={`0 0 ${W} ${H}`} width={W * k} height={H * k} style={{ display: 'block', margin: '0 auto' }}>
         {/* Étoiles */}
         {sk.night > 0.2 && Array.from({ length: 40 }, (_, i) => (
@@ -621,6 +671,29 @@ export function Tower() {
                 <rect x={wpx - 2} y={0} width={3} height={FH - 8} fill="#5a4c42" />
               </g>
               {selected === r.id && <rect x={1.5} y={1.5} width={wpx - 3} height={FH - 11} fill="none" stroke="#fff" strokeWidth={3} rx={2} className="sel-pulse" />}
+            </g>
+          )
+        })}
+
+        {/* Escalators : posés par-dessus les pièces, de l'étage au suivant */}
+        {escalatorsOf(g).map((e) => {
+          const x0 = X0 + slotX(e.slot), yb = baseY(e.floor)
+          const x1 = x0 + 9, x2 = x0 + SW - 9, y1 = yb - 14, y2 = yb - FH + 2
+          const off = (now / 90) % 1
+          const n = 11
+          const sel = selected === `esc:${e.id}`
+          return (
+            <g key={`esc${e.id}`} onClick={(ev) => { ev.stopPropagation(); useCorp.getState().select(sel ? null : `esc:${e.id}`) }} style={{ cursor: 'pointer' }}>
+              <polygon points={`${x1 - 5},${y1 + 1} ${x2 + 5},${y2} ${x2 + 5},${y2 + 10} ${x1 - 5},${y1 + 11}`} fill="#334155" opacity={0.92} />
+              {Array.from({ length: n }, (_, i) => {
+                const k = (i + off) / n
+                const tx = x1 + (x2 - x1) * k, ty = y1 + (y2 - y1) * k
+                return <rect key={i} x={tx - 3} y={ty - 0.5} width={6} height={1.6} fill="#cbd5e1" />
+              })}
+              <line x1={x1 - 3} y1={y1 - 14} x2={x2 + 3} y2={y2 - 14} stroke="#0f172a" strokeWidth={2.4} strokeLinecap="round" />
+              <line x1={x1 - 3} y1={y1 - 14} x2={x1 - 3} y2={y1 + 1} stroke="#64748b" strokeWidth={1.2} />
+              <line x1={x2 + 3} y1={y2 - 14} x2={x2 + 3} y2={y2 + 1} stroke="#64748b" strokeWidth={1.2} />
+              {sel && <polygon points={`${x1 - 7},${y1 + 3} ${x2 + 7},${y2 - 2} ${x2 + 7},${y2 + 12} ${x1 - 7},${y1 + 13}`} fill="none" stroke="#fff" strokeWidth={2} className="sel-pulse" />}
             </g>
           )
         })}
@@ -908,6 +981,13 @@ export function Tower() {
       <div className="cloud" style={{ top: 190, animationDuration: '150s', animationDelay: '-70s', opacity: 0.6 - sk.night * 0.5 }} />
       <div style={{ height: 150 }} />
     </div>
+    <div className="absolute right-2.5 bottom-[200px] z-20 flex flex-col gap-1.5">
+      <button aria-label="Zoomer" onClick={() => setZoom(zoom * 1.3)} disabled={zoom >= 2.6}
+        className="w-10 h-10 rounded-2xl bg-white/90 backdrop-blur shadow-lg text-slate-700 font-extrabold text-[20px] leading-none disabled:opacity-40 active:scale-90">+</button>
+      <button aria-label="Dézoomer" onClick={() => setZoom(zoom / 1.3)} disabled={zoom <= 1}
+        className="w-10 h-10 rounded-2xl bg-white/90 backdrop-blur shadow-lg text-slate-700 font-extrabold text-[22px] leading-none disabled:opacity-40 active:scale-90">−</button>
+    </div>
+    </>
   )
 }
 

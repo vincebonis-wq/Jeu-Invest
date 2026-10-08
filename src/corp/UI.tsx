@@ -7,7 +7,7 @@ import { Hammer, Target, PieChart, FlaskConical, Users, X, Lock, Volume2, Volume
 import { useCorp } from './store'
 import {
   profitPerDay, dailyCosts, workerSalaries, staffSalaries, buildingCharges, isUnlocked, questProgress, employees, avgMood, netWorth, buildingValue,
-  isQuietNight, NIGHT_MULT, liftDefs, liftUnlocked, liftInstallPrice, parkingStatus, archivesBonus, serversMult, canRenovate, renovateCost, liftCost, liftNeeds, roomCost, stationCount, stationsOf, useTime, canResearch, fileValue, has, tierOf,
+  isQuietNight, NIGHT_MULT, escalatorsOf, liftDefs, liftUnlocked, liftInstallPrice, parkingStatus, archivesBonus, serversMult, canRenovate, renovateCost, liftCost, liftNeeds, roomCost, stationCount, stationsOf, useTime, canResearch, fileValue, has, tierOf,
   type Game, type Room, type Agent, type Employee,
 } from './sim'
 import { ROOMS, BUILD_ORDER, SW, FH, TIERS, STAFF, RESEARCH, RP_RATE, CLEAN_COST, FIX_COST, type RoomType, type StaffRole } from './data'
@@ -258,6 +258,26 @@ export function RoomPanel() {
   useCorp((s) => s.rev)
   const st = useCorp.getState()
   const g = st.game
+  if (st.selected?.startsWith('esc:')) {
+    const e = escalatorsOf(g).find((x) => `esc:${x.id}` === st.selected)
+    if (!e) return null
+    const users = st.world.agents.filter((a) => a.steps[0]?.t === 'escal' && (a.steps[0] as { roomId: string }).roomId === e.id).length
+    return (
+      <div className="absolute bottom-0 inset-x-0 z-30 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+        <div className={`${GLASS} max-w-md mx-auto rounded-[28px] p-4 sheet-up`}>
+          <div className="flex items-start gap-3">
+            <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl">↗️</div>
+            <div className="flex-1">
+              <div className="font-display font-extrabold text-[19px] text-slate-800 leading-tight">Escalator</div>
+              <div className="text-[12px] text-slate-500">{e.floor === 0 ? 'RDC' : e.floor < 0 ? `S${-e.floor}` : `Étage ${e.floor}`} ↔ {e.floor + 1 === 0 ? 'RDC' : `étage ${e.floor + 1}`} · posé par-dessus, dans les deux sens · {users} personne{users > 1 ? 's' : ''} dessus</div>
+            </div>
+            <button onClick={() => st.select(null)} className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><X size={18} /></button>
+          </div>
+          <button onClick={() => st.removeEscalator(e.id)} className="w-full mt-3 text-[12px] text-slate-400 underline">Retirer cet escalator (+{fmtEur(Math.round(ROOMS.escalator.cost * 0.5))})</button>
+        </div>
+      </div>
+    )
+  }
   const r = g.rooms.find((x) => x.id === st.selected)
   if (!r) return null
   const d = ROOMS[r.type]
@@ -298,7 +318,7 @@ export function RoomPanel() {
                         </div>
                         <div className="flex items-center justify-between mt-1">
                           <span className="text-[11px] font-bold text-slate-500">{workerStatus(a, r, i)}</span>
-                          {a && !a.away && <span className="text-[10px] font-bold text-slate-400">⚡{Math.round(a.energy)} · 🚽{Math.round(a.bladder)}</span>}
+                          {a && !a.away && <span className="text-[10px] font-bold text-slate-400">⚡{Math.round(a.energy)} · 🚽{Math.round(a.bladder)} · <span className={(a.prodK ?? 1) < 0.55 ? 'text-rose-500' : (a.prodK ?? 1) < 0.8 ? 'text-amber-500' : 'text-emerald-600'}>{Math.round((a.prodK ?? 1) * 100)} %</span></span>}
                         </div>
                         {r.broken[i] && !st.world.agents.some((x) => x.role === 'tech' && x.task === `${r.id}:${i}`) && <button onClick={() => st.fixDesk(r.id, i)} className="w-full mt-1.5 rounded-xl bg-rose-500 text-white font-extrabold text-[12px] py-1.5">🔧 Réparer maintenant · {fmtEur(FIX_COST)}</button>}
                       </>
@@ -373,7 +393,7 @@ export function RoomPanel() {
                     <span className="text-base">{d.express ? '⚡' : '🛗'}</span>
                     <div className="flex-1 min-w-0">
                       <div className="font-extrabold text-slate-700">{d.name}</div>
-                      <div className="text-slate-500">{d.on ? `${d.bottom < 0 ? `S${-d.bottom}` : 'RDC'} → ${d.top}${d.express ? ' · arrêts RDC, tous les 4 étages, sommet' : ''} · attente ≈ ${Math.round(L.avgWait ?? 0)} s` : liftUnlocked(g, d.id) ? 'Pas encore installé' : d.id === 'B' ? '🔒 3 étages requis' : '🔒 Recherche « Ascenseur express » + 4 étages'}</div>
+                      <div className="text-slate-500">{d.on ? `${d.bottom < 0 ? `S${-d.bottom}` : 'RDC'} → ${d.top}${d.express ? ' · arrêts RDC, tous les 3 étages, sommet' : ''} · attente ≈ ${Math.round(L.avgWait ?? 0)} s` : liftUnlocked(g, d.id) ? 'Pas encore installé' : d.id === 'B' ? '🔒 3 étages requis' : '🔒 Recherche « Ascenseur express » + 4 étages'}</div>
                     </div>
                     {!d.on && liftUnlocked(g, d.id) && <button onClick={() => st.installLift(d.id)} className="rounded-xl px-2.5 py-1.5 font-extrabold text-white text-[12px] bg-orange-500 disabled:opacity-40" disabled={g.cash < liftInstallPrice(g, d.id)}>Installer · {fmtShort(liftInstallPrice(g, d.id))} €</button>}
                   </div>
