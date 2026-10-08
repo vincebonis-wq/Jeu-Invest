@@ -761,12 +761,36 @@ export function Tower() {
           if (d.kind === 'work') {
             r.broken.forEach((_b, i) => {
               const cx = X0 + deskX(r, i) + 4
-              if (r.broken[i] && !w.agents.some((a) => a.task === `${r.id}:${i}`)) {
-                out.push(
+              if (r.broken[i]) {
+                // L'incident reste affiché jusqu'à la fin de l'intervention : en attente, technicien en route, réparation.
+                const tech = w.agents.find((a) => a.role === 'tech' && a.task === `${r.id}:${i}`)
+                const s0 = tech?.steps[0]
+                const fixing = s0 && s0.t === 'fix' ? s0 : null
+                if (!tech) out.push(
                   <g key={`x${i}`} transform={`translate(${cx + 4},${y0 + 46})`} onClick={(e) => { e.stopPropagation(); useCorp.getState().fixDesk(r.id, i) }} style={{ cursor: 'pointer' }}>
                     <g className="incident"><circle r={8} fill="#e63946" stroke="#fff" strokeWidth={2} /><text y={1} fontSize={8} textAnchor="middle" dominantBaseline="middle">🔧</text></g>
                   </g>,
                 )
+                else if (!fixing) out.push(
+                  <g key={`x${i}`} transform={`translate(${cx + 4},${y0 + 46})`} pointerEvents="none">
+                    <circle r={8.5} fill="#f59e0b" stroke="#fff" strokeWidth={2} />
+                    <text y={1} fontSize={8} textAnchor="middle" dominantBaseline="middle">🔧</text>
+                    <g transform="translate(0,-15)"><rect x={-25} y={-5.5} width={50} height={11} rx={5.5} fill="#92400e" /><text y={0.5} fontSize={6} fill="#fff" textAnchor="middle" dominantBaseline="middle" fontWeight={900}>Tech en route</text></g>
+                  </g>,
+                )
+                else {
+                  const k = Math.max(0, Math.min(1, 1 - fixing.dur / (fixing.total ?? 3.2)))
+                  const C = 2 * Math.PI * 8
+                  out.push(
+                    <g key={`x${i}`} transform={`translate(${cx + 4},${y0 + 46})`} pointerEvents="none">
+                      <circle r={8.5} fill="#2563eb" stroke="#fff" strokeWidth={2} />
+                      <circle r={8} fill="none" stroke="#bfdbfe" strokeWidth={2.2} />
+                      <circle r={8} fill="none" stroke="#22c55e" strokeWidth={2.2} strokeDasharray={`${C * k} ${C}`} transform="rotate(-90)" strokeLinecap="round" />
+                      <text y={1} fontSize={7.5} textAnchor="middle" dominantBaseline="middle">🔧</text>
+                      <g transform="translate(0,-15)"><rect x={-27} y={-5.5} width={54} height={11} rx={5.5} fill="#1e3a8a" /><text y={0.5} fontSize={6} fill="#fff" textAnchor="middle" dominantBaseline="middle" fontWeight={900}>Réparation {Math.round(k * 100)} %</text></g>
+                    </g>,
+                  )
+                }
               }
             })
           }

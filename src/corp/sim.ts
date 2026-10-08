@@ -390,7 +390,7 @@ export type Step =
   | { t: 'queue'; roomId: string }
   | { t: 'serve'; roomId: string; idx: number }
   | { t: 'work'; roomId: string; idx: number }
-  | { t: 'fix'; roomId: string; idx: number; dur: number }
+  | { t: 'fix'; roomId: string; idx: number; dur: number; total?: number }
   | { t: 'pick'; roomId: string; trashId: string; dur: number }
   | { t: 'dump'; dur: number }
   | { t: 'coach'; targetId: string; dur: number }
@@ -924,7 +924,7 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
     if (best) {
       const { r, i } = best as { r: Room; i: number }
       a.task = `${r.id}:${i}`; a.carry = 'wrench'
-      a.steps = [...routeA(a, r.floor, deskX(r, i) + 10), { t: 'fix', roomId: r.id, idx: i, dur: has(g, 'servers') ? 1.1 : 2.2 }]
+      a.steps = [...routeA(a, r.floor, deskX(r, i) + 10), { t: 'fix', roomId: r.id, idx: i, dur: has(g, 'servers') ? 1.6 : 3.2, total: has(g, 'servers') ? 1.6 : 3.2 }]
       return
     }
     a.carry = undefined

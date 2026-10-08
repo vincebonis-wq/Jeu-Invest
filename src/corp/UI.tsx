@@ -237,7 +237,12 @@ export function BuildSheet() {
 function workerStatus(a: Agent | undefined, r: Room, i: number) {
   if (!a || a.away) return '🏠 Chez lui'
   const s0 = a.steps[0]
-  if (r.broken[i]) return '💥 Ordinateur en panne'
+  if (r.broken[i]) {
+    const tech = useCorp.getState().world.agents.find((x) => x.role === 'tech' && x.task === `${r.id}:${i}`)
+    if (tech?.steps[0]?.t === 'fix') return '🔧 Le technicien répare son poste'
+    if (tech) return '🧑‍🔧 Technicien en route'
+    return '💥 Ordinateur en panne'
+  }
   if (s0?.t === 'work') {
     if (a.needCd > 0) return a.bladder >= a.bMax ? '🚽⏳ Attend que les toilettes se libèrent' : '☕⏳ Attend une place au café'
     if (a.needT > 0) return a.bladder >= a.bMax ? '🚽 Doit aller aux toilettes !' : '🥱 Épuisé'
@@ -295,7 +300,7 @@ export function RoomPanel() {
                           <span className="text-[11px] font-bold text-slate-500">{workerStatus(a, r, i)}</span>
                           {a && !a.away && <span className="text-[10px] font-bold text-slate-400">⚡{Math.round(a.energy)} · 🚽{Math.round(a.bladder)}</span>}
                         </div>
-                        {r.broken[i] && <button onClick={() => st.fixDesk(r.id, i)} className="w-full mt-1.5 rounded-xl bg-rose-500 text-white font-extrabold text-[12px] py-1.5">🔧 Réparer maintenant · {fmtEur(FIX_COST)}</button>}
+                        {r.broken[i] && !st.world.agents.some((x) => x.role === 'tech' && x.task === `${r.id}:${i}`) && <button onClick={() => st.fixDesk(r.id, i)} className="w-full mt-1.5 rounded-xl bg-rose-500 text-white font-extrabold text-[12px] py-1.5">🔧 Réparer maintenant · {fmtEur(FIX_COST)}</button>}
                       </>
                     ) : <div className="text-[12px] text-slate-400 font-bold">Poste vacant — un nouvel employé arrive demain.</div>}
                   </div>
