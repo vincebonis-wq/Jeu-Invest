@@ -47,7 +47,7 @@ export const ROOMS: Record<RoomType, RoomDef> = {
   cafe:        { type: 'cafe', name: 'Coin café', emoji: '☕', w: 1, cost: 2000, kind: 'facility', floor: 'notBasement', serves: 'energy', stations: 2, useTime: 2.6, wall: '#f6dfc6', desc: 'Une machine à café pour recharger les batteries. Les gobelets finissent par terre.' },
   pause:       { type: 'pause', name: 'Salle de pause', emoji: '🛋️', w: 2, cost: 6000, kind: 'facility', floor: 'notBasement', serves: 'mood', stations: 3, useTime: 4, research: 'pause', wall: '#e3f3e1', desc: 'Canapés et baby-foot : les employés stressés y retrouvent le moral.' },
   supervision: { type: 'supervision', name: 'Bureau du superviseur', emoji: '🧑‍💼', w: 1, cost: 5000, kind: 'service', floor: 'notBasement', staff: 'supervisor', wall: '#efe7da', desc: 'Le superviseur fait le tour des postes de son étage et des étages voisins : les employés qu’il croise travaillent bien plus vite.' },
-  menage:      { type: 'menage', name: 'Local d’entretien', emoji: '🧹', w: 1, cost: 1500, kind: 'service', floor: 'any', staff: 'janitor', wall: '#dcecf5', desc: 'L’agent d’entretien ramasse papiers, gobelets et peaux de banane, et récure les toilettes.' },
+  menage:      { type: 'menage', name: 'Local d’entretien', emoji: '🧹', w: 1, cost: 1500, kind: 'service', floor: 'any', staff: 'janitor', wall: '#dcecf5', desc: 'L’agent d’entretien fait le grand ménage la nuit (papiers, gobelets, peaux de banane…) et ne passe en journée que pour les toilettes.' },
   it:          { type: 'it', name: 'Service informatique', emoji: '🔧', w: 1, cost: 3000, kind: 'service', floor: 'any', staff: 'tech', wall: '#e2e8f0', desc: 'Le technicien court réparer les ordinateurs en panne.' },
   securite:    { type: 'securite', name: 'Poste de sécurité', emoji: '👮', w: 1, cost: 5000, kind: 'service', floor: 'notBasement', staff: 'guard', research: 'securite', wall: '#dfe4ec', desc: 'Le vigile fait des rondes de nuit et arrête les voleurs avant qu’ils ne vident les postes.' },
   parking:     { type: 'parking', name: 'Parking', emoji: '🅿️', w: 2, cost: 4000, kind: 'support', floor: 'basement', spots: 3, wall: '#8a929c', desc: '3 places. Les employés motorisés arrivent par le garage, à l’heure et de bonne humeur. Sans place, ils tournent pour se garer : en retard et agacés.' },
@@ -90,11 +90,16 @@ export const RESEARCH: ResearchDef[] = [
 export const RP_RATE = 0.35
 
 // ── Géométrie (unités SVG) ───────────────────────────────────────────────────
-export const SLOTS = 5
+export const SLOTS = 10           // 5 cases de chaque côté de la cage d'ascenseur
+export const LEFT_SLOTS = 5       // cases à gauche de la cage
 export const SW = 66
 export const SHAFT_W = 46
 export const FH = 86
 export const BW = SLOTS * SW + SHAFT_W
+/** Cage d'ascenseur / escalier : au centre (prévu pour d'autres transports plus tard). */
+export const SHAFT_X0 = LEFT_SLOTS * SW
+/** Abscisse (unités SVG, depuis le bord gauche de la tour) du début d'une case. */
+export const slotX = (s: number) => s * SW + (s >= LEFT_SLOTS ? SHAFT_W : 0)
 
 // ── Rythme ───────────────────────────────────────────────────────────────────
 export const DAY_S = 80             // 1 cycle jour/nuit = 1 journée de travail

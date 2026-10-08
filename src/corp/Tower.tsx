@@ -5,15 +5,17 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { useCorp } from './store'
 import {
-  canPlace, shaftX, EXIT_X, stationCount, stationX, stationsOf, PATIENCE, DOOR_X, stairX, stairServed, deskX, fileValue, has,
+  canPlace, shaftX, EXIT_X, DOOR_R, stationCount, stationX, stationsOf, PATIENCE, DOOR_X, stairX, stairServed, deskX, fileValue, has,
   type Agent, type Game, type Room, type Station,
 } from './sim'
-import { ROOMS, SLOTS, SW, SHAFT_W, FH, BW, STAFF, BANK_CAP, WORK_START, WORK_END, floorCost, liftInstallCost, liftExtendCost, type RoomType, type TrashKind } from './data'
+import { ROOMS, SLOTS, SW, SHAFT_W, SHAFT_X0, slotX, FH, BW, STAFF, BANK_CAP, WORK_START, WORK_END, floorCost, liftInstallCost, liftExtendCost, type RoomType, type TrashKind } from './data'
 import { fmtShort } from '../archipel/format'
 
 const SIDE = 34          // trottoir de chaque côté
 const BELOW = 90
 const W = BW + SIDE * 2
+/** Largeur visible (unités SVG) sur un téléphone : côté gauche + cage. */
+const VIEW_W = SIDE + SHAFT_X0 + SHAFT_W + 34
 
 /** Le rez-de-chaussée est ancré vers le bas de l'écran ; le ciel comble le haut. */
 function geo(g: Game, viewH: number) {
@@ -201,7 +203,7 @@ function Desk({ cx, fl, agent, broken, bank, val, pro, boost }: { cx: number; fl
 
 export function Interior({ r, w, night, skyCol, g, st, seats, boosts }: { r: Room; w: number; night: number; skyCol: string; g: Game; st?: Station[]; seats?: (Agent | null)[]; boosts?: boolean[] }): ReactElement {
   const n = stationCount(r)
-  const sx = (i: number) => stationX(r, i) - r.slot * SW
+  const sx = (i: number) => stationX(r, i) - slotX(r.slot)
   const stOf = (i: number): Station => st?.[i] ?? { agentId: null, t: 0, dur: 0, phase: 'idle', doneT: 0 }
   const h = FH - 8
   const fl = h - 6
@@ -221,7 +223,7 @@ export function Interior({ r, w, night, skyCol, g, st, seats, boosts }: { r: Roo
         {pro === 2 && <g><rect x={w / 2 - 14} y={9} width={28} height={20} fill="#fde68a" stroke="#a16207" strokeWidth={2} /><circle cx={w / 2} cy={19} r={5} fill="#b45309" /></g>}
         {has(g, 'plants') && <g><rect x={w - 8} y={fl - 8} width={5} height={8} rx={1} fill="#b45309" /><circle cx={w - 5.5} cy={fl - 11} r={4} fill="#22c55e" /></g>}
         {Array.from({ length: d.desks ?? 0 }, (_, i) => (
-          <Desk key={i} cx={deskX(r, i) - r.slot * SW} fl={fl} agent={seats?.[i] ?? null} broken={r.broken[i]} bank={r.bank[i]} val={val} pro={pro} boost={!!boosts?.[i]} />
+          <Desk key={i} cx={deskX(r, i) - slotX(r.slot)} fl={fl} agent={seats?.[i] ?? null} broken={r.broken[i]} bank={r.bank[i]} val={val} pro={pro} boost={!!boosts?.[i]} />
         ))}
       </g>
     )
@@ -438,10 +440,12 @@ export function Tower() {
   const { game: g, world: w, buildType, target, selected, popped, floorPop } = st
   const scroller = useRef<HTMLDivElement>(null)
   const [vh, setVh] = useState(1200)
+  const [k, setK] = useState(1)
   useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return
-    const upd = () => setVh(el.clientHeight * (W / Math.max(1, el.clientWidth)))
+    // Échelle : sur téléphone, la moitié gauche + la cage remplissent l'écran ; on glisse pour voir l'autre côté.
+    const upd = () => { const kk = Math.min(1.6, el.clientWidth / VIEW_W); setK(kk); setVh(el.clientHeight / kk) }
     upd()
     const ro = new ResizeObserver(upd); ro.observe(el)
     return () => ro.disconnect()
@@ -458,7 +462,7 @@ export function Tower() {
     const el = scroller.current
     if (!el || scrolled.current || vh === 1200) return
     scrolled.current = true
-    const scale = el.clientWidth / W
+    const scale = k
     // Avec un sous-sol, on remonte un peu la vue pour qu'il ne soit pas caché par les boutons.
     el.scrollTop = Math.max(0, groundBase * scale - el.clientHeight * 0.74 + Math.min(2, -g.bottom) * FH * scale)
   }, [vh, groundBase])
@@ -492,9 +496,9 @@ export function Tower() {
   const liftY = baseY(w.lift.y)
 
   return (
-    <div ref={scroller} className="absolute inset-0 overflow-y-auto overflow-x-hidden hide-scrollbar"
+    <div ref={scroller} className="absolute inset-0 overflow-auto hide-scrollbar"
       style={{ background: `linear-gradient(180deg, ${sk.top} 0%, ${sk.bot} 70%)` }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width={W * k} height={H * k} style={{ display: 'block', margin: '0 auto' }}>
         {/* Étoiles */}
         {sk.night > 0.2 && Array.from({ length: 40 }, (_, i) => (
           <circle key={i} cx={(i * 97) % W} cy={(i * 53) % Math.max(60, groundBase - (g.top + 1) * FH)} r={0.8 + (i % 3) * 0.4} fill="#fff" opacity={sk.night * (0.4 + (i % 5) / 8)} />
@@ -537,8 +541,8 @@ export function Tower() {
               {/* Cases vides */}
               {Array.from({ length: SLOTS }, (_, s) => occupied.has(`${f},${s}`) ? null : (
                 <g key={s}>
-                  <rect x={X0 + s * SW} y={y0} width={SW} height={FH - 8} fill={f < 0 ? '#5d5f63' : '#c7c2bb'} />
-                  <rect x={X0 + s * SW} y={y0} width={SW} height={FH - 8} fill="url(#brick)" opacity={0.5} />
+                  <rect x={X0 + slotX(s)} y={y0} width={SW} height={FH - 8} fill={f < 0 ? '#5d5f63' : '#c7c2bb'} />
+                  <rect x={X0 + slotX(s)} y={y0} width={SW} height={FH - 8} fill="url(#brick)" opacity={0.5} />
                 </g>
               ))}
               {/* Dalle */}
@@ -553,7 +557,7 @@ export function Tower() {
         {/* Pièces */}
         {rooms.map((r) => {
           const d = ROOMS[r.type]
-          const x = X0 + r.slot * SW
+          const x = X0 + slotX(r.slot)
           const y0 = baseY(r.floor) - FH
           const wpx = d.w * SW
           const isPop = popped[r.id] && now - popped[r.id] < 900
@@ -570,10 +574,10 @@ export function Tower() {
                   </g>
                 )}
                 <Interior r={r} w={wpx} night={sk.night} skyCol={sk.bot} g={g} st={d.kind === 'facility' ? stationsOf(w, r) : undefined} seats={seats.get(r.id)} boosts={boosts.get(r.id)} />
-                {r.trash.map((t) => <TrashSprite key={t.id} x={t.x - r.slot * SW} fl={FH - 14} kind={t.kind} />)}
+                {r.trash.map((t) => <TrashSprite key={t.id} x={t.x - slotX(r.slot)} fl={FH - 14} kind={t.kind} />)}
                 {r.trash.length >= 3 && [0, 1, 2].map((i) => {
                   const t = r.trash[i % r.trash.length]
-                  return <circle key={`fly${i}`} cx={t.x - r.slot * SW + Math.sin(now / 240 + i * 2) * 6} cy={FH - 24 + Math.cos(now / 190 + i) * 4} r={0.9} fill="#111" pointerEvents="none" />
+                  return <circle key={`fly${i}`} cx={t.x - slotX(r.slot) + Math.sin(now / 240 + i * 2) * 6} cy={FH - 24 + Math.cos(now / 190 + i) * 4} r={0.9} fill="#111" pointerEvents="none" />
                 })}
                 {r.trash.length >= 6 && <path d={`M${wpx * 0.35},${FH - 24} q3,-4 0,-8 q-3,-4 0,-8 M${wpx * 0.6},${FH - 22} q3,-4 0,-8 q-3,-4 0,-8`} stroke="#84cc16" strokeWidth={1.1} fill="none" opacity={0.7} pointerEvents="none" />}
                 <rect x={0} y={0} width={wpx} height={FH - 8} fill="url(#roomShade)" pointerEvents="none" />
@@ -601,10 +605,10 @@ export function Tower() {
         })}
 
         {/* Cage : ascenseur là où il dessert, escalier ailleurs */}
-        <rect x={X0 + SLOTS * SW} y={baseY(g.top) - FH} width={SHAFT_W} height={(g.top - g.bottom + 1) * FH} fill="#3d4450" />
+        <rect x={X0 + SHAFT_X0} y={baseY(g.top) - FH} width={SHAFT_W} height={(g.top - g.bottom + 1) * FH} fill="#3d4450" />
         {floors.map((f) => {
           const served = g.liftOn && f >= g.liftBottom && f <= g.liftTop
-          const sx = X0 + SLOTS * SW
+          const sx = X0 + SHAFT_X0
           const yb = baseY(f)
           return (
             <g key={`sd${f}`}>
@@ -637,7 +641,7 @@ export function Tower() {
           )
         })}
         {g.liftOn && (() => {
-          const sx = X0 + SLOTS * SW
+          const sx = X0 + SHAFT_X0
           const topY = baseY(g.liftTop) - FH
           const here = Math.abs(w.lift.y - Math.round(w.lift.y)) < 0.01 ? Math.round(w.lift.y) : null
           return (
@@ -695,9 +699,11 @@ export function Tower() {
           const s0 = a.steps[0]
           if (s0 && s0.t === 'lift') {
             // Les gens attendent l'ascenseur en file, sans se superposer.
-            const q = w.lift.waiting.get(a.floor) ?? []
+            // File de chaque côté de la cage.
+            const right = a.x > shaftX
+            const q = (w.lift.waiting.get(a.floor) ?? []).filter((id) => { const o = w.agents.find((z) => z.id === id); return !!o && (o.x > shaftX) === right })
             const i = Math.max(0, q.indexOf(a.id))
-            x = X0 + DOOR_X - i * 8
+            x = right ? X0 + DOOR_R + i * 8 : X0 + DOOR_X - i * 8
           }
           const waitK = s0 && s0.t === 'queue' ? Math.min(1, a.waitT / PATIENCE) : null
           return (
@@ -755,7 +761,7 @@ export function Tower() {
           const cleaning = w.agents.some((a) => a.role === 'janitor' && r.trash.some((t) => t.id === a.task))
           if (r.trash.length >= 4 && !cleaning && !g.rooms.some((x) => x.type === 'menage')) {
             out.push(
-              <g key="dirt" transform={`translate(${X0 + r.slot * SW + 12},${y0 + 14})`} onClick={(e) => { e.stopPropagation(); useCorp.getState().clean(r.id) }} style={{ cursor: 'pointer' }}>
+              <g key="dirt" transform={`translate(${X0 + slotX(r.slot) + 12},${y0 + 14})`} onClick={(e) => { e.stopPropagation(); useCorp.getState().clean(r.id) }} style={{ cursor: 'pointer' }}>
                 <g className="incident"><circle r={9} fill="#a16207" stroke="#fff" strokeWidth={2} /><text y={1} fontSize={9} textAnchor="middle" dominantBaseline="middle">🧹</text></g>
               </g>,
             )
@@ -764,7 +770,7 @@ export function Tower() {
           if (qn > 0) {
             const busy = stationsOf(w, r).filter((s) => s.agentId).length
             out.push(
-              <g key="q" transform={`translate(${X0 + r.slot * SW + d.w * SW - 52},${y0 - 12})`} pointerEvents="none">
+              <g key="q" transform={`translate(${X0 + slotX(r.slot) + d.w * SW - 52},${y0 - 12})`} pointerEvents="none">
                 <rect width={70} height={14} rx={7} fill={qn >= 3 ? '#ef4444' : '#f59e0b'} />
                 <text x={35} y={7.5} fontSize={7.5} fill="#fff" textAnchor="middle" dominantBaseline="middle" fontWeight={900}>⏳ {qn} en attente · {busy}/{stationCount(r)}</text>
               </g>,
@@ -775,7 +781,7 @@ export function Tower() {
 
         {/* Ascenseur : installer / prolonger */}
         {(() => {
-          const sx = X0 + SLOTS * SW + SHAFT_W / 2
+          const sx = X0 + SHAFT_X0 + SHAFT_W / 2
           const btns: ReactElement[] = []
           const tag = (key: string, f: number, l1: string, l2: string, cost: number, onClick: () => void) => {
             const ok = g.cash >= cost
@@ -807,9 +813,9 @@ export function Tower() {
               const s = useCorp.getState()
               if (on) s.confirmBuild(); else s.setTarget(t)
             }} style={{ cursor: 'pointer' }}>
-              <rect x={X0 + t.slot * SW + 3} y={baseY(t.floor) - FH + 3} width={d.w * SW - 6} height={FH - 14} rx={4}
+              <rect x={X0 + slotX(t.slot) + 3} y={baseY(t.floor) - FH + 3} width={d.w * SW - 6} height={FH - 14} rx={4}
                 fill={on ? 'rgba(52,211,153,0.45)' : 'rgba(255,255,255,0.18)'} stroke={on ? '#34d399' : '#fff'} strokeWidth={on ? 3 : 2} strokeDasharray={on ? undefined : '6 5'} className={on ? undefined : 'target-pulse'} />
-              {on && <text x={X0 + t.slot * SW + d.w * SW / 2} y={baseY(t.floor) - FH / 2} fontSize={24} textAnchor="middle" dominantBaseline="middle">{d.emoji}</text>}
+              {on && <text x={X0 + slotX(t.slot) + d.w * SW / 2} y={baseY(t.floor) - FH / 2} fontSize={24} textAnchor="middle" dominantBaseline="middle">{d.emoji}</text>}
             </g>
           )
         })}
@@ -821,9 +827,9 @@ export function Tower() {
           <rect x={X0 + BW - 68} y={baseY(g.top) - FH - 42} width={6} height={8} fill="#7b8794" />
           <line x1={X0 + BW - 30} y1={baseY(g.top) - FH - 10} x2={X0 + BW - 30} y2={baseY(g.top) - FH - 44} stroke="#5d6670" strokeWidth={2} />
           <circle cx={X0 + BW - 30} cy={baseY(g.top) - FH - 46} r={2.5} fill="#ff4d6d" className="blink" />
-          <FloorButton x={X0 + BW / 2 - 40} y={baseY(g.top) - FH - 40} label="Étage" cost={floorCost(g.top + 1)} cash={g.cash} onClick={() => useCorp.getState().buildFloor(true)} />
+          <FloorButton x={X0 + SHAFT_X0 / 2} y={baseY(g.top) - FH - 40} label="Étage" cost={floorCost(g.top + 1)} cash={g.cash} onClick={() => useCorp.getState().buildFloor(true)} />
         </g>
-        <FloorButton x={X0 + BW / 2} y={baseY(g.bottom) + 34} label="Sous-sol" cost={floorCost(g.bottom - 1)} cash={g.cash} onClick={() => useCorp.getState().buildFloor(false)} />
+        <FloorButton x={X0 + SHAFT_X0 / 2} y={baseY(g.bottom) + 34} label="Sous-sol" cost={floorCost(g.bottom - 1)} cash={g.cash} onClick={() => useCorp.getState().buildFloor(false)} />
 
         {/* Porte d'entrée */}
         <rect x={X0 - 6} y={groundBase - 52} width={6} height={44} fill="#5b3a29" />

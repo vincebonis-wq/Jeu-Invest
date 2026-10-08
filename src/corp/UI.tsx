@@ -455,8 +455,9 @@ export function ResearchSheet() {
 }
 
 // ── Équipe ───────────────────────────────────────────────────────────────────
-export function staffStatus(_g: Game, a: Agent): string {
+export function staffStatus(g: Game, a: Agent): string {
   const s0 = a.steps[0]
+  const p = g.day % 1
   if (a.away) return '🏠 Rentré chez lui'
   if (a.role === 'guard' && a.task) return '🚨 Poursuit un voleur'
   if (s0?.t === 'pick') return '🧽 Ramasse un déchet'
@@ -468,6 +469,7 @@ export function staffStatus(_g: Game, a: Agent): string {
   if (s0?.t === 'lift' || a.inLift) return '🛗 Prend l’ascenseur'
   if (a.task) return a.role === 'janitor' ? '🧹 Va ramasser un déchet' : a.role === 'tech' ? '🧰 Va réparer un poste' : a.role === 'supervisor' ? '📋 Fait sa tournée' : '🚶 En route'
   if (a.role === 'guard' && a.steps.length) return '🔦 Ronde'
+  if (a.role === 'janitor' && !a.steps.length && p > 0.25 && p < 0.8) return '🌙 Attend la nuit (toilettes seulement)'
   return a.steps.length ? '🚶 Se déplace' : '☕ En pause'
 }
 
