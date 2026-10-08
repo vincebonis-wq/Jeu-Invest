@@ -10,7 +10,7 @@ export type RoomType =
   | 'lobby' | 'openspace' | 'bureaupro' | 'direction'
   | 'wc' | 'cafe' | 'pause'
   | 'supervision' | 'menage' | 'it' | 'securite' | 'labo'
-  | 'parking' | 'serveurs' | 'archives'
+  | 'parking' | 'serveurs' | 'archives' | 'escalator'
 
 export type Need = 'bladder' | 'energy' | 'mood'
 export type StaffRole = 'janitor' | 'tech' | 'guard' | 'researcher' | 'supervisor'
@@ -21,7 +21,7 @@ export interface RoomDef {
   emoji: string
   w: number
   cost: number
-  kind: 'fixed' | 'work' | 'facility' | 'service' | 'support'
+  kind: 'fixed' | 'work' | 'facility' | 'service' | 'support' | 'transport'
   floor: 'ground' | 'upper' | 'any' | 'notBasement' | 'basement'
   spots?: number            // places de parking
   desks?: number            // postes de travail
@@ -53,10 +53,11 @@ export const ROOMS: Record<RoomType, RoomDef> = {
   parking:     { type: 'parking', name: 'Parking', emoji: '🅿️', w: 2, cost: 4000, kind: 'support', floor: 'basement', spots: 3, wall: '#8a929c', desc: '3 places. Les employés motorisés arrivent par le garage, à l’heure et de bonne humeur. Sans place, ils tournent pour se garer : en retard et agacés.' },
   serveurs:    { type: 'serveurs', name: 'Salle des serveurs', emoji: '🗄️', w: 1, cost: 8000, kind: 'support', floor: 'basement', wall: '#1f2937', desc: 'Au frais sous terre : deux fois moins de pannes d’ordinateur dans toute la tour (cumulable deux fois).' },
   archives:    { type: 'archives', name: 'Archives', emoji: '🗃️', w: 2, cost: 7000, kind: 'support', floor: 'basement', wall: '#d6cfc0', desc: 'Des dossiers bien classés : +10 % sur chaque dossier traité dans toute la tour (jusqu’à 3 salles).' },
+  escalator:   { type: 'escalator', name: 'Escalator', emoji: '↗️', w: 1, cost: 3500, kind: 'transport', floor: 'any', research: 'escalators', wall: '#e5e7eb', desc: 'Relie cet étage à celui du dessus, dans les deux sens. Idéal pour les petits trajets : on évite d’attendre l’ascenseur.' },
   labo:        { type: 'labo', name: 'Laboratoire R&D', emoji: '🔬', w: 1, cost: 4000, kind: 'service', floor: 'notBasement', staff: 'researcher', wall: '#eef2ff', desc: 'Des chercheurs produisent des points de recherche 💡 pour améliorer ton entreprise.' },
 }
 
-export const BUILD_ORDER: RoomType[] = ['openspace', 'wc', 'cafe', 'menage', 'it', 'supervision', 'labo', 'parking', 'serveurs', 'archives', 'pause', 'bureaupro', 'securite', 'direction']
+export const BUILD_ORDER: RoomType[] = ['openspace', 'wc', 'cafe', 'menage', 'it', 'supervision', 'labo', 'escalator', 'parking', 'serveurs', 'archives', 'pause', 'bureaupro', 'securite', 'direction']
 
 export const STAFF: Record<StaffRole, { title: string; emoji: string; salary: number; cloth: string; cap: string }> = {
   janitor: { title: 'Agent d’entretien', emoji: '🧹', salary: 50, cloth: '#3a86ff', cap: '#1d4ed8' },
@@ -82,9 +83,11 @@ export const RESEARCH: ResearchDef[] = [
   { id: 'badge', name: 'Badgeuse', emoji: '⏰', desc: 'Tout le monde arrive à l’heure : la journée de travail dure une heure de plus.', cost: 22 },
   { id: 'training', name: 'Formation continue', emoji: '🎓', desc: 'Chaque dossier rapporte 25 % de plus.', cost: 28 },
   { id: 'servers', name: 'Serveurs maison', emoji: '🗄️', desc: 'Encore deux fois moins de pannes, réparations deux fois plus rapides.', cost: 26, req: 'pc' },
-  { id: 'lift2', name: 'Ascenseur rapide', emoji: '🛗', desc: 'Permet de moderniser l’ascenseur (niveau 2).', cost: 16 },
+  { id: 'lift2', name: 'Ascenseur rapide', emoji: '🛗', desc: 'Permet de moderniser les ascenseurs (niveau 2).', cost: 16 },
+  { id: 'escalators', name: 'Escalators', emoji: '↗️', desc: 'Débloque les escalators : un étage de plus sans attendre l’ascenseur.', cost: 12 },
+  { id: 'express', name: 'Ascenseur express', emoji: '⚡', desc: 'Débloque une cage express : très rapide, elle ne s’arrête qu’au hall, tous les 4 étages et au dernier.', cost: 30, req: 'lift2' },
   { id: 'autopay', name: 'Virement automatique', emoji: '🏦', desc: 'L’argent des dossiers arrive directement sur ton compte (plus besoin de toucher les billets).', cost: 40 },
-  { id: 'lift3', name: 'Ascenseur express', emoji: '🚀', desc: 'Permet le niveau 3 de l’ascenseur.', cost: 40, req: 'lift2' },
+  { id: 'lift3', name: 'Ascenseur haute vitesse', emoji: '🚀', desc: 'Permet le niveau 3 des ascenseurs.', cost: 40, req: 'lift2' },
   { id: 'board', name: 'Conseil d’administration', emoji: '🏛️', desc: 'Débloque la salle du conseil et ses directeurs (5 étages requis).', cost: 60, req: 'pro' },
 ]
 export const RP_RATE = 0.35
@@ -95,9 +98,12 @@ export const LEFT_SLOTS = 5       // cases à gauche de la cage
 export const SW = 66
 export const SHAFT_W = 46
 export const FH = 86
-export const BW = SLOTS * SW + SHAFT_W
-/** Cage d'ascenseur / escalier : au centre (prévu pour d'autres transports plus tard). */
+/** Cage d'ascenseur / escalier : au centre. */
 export const SHAFT_X0 = LEFT_SLOTS * SW
+/** Cages supplémentaires au bout de l'aile droite : ascenseur 2 puis ascenseur express. */
+export const COL_B_X0 = SLOTS * SW + SHAFT_W
+export const COL_X_X0 = COL_B_X0 + SHAFT_W
+export const BW = COL_X_X0 + SHAFT_W
 /** Abscisse (unités SVG, depuis le bord gauche de la tour) du début d'une case. */
 export const slotX = (s: number) => s * SW + (s >= LEFT_SLOTS ? SHAFT_W : 0)
 

@@ -3,7 +3,7 @@ import {
   createGame, createWorld, step, applyOffline, build as simBuild, buildFloor as simFloor, collect as simCollect,
   renovate as simRenovate, cleanRoom, fixDesk as simFix, upgradeLift as simLift, claimQuest as simClaim, sell as simSell,
   migrate, installLift as simInstallLift, extendLift as simExtendLift, doResearch, scareThief, fillQuests, checkProgress, canPlace, roomCost,
-  timeScale, type Game, type World, type GEvent,
+  timeScale, type Game, type World, type GEvent, type LiftId,
 } from './sim'
 import { ROOMS, TIERS, type RoomType } from './data'
 import { sfxBuild, sfxCoin, sfxError, sfxFanfare, sfxUpgrade, setMuted, haptic, sfxTap } from '../archipel/audio'
@@ -43,8 +43,8 @@ interface Store {
   clean: (id: string) => void
   fixDesk: (id: string, i: number) => void
   upgradeLift: () => void
-  installLift: () => void
-  extendLift: (up: boolean) => void
+  installLift: (id?: LiftId) => void
+  extendLift: (up: boolean, id?: LiftId) => void
   research: (id: string) => void
   scare: (agentId: string) => void
   sell: (id: string) => void
@@ -208,16 +208,16 @@ export const useCorp = create<Store>((set, get) => {
       if (!simLift(g)) { sfxError(); return }
       sfxUpgrade(); bump()
     },
-    installLift: () => {
+    installLift: (id = 'A') => {
       const g = get().game
-      if (!simInstallLift(g)) { sfxError(); return }
+      if (!simInstallLift(g, id)) { sfxError(); return }
       sfxBuild(); haptic(20)
       const ev: GEvent[] = []; checkProgress(g, ev); handle(ev)
       bump()
     },
-    extendLift: (up) => {
+    extendLift: (up, id = 'A') => {
       const g = get().game
-      if (!simExtendLift(g, up)) { sfxError(); return }
+      if (!simExtendLift(g, up, id)) { sfxError(); return }
       sfxBuild(); haptic(15); bump()
     },
     research: (id) => {

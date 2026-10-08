@@ -5,10 +5,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { useCorp } from './store'
 import {
-  canPlace, shaftX, EXIT_X, DOOR_R, stationCount, stationX, stationsOf, PATIENCE, DOOR_X, stairX, stairServed, deskX, fileValue, has,
+  canPlace, shaftX, EXIT_X, liftDefs, liftStops, liftUnlocked, liftInstallPrice, liftExtendPrice, stationCount, stationX, stationsOf, PATIENCE, stairX, stairServed, deskX, fileValue, has,
   type Agent, type Game, type Room, type Station,
 } from './sim'
-import { ROOMS, SLOTS, SW, SHAFT_W, SHAFT_X0, slotX, FH, BW, STAFF, BANK_CAP, WORK_START, WORK_END, floorCost, liftInstallCost, liftExtendCost, type RoomType, type TrashKind } from './data'
+import { ROOMS, SLOTS, SW, SHAFT_W, SHAFT_X0, slotX, FH, BW, STAFF, BANK_CAP, WORK_START, WORK_END, floorCost, type RoomType, type TrashKind } from './data'
 import { fmtShort } from '../archipel/format'
 
 const SIDE = 34          // trottoir de chaque côté
@@ -369,6 +369,27 @@ export function Interior({ r, w, night, skyCol, g, st, seats, boosts }: { r: Roo
           <path d={`M${w - 30},${fl - 13} l3,-8 h3 l3,8 z`} fill="#86efac" opacity={0.85} />
         </g>
       )
+    case 'escalator': {
+      // Escalator : du bas à gauche (cet étage) au haut à droite (étage du dessus), marches qui défilent.
+      const x1 = 9, x2 = w - 9, y1 = fl, y2 = 2
+      const off = (Date.now() / 90) % 1
+      const n = 11
+      return (
+        <g>
+          <rect x={0} y={fl} width={w} height={6} fill="#9ca3af" />
+          <polygon points={`${x1 - 4},${y1} ${x2 + 4},${y2} ${x2 + 4},${y2 + 9} ${x1 - 4},${y1 + 9}`} fill="#475569" />
+          {Array.from({ length: n }, (_, i) => {
+            const k = (i + off) / n
+            const tx = x1 + (x2 - x1) * k, ty = y1 + (y2 - y1) * k
+            return <rect key={i} x={tx - 3} y={ty - 0.5} width={6} height={1.6} fill="#cbd5e1" />
+          })}
+          <line x1={x1 - 2} y1={y1 - 15} x2={x2 + 2} y2={y2 - 15} stroke="#111827" strokeWidth={2.4} strokeLinecap="round" />
+          <line x1={x1 - 2} y1={y1 - 15} x2={x1 - 2} y2={y1} stroke="#6b7280" strokeWidth={1.2} />
+          <rect x={w / 2 - 9} y={8} width={18} height={8} rx={2} fill="#1f2937" />
+          <text x={w / 2} y={13.5} fontSize={5} fill="#a7f3d0" textAnchor="middle" fontWeight={900}>↗ ↙</text>
+        </g>
+      )
+    }
     case 'parking':
       return (
         <g>
@@ -493,7 +514,7 @@ export function Tower() {
     seated.add(a.id)
   }
 
-  const liftY = baseY(w.lift.y)
+  const defs = liftDefs(g)
 
   return (
     <div ref={scroller} className="absolute inset-0 overflow-auto hide-scrollbar"
@@ -604,80 +625,87 @@ export function Tower() {
           )
         })}
 
-        {/* Cage : ascenseur là où il dessert, escalier ailleurs */}
-        <rect x={X0 + SHAFT_X0} y={baseY(g.top) - FH} width={SHAFT_W} height={(g.top - g.bottom + 1) * FH} fill="#3d4450" />
-        {floors.map((f) => {
-          const served = g.liftOn && f >= g.liftBottom && f <= g.liftTop
-          const sx = X0 + SHAFT_X0
-          const yb = baseY(f)
-          return (
-            <g key={`sd${f}`}>
-              {served ? (
-                <rect x={sx + 4} y={yb - FH + 12} width={SHAFT_W - 8} height={FH - 20} fill="#1f242c" />
-              ) : (
+        {/* Cages : ascenseur central (escalier là où il ne dessert pas), ascenseur n°2, express */}
+        {defs.map((d) => (
+          <g key={`col${d.id}`}>
+            <rect x={X0 + d.x0} y={baseY(g.top) - FH} width={SHAFT_W} height={(g.top - g.bottom + 1) * FH} fill={d.id === 'A' ? '#3d4450' : '#2f3540'} />
+            {floors.map((f) => {
+              const served = d.on && f >= d.bottom && f <= d.top
+              const sx = X0 + d.x0
+              const yb = baseY(f)
+              return (
+                <g key={`sd${d.id}${f}`}>
+                  {served ? (
+                    <rect x={sx + 4} y={yb - FH + 12} width={SHAFT_W - 8} height={FH - 20} fill="#1f242c" />
+                  ) : (
+                    <g>
+                      <rect x={sx} y={yb - FH} width={SHAFT_W} height={FH} fill={d.id === 'A' ? '#59606b' : '#4b5160'} />
+                      <rect x={sx} y={yb - FH} width={SHAFT_W} height={FH} fill="url(#brick)" opacity={0.35} />
+                      {d.id === 'A' && f < g.top && !stairServed(g, f) && (() => {
+                        const x1 = X0 + stairX(f), x2 = X0 + stairX(f + 1)
+                        const y1 = yb - 8, y2 = yb - FH - 8
+                        const n = 9
+                        return (
+                          <g>
+                            <polygon points={`${x1},${y1} ${x2},${y2} ${x2},${y2 + 6} ${x1},${y1 + 6}`} fill="#8b929c" />
+                            {Array.from({ length: n }, (_, i) => {
+                              const k = (i + 0.5) / n
+                              const tx = x1 + (x2 - x1) * k, ty = y1 + (y2 - y1) * k
+                              return <rect key={i} x={tx - 2.5} y={ty - 1} width={5} height={2} fill="#b8bec6" />
+                            })}
+                            <line x1={x1} y1={y1 - 12} x2={x2} y2={y2 - 12} stroke="#c9a227" strokeWidth={1.2} />
+                          </g>
+                        )
+                      })()}
+                    </g>
+                  )}
+                  <rect x={sx} y={yb - 8} width={SHAFT_W} height={8} fill="#2a2f38" />
+                </g>
+              )
+            })}
+            {d.on && (() => {
+              const L = w.lifts[d.id]
+              const sx = X0 + d.x0
+              const ly = baseY(L.y)
+              const here = Math.abs(L.y - Math.round(L.y)) < 0.01 ? Math.round(L.y) : null
+              const frame = d.id === 'A' ? '#c9a227' : d.id === 'B' ? '#94a3b8' : '#dc2626'
+              const inner = d.id === 'A' ? '#f6e7b0' : d.id === 'B' ? '#e2e8f0' : '#fee2e2'
+              return (
                 <g>
-                  <rect x={sx} y={yb - FH} width={SHAFT_W} height={FH} fill="#59606b" />
-                  <rect x={sx} y={yb - FH} width={SHAFT_W} height={FH} fill="url(#brick)" opacity={0.35} />
-                  {f < g.top && !stairServed(g, f) && (() => {
-                    const x1 = X0 + stairX(f), x2 = X0 + stairX(f + 1)
-                    const y1 = yb - 8, y2 = yb - FH - 8
-                    const n = 9
+                  <line x1={sx + SHAFT_W / 2} y1={baseY(d.top) - FH} x2={sx + SHAFT_W / 2} y2={ly - FH + 12} stroke="#888" strokeWidth={1} />
+                  <g transform={`translate(${sx + 4},${ly - FH + 12})`}>
+                    <rect x={0} y={0} width={SHAFT_W - 8} height={FH - 20} rx={2} fill={frame} />
+                    <rect x={2.5} y={2.5} width={SHAFT_W - 13} height={FH - 25} rx={1.5} fill={inner} />
+                    <rect x={8} y={4} width={SHAFT_W - 24} height={3} rx={1.5} fill="#fff7d6" />
+                    {d.express && <text x={(SHAFT_W - 8) / 2} y={14} fontSize={6} textAnchor="middle" fill="#b91c1c" fontWeight={900}>⚡EXP</text>}
+                  </g>
+                  {L.riders.map((id, i) => {
+                    const a = w.agents.find((x) => x.id === id)
+                    if (!a) return null
+                    return <Person key={id} a={a} x={sx + 11 + (i % 4) * 7} y={ly - 9} small />
+                  })}
+                  {floors.filter((f) => f >= d.bottom && f <= d.top).map((f) => {
+                    const stop = liftStops(d, f)
+                    const open = here === f ? L.door : 0
+                    const y0 = baseY(f) - FH + 12, hh = FH - 20, half = (SHAFT_W - 8) / 2
+                    const pw = half * (1 - open * 0.92)
+                    const waiting = (L.waiting.get(f)?.length ?? 0) > 0
                     return (
-                      <g>
-                        <polygon points={`${x1},${y1} ${x2},${y2} ${x2},${y2 + 6} ${x1},${y1 + 6}`} fill="#8b929c" />
-                        {Array.from({ length: n }, (_, i) => {
-                          const k = (i + 0.5) / n
-                          const tx = x1 + (x2 - x1) * k, ty = y1 + (y2 - y1) * k
-                          return <rect key={i} x={tx - 2.5} y={ty - 1} width={5} height={2} fill="#b8bec6" />
-                        })}
-                        <line x1={x1} y1={y1 - 12} x2={x2} y2={y2 - 12} stroke="#c9a227" strokeWidth={1.2} />
+                      <g key={`door${d.id}${f}`} pointerEvents="none">
+                        <rect x={sx + 4} y={y0} width={pw} height={hh} fill={stop ? '#bfe3f5' : '#64748b'} opacity={stop ? 0.42 : 0.55} stroke="#8fa3b5" strokeWidth={0.8} />
+                        <rect x={sx + 4 + 2 * half - pw} y={y0} width={pw} height={hh} fill={stop ? '#bfe3f5' : '#64748b'} opacity={stop ? 0.42 : 0.55} stroke="#8fa3b5" strokeWidth={0.8} />
+                        <rect x={sx + 2} y={y0 - 2} width={SHAFT_W - 4} height={hh + 2} fill="none" stroke={d.express ? '#ef4444' : '#9aa5b1'} strokeWidth={2} />
+                        <rect x={sx + SHAFT_W / 2 - 8} y={y0 - 10} width={16} height={7} rx={2} fill="#111827" />
+                        <text x={sx + SHAFT_W / 2} y={y0 - 6.2} fontSize={5.5} textAnchor="middle" dominantBaseline="middle" fill={!stop ? '#64748b' : here === f ? '#fbbf24' : '#4b5563'} fontWeight={900}>{!stop ? '—' : f === 0 ? 'RDC' : f < 0 ? `S${-f}` : f}</text>
+                        {stop && <circle cx={sx - 3} cy={baseY(f) - FH / 2} r={2.2} fill={waiting ? '#fbbf24' : '#4b5563'} stroke="#1f2937" strokeWidth={0.6} />}
                       </g>
                     )
-                  })()}
+                  })}
                 </g>
-              )}
-              <rect x={sx} y={yb - 8} width={SHAFT_W} height={8} fill="#2a2f38" />
-            </g>
-          )
-        })}
-        {g.liftOn && (() => {
-          const sx = X0 + SHAFT_X0
-          const topY = baseY(g.liftTop) - FH
-          const here = Math.abs(w.lift.y - Math.round(w.lift.y)) < 0.01 ? Math.round(w.lift.y) : null
-          return (
-            <g>
-              <line x1={sx + SHAFT_W / 2} y1={topY} x2={sx + SHAFT_W / 2} y2={liftY - FH + 12} stroke="#888" strokeWidth={1} />
-              <g transform={`translate(${sx + 4},${liftY - FH + 12})`}>
-                <rect x={0} y={0} width={SHAFT_W - 8} height={FH - 20} rx={2} fill="#c9a227" />
-                <rect x={2.5} y={2.5} width={SHAFT_W - 13} height={FH - 25} rx={1.5} fill="#f6e7b0" />
-                <rect x={8} y={4} width={SHAFT_W - 24} height={3} rx={1.5} fill="#fff7d6" />
-                <rect x={2.5} y={FH - 32} width={SHAFT_W - 13} height={2} fill="#d8c27a" />
-              </g>
-              {w.lift.riders.map((id, i) => {
-                const a = w.agents.find((x) => x.id === id)
-                if (!a) return null
-                return <Person key={id} a={a} x={sx + 11 + (i % 4) * 7} y={liftY - 9} small />
-              })}
-              {/* Portes vitrées à chaque palier */}
-              {floors.filter((f) => f >= g.liftBottom && f <= g.liftTop).map((f) => {
-                const open = here === f ? w.lift.door : 0
-                const y0 = baseY(f) - FH + 12, hh = FH - 20, half = (SHAFT_W - 8) / 2
-                const pw = half * (1 - open * 0.92)
-                const waiting = (w.lift.waiting.get(f)?.length ?? 0) > 0
-                return (
-                  <g key={`door${f}`} pointerEvents="none">
-                    <rect x={sx + 4} y={y0} width={pw} height={hh} fill="#bfe3f5" opacity={0.42} stroke="#8fa3b5" strokeWidth={0.8} />
-                    <rect x={sx + 4 + 2 * half - pw} y={y0} width={pw} height={hh} fill="#bfe3f5" opacity={0.42} stroke="#8fa3b5" strokeWidth={0.8} />
-                    <rect x={sx + 2} y={y0 - 2} width={SHAFT_W - 4} height={hh + 2} fill="none" stroke="#9aa5b1" strokeWidth={2} />
-                    <rect x={sx + SHAFT_W / 2 - 7} y={y0 - 10} width={14} height={7} rx={2} fill="#111827" />
-                    <text x={sx + SHAFT_W / 2} y={y0 - 6.2} fontSize={5.5} textAnchor="middle" dominantBaseline="middle" fill={here === f ? '#fbbf24' : '#4b5563'} fontWeight={900}>{f === 0 ? 'RDC' : f < 0 ? `S${-f}` : f}</text>
-                    <circle cx={sx - 3} cy={baseY(f) - FH / 2} r={2.2} fill={waiting ? '#fbbf24' : '#4b5563'} stroke="#1f2937" strokeWidth={0.6} />
-                  </g>
-                )
-              })}
-            </g>
-          )
-        })()}
+              )
+            })()}
+          </g>
+        ))}
 
         {/* Voitures des employés & tunnel du garage */}
         {w.cars.filter((c) => c.state !== 'out').map((c) => (
@@ -698,12 +726,13 @@ export function Tower() {
           let x = X0 + a.x
           const s0 = a.steps[0]
           if (s0 && s0.t === 'lift') {
-            // Les gens attendent l'ascenseur en file, sans se superposer.
-            // File de chaque côté de la cage.
-            const right = a.x > shaftX
-            const q = (w.lift.waiting.get(a.floor) ?? []).filter((id) => { const o = w.agents.find((z) => z.id === id); return !!o && (o.x > shaftX) === right })
+            // File d'attente devant les portes de cet ascenseur, de chaque côté de la cage.
+            const d = defs.find((z) => z.id === s0.liftId)!
+            const c = d.x0 + SHAFT_W / 2
+            const right = a.x > c
+            const q = (w.lifts[s0.liftId].waiting.get(a.floor) ?? []).filter((id) => { const o = w.agents.find((z) => z.id === id); return !!o && (o.x > c) === right })
             const i = Math.max(0, q.indexOf(a.id))
-            x = right ? X0 + DOOR_R + i * 8 : X0 + DOOR_X - i * 8
+            x = right ? X0 + d.x0 + SHAFT_W + 6 + i * 8 : X0 + d.x0 - 6 - i * 8
           }
           const waitK = s0 && s0.t === 'queue' ? Math.min(1, a.waitT / PATIENCE) : null
           return (
@@ -779,30 +808,34 @@ export function Tower() {
           return <g key={`o${r.id}`}>{out}</g>
         })}
 
-        {/* Ascenseur : installer / prolonger */}
-        {(() => {
-          const sx = X0 + SHAFT_X0 + SHAFT_W / 2
+        {/* Ascenseurs : installer / prolonger */}
+        {defs.map((d) => {
+          const sx = X0 + d.x0 + SHAFT_W / 2
           const btns: ReactElement[] = []
-          const tag = (key: string, f: number, l1: string, l2: string, cost: number, onClick: () => void) => {
-            const ok = g.cash >= cost
+          const icon = d.id === 'X' ? '⚡' : '🛗'
+          const tag = (key: string, f: number, l1: string, l2: string, cost: number, onClick: (() => void) | null) => {
+            const ok = !!onClick && g.cash >= cost
             btns.push(
-              <g key={key} transform={`translate(${sx},${baseY(f) - FH / 2 - 4})`} onClick={(e) => { e.stopPropagation(); onClick() }} style={{ cursor: 'pointer' }}>
+              <g key={key} transform={`translate(${sx},${baseY(f) - FH / 2 - 4})`} onClick={onClick ? (e) => { e.stopPropagation(); onClick() } : undefined} style={{ cursor: onClick ? 'pointer' : 'default' }}>
                 <g className={ok ? 'incident' : undefined}>
-                  <rect x={-21} y={-26} width={42} height={52} rx={9} fill={ok ? '#f2792b' : '#94a3b8'} stroke="#fff" strokeWidth={2} />
-                  <text x={0} y={-12} fontSize={13} textAnchor="middle" dominantBaseline="middle">🛗</text>
-                  <text x={0} y={4} fontSize={l1.length > 9 ? 5.6 : 6.5} fill="#fff" textAnchor="middle" fontWeight={900}>{l1}</text>
-                  <text x={0} y={15} fontSize={7.5} fill="#fff" textAnchor="middle" fontWeight={900}>{l2}</text>
+                  <rect x={-21} y={-26} width={42} height={52} rx={9} fill={ok ? (d.id === 'X' ? '#dc2626' : '#f2792b') : '#94a3b8'} stroke="#fff" strokeWidth={2} opacity={onClick ? 1 : 0.85} />
+                  <text x={0} y={-12} fontSize={13} textAnchor="middle" dominantBaseline="middle">{onClick ? icon : '🔒'}</text>
+                  <text x={0} y={4} fontSize={l1.length > 9 ? 5.2 : 6.3} fill="#fff" textAnchor="middle" fontWeight={900}>{l1}</text>
+                  <text x={0} y={15} fontSize={l2.length > 9 ? 5.6 : 7.5} fill="#fff" textAnchor="middle" fontWeight={900}>{l2}</text>
                 </g>
               </g>,
             )
           }
-          if (!g.liftOn) tag('inst', Math.min(1, g.top), 'Installer', `${fmtShort(liftInstallCost(g.top - g.bottom))} €`, liftInstallCost(g.top - g.bottom), () => useCorp.getState().installLift())
-          else {
-            if (g.liftTop < g.top) tag('up', g.liftTop + 1, 'Prolonger', `${fmtShort(liftExtendCost(g.liftTop + 1))} €`, liftExtendCost(g.liftTop + 1), () => useCorp.getState().extendLift(true))
-            if (g.liftBottom > g.bottom) tag('dn', g.liftBottom - 1, 'Prolonger', `${fmtShort(liftExtendCost(g.liftBottom - 1))} €`, liftExtendCost(g.liftBottom - 1), () => useCorp.getState().extendLift(false))
+          const f0 = Math.min(1, g.top)
+          if (!d.on) {
+            if (liftUnlocked(g, d.id)) tag(`i${d.id}`, f0, d.id === 'A' ? 'Installer' : d.id === 'B' ? 'Ascenseur 2' : 'Express', `${fmtShort(liftInstallPrice(g, d.id))} €`, liftInstallPrice(g, d.id), () => useCorp.getState().installLift(d.id))
+            else tag(`l${d.id}`, f0, d.id === 'B' ? 'Ascenseur 2' : 'Express', d.id === 'B' ? '3 étages' : 'Recherche', 0, null)
+          } else {
+            if (d.top < g.top) tag(`u${d.id}`, d.top + 1, 'Prolonger', `${fmtShort(liftExtendPrice(d.id, d.top + 1))} €`, liftExtendPrice(d.id, d.top + 1), () => useCorp.getState().extendLift(true, d.id))
+            if (d.bottom > g.bottom) tag(`d${d.id}`, d.bottom - 1, 'Prolonger', `${fmtShort(liftExtendPrice(d.id, d.bottom - 1))} €`, liftExtendPrice(d.id, d.bottom - 1), () => useCorp.getState().extendLift(false, d.id))
           }
-          return btns
-        })()}
+          return <g key={`tags${d.id}`}>{btns}</g>
+        })}
 
         {/* Cibles de construction */}
         {targets.map((t) => {

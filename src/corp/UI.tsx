@@ -7,10 +7,10 @@ import { Hammer, Target, PieChart, FlaskConical, Users, X, Lock, Coins, Volume2,
 import { useCorp } from './store'
 import {
   profitPerDay, dailyCosts, workerSalaries, staffSalaries, buildingCharges, isUnlocked, questProgress, employees, avgMood, netWorth, buildingValue,
-  isQuietNight, NIGHT_MULT, parkingStatus, archivesBonus, serversMult, canRenovate, renovateCost, liftCost, liftNeeds, roomCost, stationCount, stationsOf, useTime, canResearch, fileValue, has, tierOf,
+  isQuietNight, NIGHT_MULT, liftDefs, liftUnlocked, liftInstallPrice, parkingStatus, archivesBonus, serversMult, canRenovate, renovateCost, liftCost, liftNeeds, roomCost, stationCount, stationsOf, useTime, canResearch, fileValue, has, tierOf,
   type Game, type Room, type Agent, type Employee,
 } from './sim'
-import { ROOMS, BUILD_ORDER, SW, FH, TIERS, STAFF, RESEARCH, RP_RATE, CLEAN_COST, FIX_COST, BANK_CAP, liftInstallCost, type RoomType, type StaffRole } from './data'
+import { ROOMS, BUILD_ORDER, SW, FH, TIERS, STAFF, RESEARCH, RP_RATE, CLEAN_COST, FIX_COST, BANK_CAP, type RoomType, type StaffRole } from './data'
 import { Interior } from './Tower'
 import { fmtEur, fmtShort } from '../archipel/format'
 import { sfxTap, sfxTick } from '../archipel/audio'
@@ -249,7 +249,8 @@ function workerStatus(g: Game, a: Agent | undefined, r: Room, i: number) {
   if (r.broken[i]) return '💥 Ordinateur en panne'
   if (s0?.t === 'work') {
     if (!has(g, 'autopay') && r.bank[i] >= fileValue(g, r) * BANK_CAP) return '📥 Attend que tu encaisses'
-    if (a.needT > 0) return a.bladder >= 85 ? '🚽 Doit aller aux toilettes !' : '🥱 Épuisé'
+    if (a.needCd > 0) return a.bladder >= a.bMax ? '🚽⏳ Attend que les toilettes se libèrent' : '☕⏳ Attend une place au café'
+    if (a.needT > 0) return a.bladder >= a.bMax ? '🚽 Doit aller aux toilettes !' : '🥱 Épuisé'
     return a.boostT > 0 ? '⚡ Boosté par le chef' : '⌨️ Au travail'
   }
   if (s0?.t === 'serve' || s0?.t === 'queue' || s0?.t === 'enter') return '☕ En pause'
@@ -369,24 +370,28 @@ export function RoomPanel() {
 
         {r.type === 'lobby' && (
           <div className="mt-3 rounded-2xl bg-white border border-slate-100 px-3.5 py-2.5">
-            {!g.liftOn ? (
-              <>
-                <div className="font-extrabold text-slate-700 text-[14px]">🪜 Pas encore d’ascenseur</div>
-                <div className="text-[12px] text-slate-500">Tout le monde monte à pied : c’est lent et ça fatigue.</div>
-                <button onClick={() => st.installLift()} className="w-full mt-2 rounded-xl py-2.5 font-extrabold text-white text-[14px] active:scale-[0.98]" style={{ background: 'linear-gradient(180deg,#ffb547,#f2792b)' }}>
-                  🛗 Installer l’ascenseur · {fmtEur(liftInstallCost(g.top - g.bottom))}
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="font-extrabold text-slate-700 text-[14px]">🛗 Ascenseur niveau {g.liftLevel}</div>
-                {g.liftLevel < 3 && (has(g, liftNeeds(g.liftLevel)) ? (
-                  <button onClick={() => st.upgradeLift()} className="w-full mt-2 rounded-xl py-2.5 font-extrabold text-white text-[14px] active:scale-[0.98]" style={{ background: 'linear-gradient(180deg,#ffb547,#f2792b)' }}>
-                    Moderniser · {fmtEur(liftCost(g.liftLevel))}
-                  </button>
-                ) : <div className="mt-1 text-[12px] font-bold text-indigo-600">🔬 Recherche requise : {RESEARCH.find((x) => x.id === liftNeeds(g.liftLevel))?.name}</div>)}
-              </>
-            )}
+            <div className="font-extrabold text-slate-700 text-[14px]">🚦 Transports · niveau {g.liftLevel}</div>
+            <div className="mt-2 space-y-1.5">
+              {liftDefs(g).map((d) => {
+                const L = st.world.lifts[d.id]
+                return (
+                  <div key={d.id} className="flex items-center gap-2 text-[12px]">
+                    <span className="text-base">{d.express ? '⚡' : '🛗'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-extrabold text-slate-700">{d.name}</div>
+                      <div className="text-slate-500">{d.on ? `${d.bottom < 0 ? `S${-d.bottom}` : 'RDC'} → ${d.top}${d.express ? ' · arrêts RDC, tous les 4 étages, sommet' : ''} · attente ≈ ${Math.round(L.avgWait ?? 0)} s` : liftUnlocked(g, d.id) ? 'Pas encore installé' : d.id === 'B' ? '🔒 3 étages requis' : '🔒 Recherche « Ascenseur express » + 4 étages'}</div>
+                    </div>
+                    {!d.on && liftUnlocked(g, d.id) && <button onClick={() => st.installLift(d.id)} className="rounded-xl px-2.5 py-1.5 font-extrabold text-white text-[12px] bg-orange-500 disabled:opacity-40" disabled={g.cash < liftInstallPrice(g, d.id)}>Installer · {fmtShort(liftInstallPrice(g, d.id))} €</button>}
+                  </div>
+                )
+              })}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1.5">Chacun prend le chemin le plus rapide : ascenseurs, escalators ou escalier. Prolonge les cages avec les boutons orange.</div>
+            {g.liftOn && g.liftLevel < 3 && (has(g, liftNeeds(g.liftLevel)) ? (
+              <button onClick={() => st.upgradeLift()} className="w-full mt-2 rounded-xl py-2.5 font-extrabold text-white text-[14px] active:scale-[0.98]" style={{ background: 'linear-gradient(180deg,#ffb547,#f2792b)' }}>
+                Moderniser tous les ascenseurs · {fmtEur(liftCost(g.liftLevel))}
+              </button>
+            ) : <div className="mt-1 text-[12px] font-bold text-indigo-600">🔬 Modernisation : recherche « {RESEARCH.find((x) => x.id === liftNeeds(g.liftLevel))?.name} »</div>)}
           </div>
         )}
 

@@ -7,7 +7,7 @@
  */
 
 import {
-  ROOMS, SLOTS, LEFT_SLOTS, SHAFT_X0, slotX, SW, SHAFT_W, DAY_S, WALK, LIFT_SPEED, LIFT_CAP, START_CASH, STAIR_S, WORK_START, WORK_END,
+  ROOMS, SLOTS, LEFT_SLOTS, SHAFT_X0, COL_B_X0, COL_X_X0, slotX, SW, SHAFT_W, DAY_S, WALK, LIFT_SPEED, LIFT_CAP, START_CASH, STAIR_S, WORK_START, WORK_END,
   COST_GROWTH, BANK_CAP, CLEAN_COST, FIX_COST, HIRE_COST, RESEARCH, RP_RATE, STAFF, TIERS, TRASH_KINDS,
   FIRST_NAMES, SKINS, SHIRTS, TIES, HAIR, liftInstallCost, liftExtendCost, floorCost, chargesPerDay,
   type RoomType, type StaffRole, type TrashKind,
@@ -37,6 +37,8 @@ export interface Game {
   liftOn: boolean
   liftTop: number
   liftBottom: number
+  lift2?: { on: boolean; top: number; bottom: number }     // ascenseur n°2 (bout de l'aile droite)
+  express?: { on: boolean; top: number; bottom: number }   // ascenseur express
   rp: number
   research: string[]
   rooms: Room[]
@@ -126,6 +128,7 @@ export function canPlace(g: Game, type: RoomType, floor: number, slot: number) {
   if (d.floor === 'upper' && floor < 1) return false
   if (d.floor === 'notBasement' && floor < 0) return false
   if (d.floor === 'basement' && floor >= 0) return false
+  if (type === 'escalator' && floor >= g.top) return false   // il faut un étage au-dessus
   for (let i = 0; i < d.w; i++) if (roomAt(g, floor, slot + i)) return false
   return true
 }
@@ -157,7 +160,7 @@ export function workerSalaries(g: Game) {
   return g.rooms.reduce((a, r) => a + r.workers.filter(Boolean).length * (ROOMS[r.type].salary ?? 0), 0)
 }
 export function buildingCharges(g: Game) {
-  return chargesPerDay(g.top, -g.bottom) + (g.liftOn ? 20 + (g.liftLevel - 1) * 25 : 0)
+  return chargesPerDay(g.top, -g.bottom) + liftDefs(g).filter((d) => d.on).length * (20 + (g.liftLevel - 1) * 25)
 }
 export function dailyCosts(g: Game) {
   return workerSalaries(g) + staffSalaries(g) + buildingCharges(g)
@@ -267,24 +270,6 @@ export function upgradeLift(g: Game) {
   g.liftLevel++
   return true
 }
-export function installLift(g: Game) {
-  const c = liftInstallCost(g.top - g.bottom)
-  if (g.liftOn || g.cash < c) return false
-  g.cash -= c
-  g.liftOn = true; g.liftTop = g.top; g.liftBottom = g.bottom
-  return true
-}
-export function extendLift(g: Game, up: boolean) {
-  if (!g.liftOn) return false
-  const n = up ? g.liftTop + 1 : g.liftBottom - 1
-  if (up ? n > g.top : n < g.bottom) return false
-  const c = liftExtendCost(n)
-  if (g.cash < c) return false
-  g.cash -= c
-  if (up) g.liftTop = n; else g.liftBottom = n
-  return true
-}
-
 export function sell(g: Game, r: Room) {
   if (r.type === 'lobby') return 0
   const v = ROOMS[r.type].cost * 0.5 + r.bank.reduce((a, b) => a + b, 0)
@@ -397,7 +382,8 @@ export function applyOffline(g: Game, now: number) {
 // ════════════════════════════════════════════════════════════════════════════
 export type Step =
   | { t: 'walk'; x: number }
-  | { t: 'lift'; to: number }
+  | { t: 'lift'; liftId: LiftId; to: number }
+  | { t: 'escal'; roomId: string; to: number }
   | { t: 'stairs'; to: number; said?: boolean }
   | { t: 'enter'; roomId: string }
   | { t: 'queue'; roomId: string }
@@ -412,7 +398,7 @@ export type Step =
   | { t: 'steal'; roomId: string; dur: number }
   | { t: 'chase'; thiefId: string }
   | { t: 'drive'; carId: string }
-  | { t: 'door' }
+  | { t: 'door'; liftId: LiftId }
   | { t: 'gone' }
 
 export interface Agent {
@@ -431,6 +417,7 @@ export interface Agent {
   walking: boolean
   dir: 1 | -1
   inLift: boolean
+  liftId?: LiftId
   waitT: number
   away: boolean
   speed: number
@@ -438,6 +425,10 @@ export interface Agent {
   task?: string
   energy: number
   bladder: number
+  bRate: number            // vitesse à laquelle l'envie monte (propre à chacun)
+  eRate: number            // vitesse de fatigue
+  bMax: number             // seuil où il se lève pour y aller
+  needCd: number           // « je patiente encore un peu »
   boostT: number
   needT: number
   prog: number
@@ -445,18 +436,22 @@ export interface Agent {
   loot?: number
   lootRoom?: string
   caught?: boolean
+  spotted?: boolean        // voleur repéré (caméras ou vigile)
+  seenF?: number           // dernière position connue
+  seenX?: number
+  camT?: number            // délai avant que les caméras ne le repèrent
   arrive: number
   leave: number
   lastDay: number
   done: Set<string>
 }
 
-export interface Lift { y: number; dir: 1 | -1; riders: string[]; stopT: number; door: number; waiting: Map<number, string[]>; skip?: number | null }
+export interface Lift { y: number; dir: 1 | -1; riders: string[]; stopT: number; door: number; waiting: Map<number, string[]>; skip?: number | null; avgWait?: number }
 export interface Station { agentId: string | null; t: number; dur: number; phase: 'idle' | 'reserved' | 'run' | 'done'; doneT: number }
 
 export interface World {
   agents: Agent[]
-  lift: Lift
+  lifts: Record<LiftId, Lift>
   stations: Record<string, Station[]>
   queues: Record<string, string[]>
   thiefDay: number
@@ -516,8 +511,8 @@ function runCars(g: Game, w: World, dt: number) {
         const wr = a && roomOf(g, a.roomId)
         if (a && wr && a.idx != null) {
           a.away = false; a.floor = c.floor; a.x = c.x + 18; a.dir = 1; a.carry = 'bag'
-          a.energy = 85 + Math.random() * 15; a.bladder = Math.random() * 30
-          a.steps = [...route(a.floor, wr.floor, deskX(wr, a.idx)), { t: 'work', roomId: wr.id, idx: a.idx }]
+          a.energy = 75 + Math.random() * 25; a.bladder = Math.random() * 70
+          a.steps = [...routeA(a, wr.floor, deskX(wr, a.idx)), { t: 'work', roomId: wr.id, idx: a.idx }]
         }
       }
     }
@@ -544,27 +539,132 @@ export function useTime(g: Game, t: RoomType) {
   return t === 'cafe' && has(g, 'espresso') ? base * 0.5 : base
 }
 
-// ── Parcours (ascenseur là où il dessert, escalier ailleurs) ────────────────
-let LR = { on: false, top: 0, bottom: 0 }
-function setLR(g: Game) { LR = { on: g.liftOn, top: g.liftTop, bottom: g.liftBottom } }
-function route(fromFloor: number, toFloor: number, toX: number): Step[] {
+// ── Transports : ascenseurs (central, n°2, express), escalators, escalier ────
+export type LiftId = 'A' | 'B' | 'X'
+export interface LiftDef { id: LiftId; name: string; x0: number; on: boolean; top: number; bottom: number; express: boolean }
+export function liftDefs(g: Game): LiftDef[] {
+  return [
+    { id: 'A', name: 'Ascenseur central', x0: SHAFT_X0, on: g.liftOn, top: g.liftTop, bottom: g.liftBottom, express: false },
+    { id: 'B', name: 'Ascenseur n°2', x0: COL_B_X0, on: !!g.lift2?.on, top: g.lift2?.top ?? 0, bottom: g.lift2?.bottom ?? 0, express: false },
+    { id: 'X', name: 'Ascenseur express', x0: COL_X_X0, on: !!g.express?.on, top: g.express?.top ?? 0, bottom: g.express?.bottom ?? 0, express: true },
+  ]
+}
+/** L'express ne s'arrête qu'au hall, tous les 4 étages, et en bout de course. */
+export const liftStops = (d: LiftDef, f: number) => f >= d.bottom && f <= d.top && (!d.express || f === 0 || f === d.top || f === d.bottom || (f > 0 && f % 4 === 0))
+export const liftCap = (g: Game, d: LiftDef) => LIFT_CAP + (g.liftLevel - 1) * 3 + (d.express ? 6 : 0)
+export const liftSpeed = (g: Game, d: LiftDef) => LIFT_SPEED * (1 + 0.45 * (g.liftLevel - 1)) * (d.express ? 2.2 : 1)
+export const liftUnlocked = (g: Game, id: LiftId) => id === 'A' ? true : id === 'B' ? g.top >= 3 : has(g, 'express') && g.top >= 4
+export function liftInstallPrice(g: Game, id: LiftId) {
+  const n = g.top - g.bottom
+  return id === 'A' ? liftInstallCost(n) : id === 'B' ? Math.round(liftInstallCost(n) * 1.5) : 15000 + 1500 * n
+}
+export function liftExtendPrice(id: LiftId, n: number) {
+  return Math.round(liftExtendCost(n) * (id === 'A' ? 1 : id === 'B' ? 1.2 : 2))
+}
+function liftState(g: Game, id: LiftId): { on: boolean; top: number; bottom: number } {
+  if (id === 'A') return { on: g.liftOn, top: g.liftTop, bottom: g.liftBottom }
+  return (id === 'B' ? g.lift2 : g.express) ?? { on: false, top: 0, bottom: 0 }
+}
+function setLiftState(g: Game, id: LiftId, st: { on: boolean; top: number; bottom: number }) {
+  if (id === 'A') { g.liftOn = st.on; g.liftTop = st.top; g.liftBottom = st.bottom } else if (id === 'B') g.lift2 = st; else g.express = st
+}
+export function installLift(g: Game, id: LiftId = 'A') {
+  const c = liftInstallPrice(g, id)
+  if (liftState(g, id).on || !liftUnlocked(g, id) || g.cash < c) return false
+  g.cash -= c
+  setLiftState(g, id, { on: true, top: g.top, bottom: g.bottom })
+  return true
+}
+export function extendLift(g: Game, up: boolean, id: LiftId = 'A') {
+  const st = liftState(g, id)
+  if (!st.on) return false
+  const n = up ? st.top + 1 : st.bottom - 1
+  if (up ? n > g.top : n < g.bottom) return false
+  const c = liftExtendPrice(id, n)
+  if (g.cash < c) return false
+  g.cash -= c
+  setLiftState(g, id, up ? { ...st, top: n } : { ...st, bottom: n })
+  return true
+}
+
+/** Escalator d'une pièce : bas à gauche (étage r.floor), haut à droite (étage r.floor + 1). */
+export const escX = (r: Room) => ({ lo: slotX(r.slot) + 9, hi: slotX(r.slot) + SW - 9 })
+
+let G: Game | null = null
+let WREF: World | null = null
+function setLR(g: Game, w?: World) { G = g; if (w) WREF = w }
+
+/**
+ * Chemin le plus rapide d'un point à un autre (Dijkstra) : marche, attente et trajet
+ * dans chaque ascenseur, escalators, escalier dans la cage centrale.
+ */
+function route(fromFloor: number, toFloor: number, toX: number, fromX = 20): Step[] {
   const from = Math.round(fromFloor), to = Math.round(toFloor)
-  if (from === to) return [{ t: 'walk', x: toX }]
-  const out: Step[] = []
-  let cur = from
-  if (LR.on && LR.top > LR.bottom) {
-    const clamp = (f: number) => Math.max(LR.bottom, Math.min(LR.top, f))
-    const cf = clamp(from), ct = clamp(to)
-    if (cf !== ct) {
-      if (cur !== cf) { out.push({ t: 'walk', x: stairX(cur) }, { t: 'stairs', to: cf }); cur = cf }
-      out.push({ t: 'door' }, { t: 'lift', to: ct })
-      cur = ct
+  if (from === to || !G) return [{ t: 'walk', x: toX }]
+  const g = G
+  type N = { f: number; x: number; kind: 'p' | 'door' | 'car' | 'esc' | 'stair' | 'goal'; lift?: LiftId; room?: string }
+  const nodes: N[] = [{ f: from, x: fromX, kind: 'p' }, { f: to, x: toX, kind: 'goal' }]
+  const defs = liftDefs(g).filter((d) => d.on && d.top > d.bottom)
+  for (const d of defs) for (let f = d.bottom; f <= d.top; f++) if (liftStops(d, f)) {
+    nodes.push({ f, x: d.x0 + SHAFT_W / 2, kind: 'door', lift: d.id }, { f, x: d.x0 + SHAFT_W / 2, kind: 'car', lift: d.id })
+  }
+  for (const r of g.rooms) if (r.type === 'escalator' && r.floor < g.top) {
+    const e = escX(r)
+    nodes.push({ f: r.floor, x: e.lo, kind: 'esc', room: r.id }, { f: r.floor + 1, x: e.hi, kind: 'esc', room: r.id })
+  }
+  for (let k = g.bottom; k < g.top; k++) if (!stairServed(g, k)) nodes.push({ f: k, x: stairX(k), kind: 'stair' }, { f: k + 1, x: stairX(k + 1), kind: 'stair' })
+  const n = nodes.length
+  const dist = new Array<number>(n).fill(Infinity), prev = new Array<number>(n).fill(-1), done = new Array<boolean>(n).fill(false)
+  dist[0] = 0
+  // Attente estimée : moyenne réellement observée sur cet ascenseur + file sur le palier.
+  const wait = (d: LiftId, f: number) => { const L = WREF?.lifts[d]; return 2 + (L?.avgWait ?? 2) + (L?.waiting.get(f)?.length ?? 0) * 0.6 }
+  for (;;) {
+    let u = -1, best = Infinity
+    for (let i = 0; i < n; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i }
+    if (u < 0 || u === 1) break
+    done[u] = true
+    const a = nodes[u]
+    const relax = (v: number, c: number) => { if (dist[u] + c < dist[v]) { dist[v] = dist[u] + c; prev[v] = u } }
+    for (let v = 0; v < n; v++) {
+      if (done[v] || v === u) continue
+      const b = nodes[v]
+      if (a.kind === 'car') {
+        if (b.kind === 'car' && b.lift === a.lift && b.f !== a.f) {
+          const d = defs.find((x) => x.id === a.lift)!
+          relax(v, Math.abs(b.f - a.f) / liftSpeed(g, d) + 0.8)
+        } else if (b.kind === 'door' && b.lift === a.lift && b.f === a.f) relax(v, 0)
+        continue
+      }
+      if (b.kind === 'car') { if (a.kind === 'door' && a.lift === b.lift && a.f === b.f) relax(v, wait(b.lift!, b.f)); continue }
+      if (b.f === a.f) relax(v, Math.abs(b.x - a.x) / WALK)
+      else if (a.kind === 'esc' && b.kind === 'esc' && a.room === b.room) relax(v, 1.4)
+      else if (a.kind === 'stair' && b.kind === 'stair' && Math.abs(b.f - a.f) === 1 && Math.abs(b.x - stairX(b.f)) < 0.01 && Math.abs(a.x - stairX(a.f)) < 0.01 && !stairServed(g, Math.min(a.f, b.f))) relax(v, STAIR_S)
     }
   }
-  if (cur !== to) out.push({ t: 'walk', x: stairX(cur) }, { t: 'stairs', to })
-  out.push({ t: 'walk', x: toX })
+  if (!isFinite(dist[1])) return [{ t: 'walk', x: toX }]
+  const path: number[] = []
+  for (let v = 1; v >= 0; v = prev[v]) path.unshift(v)
+  const out: Step[] = []
+  for (let i = 1; i < path.length; i++) {
+    const a = nodes[path[i - 1]], b = nodes[path[i]]
+    if (b.kind === 'car' && a.kind === 'door') {
+      if (out.length && out[out.length - 1].t === 'walk') out.pop()
+      out.push({ t: 'door', liftId: b.lift! })
+    } else if (a.kind === 'car' && b.kind === 'car') {
+      const last = out[out.length - 1]
+      if (last && last.t === 'lift' && last.liftId === b.lift) last.to = b.f
+      else out.push({ t: 'lift', liftId: b.lift!, to: b.f })
+    } else if (a.kind === 'car') continue
+    else if (a.f !== b.f && a.kind === 'esc') out.push({ t: 'escal', roomId: a.room!, to: b.f })
+    else if (a.f !== b.f) {
+      const last = out[out.length - 1]
+      if (last && last.t === 'stairs') last.to = b.f; else out.push({ t: 'stairs', to: b.f })
+    } else if (Math.abs(b.x - a.x) > 0.5 || b.kind === 'goal') out.push({ t: 'walk', x: b.x })
+  }
   return out
 }
+
+const routeA = (a: Agent, toFloor: number, toX: number): Step[] => route(a.floor, toFloor, toX, a.x)
 
 function say(a: Agent, icon: string, dur = 2.4) { a.icon = icon; a.iconT = dur }
 const walkSpeed = () => WALK * (0.85 + Math.random() * 0.35)
@@ -573,7 +673,8 @@ const workEnd = (g: Game) => WORK_END + (has(g, 'badge') ? 0.04 : 0)
 function baseAgent(id: string, kind: Agent['kind'], floor: number, x: number): Agent {
   return {
     id, kind, floor, x, steps: [], skin: pick(SKINS), cloth: '#64748b', hair: pick(HAIR), icon: null, iconT: 0, walking: false, dir: 1,
-    inLift: false, waitT: 0, away: false, speed: walkSpeed(), energy: 70 + Math.random() * 30, bladder: Math.random() * 40, boostT: 0, needT: 0,
+    inLift: false, waitT: 0, away: false, speed: walkSpeed(), energy: 70 + Math.random() * 30, bladder: Math.random() * 55, boostT: 0, needT: 0,
+    bRate: 0.9 + Math.random() * 1.8, eRate: 1.3 + Math.random() * 1.3, bMax: 70 + Math.random() * 24, needCd: 0,
     prog: Math.random() * 0.5, bagN: 0, arrive: WORK_START + Math.random() * 0.06, leave: WORK_END + Math.random() * 0.04, lastDay: -1, done: new Set(),
   }
 }
@@ -607,12 +708,13 @@ function syncAgents(g: Game, w: World) {
     }
   }
   w.agents = w.agents.filter((a) => a.kind === 'thief' || want.has(a.id))
-  w.lift.riders = w.lift.riders.filter((id) => w.agents.some((a) => a.id === id))
+  for (const L of Object.values(w.lifts)) L.riders = L.riders.filter((id) => w.agents.some((a) => a.id === id))
 }
 
+const newLift = (): Lift => ({ y: 0, dir: 1, riders: [], stopT: 0, door: 0, waiting: new Map() })
 export function createWorld(g: Game): World {
-  const w: World = { agents: [], lift: { y: 0, dir: 1, riders: [], stopT: 0, door: 0, waiting: new Map() }, stations: {}, queues: {}, thiefDay: -1, cars: [] }
-  setLR(g)
+  const w: World = { agents: [], lifts: { A: newLift(), B: newLift(), X: newLift() }, stations: {}, queues: {}, thiefDay: -1, cars: [] }
+  setLR(g, w)
   syncAgents(g, w)
   syncCars(g, w)
   return w
@@ -624,9 +726,6 @@ function empOf(g: Game, a: Agent) {
   return r && a.idx != null ? r.workers[a.idx] ?? undefined : undefined
 }
 
-function nearest(g: Game, a: Agent, type: RoomType) {
-  return g.rooms.filter((r) => r.type === type).sort((x, y) => Math.abs(x.floor - a.floor) - Math.abs(y.floor - a.floor))[0]
-}
 
 const SUP_RANGE = (g: Game, r: Room) => r.level + (has(g, 'coaching') ? 1 : 0)
 function supervised(g: Game, floor: number) {
@@ -652,8 +751,8 @@ function runWorker(g: Game, w: World, a: Agent, p: number, day: number) {
     if (!a.away) {
       a.carry = 'bag'
       a.steps = car && car.state === 'parked'
-        ? [...route(a.floor, car.floor, car.x + 18), { t: 'drive', carId: car.id }]
-        : [...route(a.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
+        ? [...routeA(a, car.floor, car.x + 18), { t: 'drive', carId: car.id }]
+        : [...routeA(a, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
     }
     return
   }
@@ -665,25 +764,34 @@ function runWorker(g: Game, w: World, a: Agent, p: number, day: number) {
     }
     if (e?.car) say(a, '🚗😤', 2.5)
     a.away = false; a.floor = 0; a.x = EXIT_X; a.carry = 'bag'
-    a.energy = 85 + Math.random() * 15; a.bladder = Math.random() * 30
+    a.energy = 75 + Math.random() * 25; a.bladder = Math.random() * 70
     a.steps = [...route(0, r.floor, deskX(r, a.idx)), { t: 'work', roomId: r.id, idx: a.idx }]
     return
   }
   a.carry = undefined
-  a.steps = [...route(a.floor, r.floor, deskX(r, a.idx)), { t: 'work', roomId: r.id, idx: a.idx }]
+  a.steps = [...routeA(a, r.floor, deskX(r, a.idx)), { t: 'work', roomId: r.id, idx: a.idx }]
 }
 
 /** Un besoin pressant : aller aux toilettes / au café / en pause, puis revenir au poste. */
-function needTrip(g: Game, _w: World, a: Agent, r: Room, idx: number): boolean {
+function needTrip(g: Game, w: World, a: Agent, r: Room, idx: number): boolean {
   const e = empOf(g, a)
   let type: RoomType | null = null
-  if (a.bladder >= 85) type = 'wc'
+  if (a.bladder >= a.bMax) type = 'wc'
   else if (a.energy <= 22) type = 'cafe'
   else if (e && e.mood < 38 && !a.done.has('pause') && g.rooms.some((x) => x.type === 'pause')) { type = 'pause'; a.done.add('pause') }
   if (!type) return false
-  const target = nearest(g, a, type)
+  // Le local le moins encombré à distance raisonnable (étages, file d'attente, places occupées).
+  const load = (x: Room) => (w.queues[x.id]?.length ?? 0) + stationsOf(w, x).filter((st) => st.agentId).length / stationCount(x)
+  const target = g.rooms.filter((x) => x.type === type).sort((x, y) => Math.abs(x.floor - a.floor) * 2.5 + load(x) * 2.5 - (Math.abs(y.floor - a.floor) * 2.5 + load(y) * 2.5))[0]
   if (!target) return false
-  a.steps.unshift(...route(a.floor, target.floor, queueX(target, 0)), { t: 'enter', roomId: target.id }, ...route(target.floor, r.floor, deskX(r, idx)))
+  // Tout est pris et ce n'est pas encore urgent : il patiente encore un peu à son poste.
+  const urgent = type === 'wc' ? a.bladder >= Math.min(99, a.bMax + 14) : a.energy <= 12
+  if (type !== 'pause' && !urgent && (w.queues[target.id]?.length ?? 0) >= 1 && stationsOf(w, target).every((st) => st.agentId)) {
+    a.needCd = 2 + Math.random() * 3.5
+    if (!a.icon && Math.random() < 0.5) say(a, type === 'wc' ? '🚽⏳' : '☕⏳', 1.6)
+    return false
+  }
+  a.steps.unshift(...routeA(a, target.floor, queueX(target, 0)), { t: 'enter', roomId: target.id }, ...route(target.floor, r.floor, deskX(r, idx), roomX(target)))
   return true
 }
 
@@ -695,12 +803,11 @@ function workTick(g: Game, w: World, a: Agent, s: Extract<Step, { t: 'work' }>, 
   a.x = deskX(r, s.idx)
   if (p >= a.leave || p < 0.2) { a.steps.shift(); return }
   // Besoins
-  a.energy = Math.max(0, a.energy - dt * 3.4 * (has(g, 'chairs') ? 0.65 : 1))
-  a.bladder = Math.min(100, a.bladder + dt * 4.4)
-  if ((a.bladder >= 85 || a.energy <= 22 || e.mood < 38) && needTrip(g, w, a, r, s.idx)) { a.needT = 0; return }
-  const unmet = a.bladder >= 85 || a.energy <= 22
+  if (a.needCd > 0) a.needCd -= dt
+  else if ((a.bladder >= a.bMax || a.energy <= 22 || e.mood < 38) && needTrip(g, w, a, r, s.idx)) { a.needT = 0; return }
+  const unmet = a.bladder >= Math.min(99, a.bMax + 14) || a.energy <= 12
   a.needT = unmet ? a.needT + dt : 0
-  if (unmet && !a.icon && Math.random() < dt * 0.35) say(a, a.bladder >= 85 ? '🚽❗' : '🥱', 1.8)
+  if (unmet && !a.icon && Math.random() < dt * 0.35) say(a, a.bladder >= a.bMax ? '🚽❗' : '🥱', 1.8)
   // Panne ?
   if (r.broken[s.idx]) { if (!a.icon && Math.random() < dt * 0.5) say(a, '❓', 1.5); return }
   // Plateau plein : il attend qu'on encaisse.
@@ -735,6 +842,12 @@ function moodTick(g: Game, w: World, dt: number) {
     const e = empOf(g, a)
     const r = roomOf(g, a.roomId)
     if (!e || !r) continue
+    // Les besoins montent tout le temps (trajet compris), chacun à son rythme.
+    const s0 = a.steps[0]
+    if (!a.inLift && s0?.t !== 'serve') {
+      a.energy = Math.max(0, a.energy - dt * a.eRate * (has(g, 'chairs') ? 0.65 : 1))
+      a.bladder = Math.min(100, a.bladder + dt * a.bRate)
+    }
     const here = g.rooms.find((x) => x.floor === Math.round(a.floor) && a.x >= slotX(x.slot) && a.x < slotX(x.slot) + ROOMS[x.type].w * SW) ?? r
     const noSpot = e.car && !w.cars.some((c) => c.id === e.id)
     let target = 74 + (has(g, 'plants') ? 10 : 0) - (noSpot ? 8 : 0) - Math.min(5, here.trash.length) * 6 - (a.needT > 0 ? 22 : 0) - (r.broken[a.idx ?? 0] ? 8 : 0)
@@ -753,14 +866,14 @@ function goHome(g: Game, a: Agent) {
   const idx = Number(a.id.split('-').pop()) || 0
   const hx = slotX(home.slot) + 16 + idx * 14
   if (Math.round(a.floor) === home.floor && Math.abs(a.x - hx) < 2) a.steps = [{ t: 'wait', dur: 1.2 + Math.random() * 2, icon: Math.random() < 0.12 ? '☕' : undefined }]
-  else a.steps = route(a.floor, home.floor, hx)
+  else a.steps = routeA(a, home.floor, hx)
 }
 
 function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
   if (a.lastDay !== day) { a.lastDay = day; a.done.clear() }
   // Alerte : le vigile interrompt sa ronde.
   if (a.role === 'guard' && !a.task && a.steps.length && !a.inLift && (a.steps[0].t === 'walk' || a.steps[0].t === 'wait')
-    && w.agents.some((t) => t.kind === 'thief' && !t.caught)) a.steps = []
+    && w.agents.some((t) => t.kind === 'thief' && !t.caught && t.spotted)) a.steps = []
   if (a.steps.length) return
   const claimed = (id: string) => w.agents.some((o) => o !== a && o.kind === 'staff' && o.task === id)
   a.task = undefined
@@ -769,14 +882,14 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
   // Chercheurs et superviseurs ont des horaires de bureau.
   if (a.role === 'researcher' || a.role === 'supervisor') {
     const on = p > WORK_START + 0.01 && p < workEnd(g)
-    if (!on) { if (!a.away) { a.carry = 'bag'; a.steps = [...route(a.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }] } return }
+    if (!on) { if (!a.away) { a.carry = 'bag'; a.steps = [...routeA(a, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }] } return }
     if (a.away) { a.away = false; a.floor = 0; a.x = EXIT_X; a.carry = 'bag'; a.steps = route(0, home.floor, slotX(home.slot) + 20); return }
     a.carry = undefined
   }
   if (a.role === 'researcher') {
     const idx = Number(a.id.split('-').pop()) || 0
     const hx = slotX(home.slot) + 16 + idx * 14
-    if (Math.round(a.floor) !== home.floor || Math.abs(a.x - hx) > 2) { a.steps = route(a.floor, home.floor, hx); return }
+    if (Math.round(a.floor) !== home.floor || Math.abs(a.x - hx) > 2) { a.steps = routeA(a, home.floor, hx); return }
     a.steps = [{ t: 'research', roomId: home.id, dur: 3 + Math.random() * 3 }]
     return
   }
@@ -788,7 +901,7 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
     const t = cands.sort((x, y) => Math.abs(x.floor - a.floor) * 200 + Math.abs(x.x - a.x) - (Math.abs(y.floor - a.floor) * 200 + Math.abs(y.x - a.x)))[0]
     if (t) {
       a.task = t.id; a.carry = 'clipboard'
-      a.steps = [...route(a.floor, Math.round(t.floor), t.x - 12), { t: 'coach', targetId: t.id, dur: 0.9 }]
+      a.steps = [...routeA(a, Math.round(t.floor), t.x - 12), { t: 'coach', targetId: t.id, dur: 0.9 }]
       return
     }
     goHome(g, a)
@@ -804,7 +917,7 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
     if (best) {
       const { r, i } = best as { r: Room; i: number }
       a.task = `${r.id}:${i}`; a.carry = 'wrench'
-      a.steps = [...route(a.floor, r.floor, deskX(r, i) + 10), { t: 'fix', roomId: r.id, idx: i, dur: has(g, 'servers') ? 1.1 : 2.2 }]
+      a.steps = [...routeA(a, r.floor, deskX(r, i) + 10), { t: 'fix', roomId: r.id, idx: i, dur: has(g, 'servers') ? 1.1 : 2.2 }]
       return
     }
     a.carry = undefined
@@ -821,30 +934,27 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
     if (best) {
       const { r, t } = best as { r: Room; t: Trash }
       a.task = t.id; a.carry = 'trashbag'
-      a.steps = [...route(a.floor, r.floor, t.x - 6), { t: 'pick', roomId: r.id, trashId: t.id, dur: t.kind.startsWith('wc') || t.kind === 'puddle' ? 1.3 : 0.6 }]
+      a.steps = [...routeA(a, r.floor, t.x - 6), { t: 'pick', roomId: r.id, trashId: t.id, dur: t.kind.startsWith('wc') || t.kind === 'puddle' ? 1.3 : 0.6 }]
       return
     }
     if (a.bagN > 0) {
       const idx = Number(a.id.split('-').pop()) || 0
-      a.steps = [...route(a.floor, home.floor, slotX(home.slot) + 16 + idx * 14), { t: 'dump', dur: 0.8 }]
+      a.steps = [...routeA(a, home.floor, slotX(home.slot) + 16 + idx * 14), { t: 'dump', dur: 0.8 }]
       return
     }
     a.carry = undefined
   } else if (a.role === 'guard') {
-    const thief = w.agents.find((t) => t.kind === 'thief' && !t.caught && !claimed(t.id))
-    if (thief) {
+    // Il ne fonce que vers un voleur repéré, et seulement là où on l'a vu en dernier.
+    const thief = w.agents.find((t) => t.kind === 'thief' && !t.caught && t.spotted && !claimed(t.id))
+    if (thief && thief.seenF != null && thief.seenX != null) {
       a.task = thief.id
-      const st = thief.steps.find((x) => x.t === 'steal') as { roomId: string } | undefined
-      const r = st && roomOf(g, st.roomId)
-      a.steps = r && !thief.inLift && thief.floor !== r.floor
-        ? [...route(a.floor, r.floor, roomX(r)), { t: 'chase', thiefId: thief.id }]
-        : thief.inLift ? [{ t: 'wait', dur: 0.5 }] : [...route(a.floor, thief.floor, thief.x), { t: 'chase', thiefId: thief.id }]
+      a.steps = [...routeA(a, thief.seenF, thief.seenX), { t: 'chase', thiefId: thief.id }]
       say(a, '🚨', 2)
       return
     }
     if (isNight(p)) {
       const f = g.bottom + Math.floor(Math.random() * (g.top - g.bottom + 1))
-      a.steps = [...route(a.floor, f, slotX(Math.floor(Math.random() * SLOTS)) + 10 + Math.random() * (SW - 20)), { t: 'wait', dur: 1 + Math.random() * 1.5, icon: Math.random() < 0.3 ? '🔦' : undefined }]
+      a.steps = [...routeA(a, f, slotX(Math.floor(Math.random() * SLOTS)) + 10 + Math.random() * (SW - 20)), { t: 'wait', dur: 1 + Math.random() * 1.5, icon: Math.random() < 0.3 ? '🔦' : undefined }]
       return
     }
   }
@@ -861,8 +971,30 @@ function maybeThief(g: Game, w: World, p: number, day: number) {
   const t = baseAgent(uid('x'), 'thief', 0, EXIT_X)
   Object.assign(t, { cloth: '#1f1f2b', hair: '#111', speed: WALK * 1.05 })
   say(t, '🤫', 3)
-  t.steps = [...route(0, r.floor, roomX(r)), { t: 'steal', roomId: r.id, dur: 6 }, ...route(r.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
+  t.camT = 3 + Math.random() * 6
+  t.steps = [...route(0, r.floor, roomX(r)), { t: 'steal', roomId: r.id, dur: 8 }, ...route(r.floor, 0, 20, roomX(r)), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
   w.agents.push(t)
+}
+
+/** Le vigile voit le voleur : même étage, assez près, et pas dans un ascenseur. */
+function canSee(guard: Agent, t: Agent) {
+  return !guard.inLift && !t.inLift && !guard.away && Math.abs(guard.floor - t.floor) < 0.3 && Math.abs(guard.x - t.x) < 140
+}
+
+/** Repérage : caméras (avec un délai aléatoire) ou vigile qui croise le voleur pendant sa ronde. */
+function detectThieves(g: Game, w: World, dt: number) {
+  const guards = w.agents.filter((a) => a.role === 'guard')
+  const cams = g.rooms.some((r) => r.type === 'securite')
+  for (const t of w.agents) {
+    if (t.kind !== 'thief' || t.caught) continue
+    const seenBy = guards.find((gd) => canSee(gd, t))
+    if (!t.spotted && cams && t.camT != null) { t.camT -= dt; if (t.camT <= 0 && !t.inLift) { t.spotted = true; t.seenF = Math.round(t.floor); t.seenX = t.x; for (const gd of guards) say(gd, '📹', 1.6) } }
+    if (seenBy && !t.spotted) { t.spotted = true; say(seenBy, '❗', 1.6) }
+    // Position connue : mise à jour tant qu'un vigile l'a en vue.
+    if (seenBy) { t.seenF = Math.round(t.floor); t.seenX = t.x }
+    // Un vigile à sa poursuite qui l'aperçoit court droit sur lui.
+    for (const gd of guards) if (gd.task === t.id && canSee(gd, t) && gd.steps[0]?.t !== 'chase') gd.steps = [{ t: 'chase', thiefId: t.id }]
+  }
 }
 
 export function scareThief(g: Game, w: World, id: string, ev: GEvent[]) {
@@ -876,14 +1008,14 @@ function catchThief(g: Game, _w: World, guard: Agent | null, t: Agent, ev: GEven
   if (t.loot && t.lootRoom) { const r = roomOf(g, t.lootRoom); if (r && r.bank.length) r.bank[0] += t.loot }
   t.loot = 0; t.carry = undefined; t.speed = WALK * 1.7
   say(t, '😱', 3); if (guard) say(guard, '✋', 2.5)
-  if (!t.inLift) t.steps = [...route(t.floor, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
+  if (!t.inLift) t.steps = [...routeA(t, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }]
   g.stats.caught++
   ev.push({ kind: 'caught', byGuard: !!guard })
 }
 
 // ── Pas de simulation ────────────────────────────────────────────────────────
 export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
-  setLR(g)
+  setLR(g, w)
   const prev = g.day
   g.day += dt / DAY_S
   const p = g.day % 1
@@ -898,6 +1030,7 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
     else if (a.kind === 'staff') runStaff(g, w, a, p, day)
   }
   maybeThief(g, w, p, day)
+  detectThieves(g, w, dt)
 
   // Postes de service : libération des postes orphelins
   for (const id of Object.keys(w.stations)) {
@@ -912,7 +1045,7 @@ export function step(g: Game, w: World, dt: number, ev: GEvent[]) {
   for (const id of Object.keys(w.queues)) w.queues[id] = w.queues[id].filter((x) => { const a = w.agents.find((q) => q.id === x); return !!a && a.steps[0]?.t === 'queue' && (a.steps[0] as { roomId: string }).roomId === id })
 
   for (const a of [...w.agents]) moveAgent(g, w, a, dt, ev)
-  runLift(g, w, dt)
+  for (const d of liftDefs(g)) if (d.on) runLift(g, w, w.lifts[d.id], d, dt)
   moodTick(g, w, dt)
   for (const a of w.agents) if (a.iconT > 0) { a.iconT -= dt; if (a.iconT <= 0) a.icon = null }
   checkProgress(g, ev)
@@ -926,21 +1059,42 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
   // Fin de journée : inutile de remonter au poste, on rentre directement.
   if (a.kind === 'worker' && p >= a.leave && (s.t === 'walk' || s.t === 'wait') && a.steps.some((x) => x.t === 'work')) { a.steps = []; return }
   if (s.t === 'door') {
-    // Porte d'ascenseur du côté où l'on se trouve.
-    a.steps.splice(0, 1, { t: 'walk', x: a.x > shaftX ? DOOR_R : DOOR_X })
+    // Porte de l'ascenseur choisi, du côté où l'on se trouve.
+    const d = liftDefs(g).find((x) => x.id === s.liftId)!
+    a.steps.splice(0, 1, { t: 'walk', x: a.x > d.x0 + SHAFT_W / 2 ? d.x0 + SHAFT_W + 6 : d.x0 - 6 })
     return
   }
   if (s.t === 'walk') {
     const dx = s.x - a.x
-    const d = a.speed * dt
+    const d = a.speed * dt * (a.role === 'guard' && a.task ? 1.6 : 1)   // le vigile court quand il est alerté
     a.dir = dx >= 0 ? 1 : -1
     if (Math.abs(dx) <= d) { a.x = s.x; a.steps.shift() } else { a.x += Math.sign(dx) * d; a.walking = true }
   } else if (s.t === 'lift') {
-    if (!g.liftOn) { a.steps.splice(0, 1, { t: 'walk', x: stairX(a.floor) }, { t: 'stairs', to: s.to }); return }
-    const q = w.lift.waiting.get(a.floor) ?? []
-    if (!q.includes(a.id)) { q.push(a.id); w.lift.waiting.set(a.floor, q) }
+    const d = liftDefs(g).find((x) => x.id === s.liftId)!
+    if (!d.on || !liftStops(d, Math.round(a.floor)) || !liftStops(d, s.to)) { a.steps.splice(0, 1, ...route(a.floor, s.to, a.x, a.x)); return }
+    const L = w.lifts[s.liftId]
+    const q = L.waiting.get(a.floor) ?? []
+    if (!q.includes(a.id)) { q.push(a.id); L.waiting.set(a.floor, q) }
     a.waitT += dt
     if (a.waitT > 8 && a.waitT - dt <= 8) say(a, '😤', 2.5)
+    if (a.waitT > 20) {
+      // Trop long : il change d'itinéraire (autre ascenseur, escalator ou escalier).
+      L.avgWait = Math.max(L.avgWait ?? 0, a.waitT)
+      L.waiting.set(a.floor, (L.waiting.get(a.floor) ?? []).filter((x) => x !== a.id))
+      a.waitT = 0
+      say(a, '🔀', 1.6)
+      a.steps.splice(0, 1, ...route(a.floor, s.to, a.x, a.x).filter((st, i, arr) => !(i === arr.length - 1 && st.t === 'walk')))
+    }
+  } else if (s.t === 'escal') {
+    const r = roomOf(g, s.roomId)
+    if (!r) { a.steps.splice(0, 1, ...route(a.floor, s.to, a.x, a.x)); return }
+    const d = s.to - a.floor
+    const mv = dt / 1.3
+    if (Math.abs(d) <= mv) { a.floor = s.to; a.steps.shift() } else a.floor += Math.sign(d) * mv
+    const e = escX(r)
+    const nx = e.lo + (e.hi - e.lo) * Math.max(0, Math.min(1, a.floor - r.floor))
+    if (Math.abs(nx - a.x) > 0.01) a.dir = nx > a.x ? 1 : -1
+    a.x = nx
   } else if (s.t === 'stairs') {
     const d = s.to - a.floor
     const mv = dt / STAIR_S * (a.kind === 'worker' ? 1 : 1.25)
@@ -1000,7 +1154,8 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
       st.agentId = null; st.phase = 'done'; st.doneT = 1; st.t = 0
       const e = empOf(g, a)
       if (r.type === 'wc') {
-        a.bladder = 0
+        a.bladder = Math.random() * 6
+        a.bMax = 70 + Math.random() * 24
         if (Math.random() < (has(g, 'japaneseWc') ? 0.22 : 0.45) && r.trash.length < 8) dropTrash(r, stationX(r, s.idx) + (Math.random() - 0.5) * 10, Math.random() < 0.5 ? 'wcpaper' : 'wcpuddle')
       } else if (r.type === 'cafe') {
         a.energy = has(g, 'espresso') ? 100 : 88
@@ -1077,17 +1232,20 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
   } else if (s.t === 'chase') {
     const t = w.agents.find((x) => x.id === s.thiefId)
     if (!t || t.caught) { a.steps.shift(); a.task = undefined; return }
-    if (t.inLift || Math.round(t.floor) !== Math.round(a.floor)) {
-      const st = t.steps.find((x) => x.t === 'steal') as { roomId: string } | undefined
-      const r = st && roomOf(g, st.roomId)
-      if (r && r.floor === Math.round(a.floor)) return
-      if (!t.inLift) a.steps = [...route(a.floor, t.floor, t.x), { t: 'chase', thiefId: t.id }]
+    if (!canSee(a, t)) {
+      // Plus en vue : on va jusqu'à la dernière position connue… et s'il n'y est plus, on perd sa trace.
+      if (t.seenF != null && t.seenX != null && Math.round(a.floor) === t.seenF && Math.abs(a.x - t.seenX) < 8) {
+        t.spotted = false; t.camT = 3 + Math.random() * 7
+        say(a, '❓', 2)
+        a.steps.shift(); a.task = undefined
+      } else if (t.seenF != null && t.seenX != null) a.steps = [...routeA(a, t.seenF, t.seenX), { t: 'chase', thiefId: t.id }]
+      else { a.steps.shift(); a.task = undefined }
       return
     }
     const dx = t.x - a.x
     a.dir = dx >= 0 ? 1 : -1
     if (Math.abs(dx) < 9) { catchThief(g, w, a, t, ev); a.steps.shift(); a.task = undefined; return }
-    a.x += Math.sign(dx) * Math.min(Math.abs(dx), a.speed * 1.35 * dt)
+    a.x += Math.sign(dx) * Math.min(Math.abs(dx), a.speed * 2.1 * dt)   // sprint
     a.walking = true
   } else if (s.t === 'drive') {
     const c = w.cars.find((x) => x.id === s.carId)
@@ -1101,15 +1259,21 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
   }
 }
 
-function runLift(g: Game, w: World, dt: number) {
-  const L = w.lift
-  if (!g.liftOn) return
-  const cap = LIFT_CAP + (g.liftLevel - 1) * 3
-  const speed = LIFT_SPEED * (1 + 0.45 * (g.liftLevel - 1))
-  for (const [f, ids] of L.waiting) L.waiting.set(f, ids.filter((id) => { const a = w.agents.find((x) => x.id === id); return !!a && !a.inLift && a.steps[0]?.t === 'lift' && a.floor === f }))
+function runLift(g: Game, w: World, L: Lift, def: LiftDef, dt: number) {
+  const cap = liftCap(g, def)
+  const speed = liftSpeed(g, def)
+  const stops: number[] = []
+  for (let f = def.bottom; f <= def.top; f++) if (liftStops(def, f)) stops.push(f)
+  if (L.y < def.bottom || L.y > def.top) L.y = Math.max(def.bottom, Math.min(def.top, L.y))
+  for (const [f, ids] of L.waiting) L.waiting.set(f, ids.filter((id) => { const a = w.agents.find((x) => x.id === id); const s0 = a?.steps[0]; return !!a && !a.inLift && s0?.t === 'lift' && s0.liftId === def.id && a.floor === f }))
   for (const id of L.riders) {
     const a = w.agents.find((x) => x.id === id)
-    if (a && a.steps[0]?.t !== 'lift') a.steps.unshift({ t: 'lift', to: Math.max(g.liftBottom, Math.min(g.liftTop, L.dir > 0 ? Math.ceil(L.y - 0.001) : Math.floor(L.y + 0.001))) })
+    if (a && a.steps[0]?.t !== 'lift') {
+      // Trajet changé en route : il descend au prochain arrêt.
+      const ahead = stops.filter((f) => (L.dir > 0 ? f >= L.y - 0.001 : f <= L.y + 0.001))
+      const nxt = ahead.length ? ahead.reduce((b, f) => (Math.abs(f - L.y) < Math.abs(b - L.y) ? f : b)) : stops[0]
+      a.steps.unshift({ t: 'lift', liftId: def.id, to: nxt })
+    }
   }
   const calls = new Set<number>()
   if (L.riders.length < cap) for (const [f, ids] of L.waiting) if (ids.length && !(L.skip === f && Math.abs(L.y - f) < 0.001)) calls.add(f)
@@ -1139,8 +1303,8 @@ function runLift(g: Game, w: World, dt: number) {
       a.steps.shift()
       // On sort du côté où l'on va.
       const nx = a.steps[0]?.t === 'walk' ? (a.steps[0] as { x: number }).x : 0
-      const right = nx > shaftX
-      a.inLift = false; a.floor = target; a.x = right ? SHAFT_X0 + SHAFT_W + 2 : SHAFT_X0 - 2; a.dir = right ? 1 : -1; a.waitT = 0; changed = true
+      const right = nx > def.x0 + SHAFT_W / 2
+      a.inLift = false; a.liftId = undefined; a.floor = target; a.x = right ? def.x0 + SHAFT_W + 2 : def.x0 - 2; a.dir = right ? 1 : -1; a.waitT = 0; changed = true
       return false
     }
     return !!a
@@ -1155,7 +1319,7 @@ function runLift(g: Game, w: World, dt: number) {
     const a = w.agents.find((x) => x.id === id)
     if (!a) continue
     const sameWay = (destOf(id) - target) * L.dir > 0 || (L.riders.length === 0 && !further(L.dir))
-    if (L.riders.length < cap && sameWay) { L.riders.push(id); a.inLift = true; a.waitT = 0; changed = true } else stay.push(id)
+    if (L.riders.length < cap && sameWay) { L.avgWait = (L.avgWait ?? 2) * 0.9 + a.waitT * 0.1; L.riders.push(id); a.inLift = true; a.liftId = def.id; a.waitT = 0; changed = true } else stay.push(id)
   }
   if (!changed) L.skip = target
   L.waiting.set(target, stay)
