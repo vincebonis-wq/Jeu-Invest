@@ -49,6 +49,21 @@ export interface Game {
   lastSeen: number
   introDone: boolean
   muted: boolean
+  speed?: number              // vitesse choisie : 1, 2 ou 4
+  fastNight?: boolean         // nuit accélérée (activée par défaut)
+}
+
+export const NIGHT_MULT = 6
+/** Nuit « creuse » : bureaux vides, on peut accélérer. */
+export function isQuietNight(g: Game, w: World) {
+  const p = g.day % 1
+  const night = p >= WORK_END + 0.07 || p < WORK_START - 0.03
+  // Sans vigile, on laisse au joueur le temps de toucher le voleur avant qu'il ne vole.
+  const thiefToWatch = !g.rooms.some((r) => r.type === 'securite') && w.agents.some((a) => a.kind === 'thief' && !a.caught && !a.loot)
+  return night && !thiefToWatch
+}
+export function timeScale(g: Game, w: World) {
+  return (g.speed ?? 1) * (g.fastNight !== false && isQuietNight(g, w) ? NIGHT_MULT : 1)
 }
 
 let seq = 0

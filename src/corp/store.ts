@@ -3,7 +3,7 @@ import {
   createGame, createWorld, step, applyOffline, build as simBuild, buildFloor as simFloor, collect as simCollect,
   renovate as simRenovate, cleanRoom, fixDesk as simFix, upgradeLift as simLift, claimQuest as simClaim, sell as simSell,
   installLift as simInstallLift, extendLift as simExtendLift, doResearch, scareThief, fillQuests, checkProgress, canPlace, roomCost,
-  type Game, type World, type GEvent,
+  timeScale, type Game, type World, type GEvent,
 } from './sim'
 import { ROOMS, TIERS, type RoomType } from './data'
 import { sfxBuild, sfxCoin, sfxError, sfxFanfare, sfxUpgrade, setMuted, haptic, sfxTap } from '../archipel/audio'
@@ -56,6 +56,8 @@ interface Store {
   closeCelebrate: () => void
   finishIntro: () => void
   toggleMute: () => void
+  setSpeed: (s: number) => void
+  toggleFastNight: () => void
   reset: () => void
   setAskNew: (v: boolean) => void
 }
@@ -121,7 +123,9 @@ export const useCorp = create<Store>((set, get) => {
         const st = get()
         if (st.game.introDone && !st.welcome && st.celebrate == null && document.visibilityState === 'visible') {
           const ev: GEvent[] = []
-          step(st.game, st.world, dt, ev)
+          // Accéléré : plusieurs petits pas de simulation par image.
+          let rem = dt * timeScale(st.game, st.world)
+          while (rem > 1e-6) { const h = Math.min(0.1, rem); step(st.game, st.world, h, ev); rem -= h }
           if (ev.length) handle(ev)
           saveAcc += dt
           if (saveAcc > 3) { saveAcc = 0; save(st.game) }
@@ -252,10 +256,12 @@ export const useCorp = create<Store>((set, get) => {
     closeCelebrate: () => set({ celebrate: null }),
     finishIntro: () => { const g = get().game; g.introDone = true; save(g); bump() },
     toggleMute: () => { const g = get().game; g.muted = !g.muted; setMuted(g.muted); save(g); bump() },
+    setSpeed: (s) => { const g = get().game; g.speed = s; sfxTap(); save(g); bump() },
+    toggleFastNight: () => { const g = get().game; g.fastNight = g.fastNight === false; sfxTap(); save(g); bump() },
     /** Nouvelle partie : tout repart de zéro, écran d'accueil compris. */
     reset: () => {
       const old = get().game
-      const g = createGame(); g.muted = old.muted; save(g)
+      const g = createGame(); g.muted = old.muted; g.speed = old.speed; g.fastNight = old.fastNight; save(g)
       sfxTap()
       set({ game: g, world: createWorld(g), selected: null, sheet: null, toasts: [], flies: [], popped: {}, floorPop: {}, buildType: null, target: null, welcome: null, celebrate: null, askNew: false })
     },

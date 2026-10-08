@@ -7,7 +7,7 @@ import { Hammer, Target, PieChart, FlaskConical, Users, X, Lock, Coins, Volume2,
 import { useCorp } from './store'
 import {
   profitPerDay, dailyCosts, workerSalaries, staffSalaries, buildingCharges, isUnlocked, questProgress, employees, avgMood, netWorth, buildingValue,
-  canRenovate, renovateCost, liftCost, liftNeeds, roomCost, stationCount, stationsOf, useTime, canResearch, fileValue, has, tierOf,
+  isQuietNight, NIGHT_MULT, canRenovate, renovateCost, liftCost, liftNeeds, roomCost, stationCount, stationsOf, useTime, canResearch, fileValue, has, tierOf,
   type Game, type Room, type Agent, type Employee,
 } from './sim'
 import { ROOMS, BUILD_ORDER, SW, FH, TIERS, STAFF, RESEARCH, RP_RATE, CLEAN_COST, FIX_COST, BANK_CAP, liftInstallCost, type RoomType, type StaffRole } from './data'
@@ -48,6 +48,8 @@ export function Hud() {
   const p = g.day % 1
   const isNight = p < 0.24 || p > 0.86
   const hour = Math.floor(p * 24)
+  const speed = g.speed ?? 1
+  const nightFast = g.fastNight !== false && isQuietNight(g, useCorp.getState().world)
   const profit = profitPerDay(g)
   const t = tierOf(profit)
   const next = TIERS[t + 1]
@@ -64,9 +66,18 @@ export function Hud() {
           className={`${GLASS} pointer-events-auto rounded-2xl w-[46px] h-[46px] flex items-center justify-center text-slate-600 active:scale-90 transition-transform`}>
           <RotateCcw size={20} strokeWidth={2.5} />
         </button>
-        <div className={`${GLASS} rounded-2xl px-3 py-1.5 text-right`}>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 leading-none">{DAYS[d % 7]} · jour {d + 1}</div>
-          <div className="text-[14px] font-extrabold text-slate-700 leading-tight mt-0.5">{isNight ? '🌙' : '☀️'} {String(hour).padStart(2, '0')}h</div>
+        <div className={`${GLASS} pointer-events-auto rounded-2xl px-2 py-1.5 text-right`}>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 leading-none px-1">{DAYS[d % 7]} · jour {d + 1}</div>
+          <div className="text-[14px] font-extrabold text-slate-700 leading-tight mt-0.5 px-1 flex items-center justify-end gap-1">
+            {nightFast && <span className="text-[10px] font-extrabold text-indigo-600 bg-indigo-50 rounded-full px-1.5 py-0.5">⏩ ×{NIGHT_MULT * speed}</span>}
+            {isNight ? '🌙' : '☀️'} {String(hour).padStart(2, '0')}h
+          </div>
+          <div className="flex gap-0.5 mt-1 bg-slate-100 rounded-lg p-0.5">
+            {[1, 2, 4].map((v) => (
+              <button key={v} onClick={() => useCorp.getState().setSpeed(v)} aria-label={`Vitesse ×${v}`}
+                className={`flex-1 rounded-md px-1.5 text-[11px] font-extrabold leading-[18px] ${speed === v ? 'bg-indigo-500 text-white shadow' : 'text-slate-500'}`}>×{v}</button>
+            ))}
+          </div>
         </div>
       </div>
       <button onClick={() => useCorp.getState().openSheet('stats')} className={`${GLASS} pointer-events-auto rounded-2xl px-3.5 py-2 mt-2 max-w-md mx-auto w-full block text-left`}>
@@ -571,6 +582,11 @@ export function StatsSheet() {
         <button onClick={() => st.toggleMute()} className="flex-1 rounded-2xl bg-white py-3 font-bold text-slate-600 flex items-center justify-center gap-2 shadow-sm">
           {g.muted ? <VolumeX size={18} /> : <Volume2 size={18} />} Son {g.muted ? 'coupé' : 'activé'}
         </button>
+        <button onClick={() => st.toggleFastNight()} className={`flex-1 rounded-2xl py-3 font-bold flex items-center justify-center gap-2 shadow-sm ${g.fastNight !== false ? 'bg-indigo-500 text-white' : 'bg-white text-slate-600'}`}>
+          🌙 Nuit rapide {g.fastNight !== false ? 'activée' : 'coupée'}
+        </button>
+      </div>
+      <div className="mt-2 flex gap-2">
         <button onClick={() => st.setAskNew(true)} className="flex-1 rounded-2xl bg-white py-3 font-bold text-slate-600 flex items-center justify-center gap-2 shadow-sm">
           <RotateCcw size={18} /> Nouvelle partie
         </button>
