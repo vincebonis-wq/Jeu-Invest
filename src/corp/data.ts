@@ -46,7 +46,7 @@ export const ROOMS: Record<RoomType, RoomDef> = {
   wc:          { type: 'wc', name: 'Toilettes', emoji: '🚻', w: 1, cost: 1500, kind: 'facility', floor: 'any', serves: 'bladder', stations: 2, useTime: 2.4, wall: '#dff1f5', desc: '2 cabines. Sans toilettes, tes employés souffrent… et travaillent mal. Elles se salissent vite.' },
   cafe:        { type: 'cafe', name: 'Coin café', emoji: '☕', w: 1, cost: 2000, kind: 'facility', floor: 'notBasement', serves: 'energy', stations: 2, useTime: 2.6, wall: '#f6dfc6', desc: 'Une machine à café pour recharger les batteries. Les gobelets finissent par terre.' },
   pause:       { type: 'pause', name: 'Salle de pause', emoji: '🛋️', w: 2, cost: 6000, kind: 'facility', floor: 'notBasement', serves: 'mood', stations: 3, useTime: 4, research: 'pause', wall: '#e3f3e1', desc: 'Canapés et baby-foot : les employés stressés y retrouvent le moral.' },
-  supervision: { type: 'supervision', name: 'Bureau du superviseur', emoji: '🧑‍💼', w: 1, cost: 5000, kind: 'service', floor: 'notBasement', staff: 'supervisor', wall: '#efe7da', desc: 'Le superviseur fait le tour des postes de son étage et des étages voisins : les employés qu’il croise travaillent bien plus vite.' },
+  supervision: { type: 'supervision', name: 'Bureau du superviseur', emoji: '🧑‍💼', w: 1, cost: 5000, kind: 'service', floor: 'notBasement', staff: 'supervisor', wall: '#efe7da', desc: 'Le superviseur fait la tournée de toute la tour : quand il passe dans un bureau, les employés de ce bureau accélèrent. Mais il ne peut pas être partout à la fois.' },
   menage:      { type: 'menage', name: 'Local d’entretien', emoji: '🧹', w: 1, cost: 1500, kind: 'service', floor: 'any', staff: 'janitor', wall: '#dcecf5', desc: 'L’agent d’entretien fait le grand ménage la nuit (papiers, gobelets, peaux de banane…) et ne passe en journée que pour les toilettes.' },
   it:          { type: 'it', name: 'Service informatique', emoji: '🔧', w: 1, cost: 3000, kind: 'service', floor: 'any', staff: 'tech', wall: '#e2e8f0', desc: 'Le technicien court réparer les ordinateurs en panne.' },
   securite:    { type: 'securite', name: 'Poste de sécurité', emoji: '👮', w: 1, cost: 5000, kind: 'service', floor: 'notBasement', staff: 'guard', research: 'securite', wall: '#dfe4ec', desc: 'Le vigile fait des rondes de nuit et arrête les voleurs avant qu’ils ne vident les postes.' },
@@ -70,27 +70,27 @@ export const STAFF: Record<StaffRole, { title: string; emoji: string; salary: nu
 /** Arbre de recherche (inspiré des améliorations de bureau classiques). */
 export interface ResearchDef { id: string; name: string; emoji: string; desc: string; cost: number; req?: string }
 export const RESEARCH: ResearchDef[] = [
-  { id: 'espresso', name: 'Machine expresso', emoji: '☕', desc: 'Le café est servi deux fois plus vite et recharge plus d’énergie.', cost: 8 },
-  { id: 'plants', name: 'Plantes vertes', emoji: '🪴', desc: 'Des plantes dans tous les bureaux : +10 de moral pour tout le monde.', cost: 10 },
-  { id: 'chairs', name: 'Chaises ergonomiques', emoji: '🪑', desc: 'Les employés se fatiguent 35 % moins vite.', cost: 12 },
-  { id: 'pc', name: 'Ordinateurs neufs', emoji: '💻', desc: '+20 % de vitesse de traitement et deux fois moins de pannes.', cost: 14 },
-  { id: 'japaneseWc', name: 'Toilettes japonaises', emoji: '🚽', desc: 'Les toilettes se salissent deux fois moins.', cost: 12 },
-  { id: 'pause', name: 'Salle de pause', emoji: '🛋️', desc: 'Débloque la salle de pause (moral).', cost: 16 },
-  { id: 'securite', name: 'Vidéosurveillance', emoji: '📹', desc: 'Débloque le poste de sécurité et ses vigiles.', cost: 15 },
-  { id: 'coaching', name: 'Coaching managérial', emoji: '📣', desc: 'Les superviseurs boostent deux fois plus longtemps et couvrent un étage de plus.', cost: 20 },
-  { id: 'screens', name: 'Double écran', emoji: '🖥️', desc: '+25 % de vitesse de traitement.', cost: 22, req: 'pc' },
-  { id: 'pro', name: 'Bureaux premium', emoji: '💼', desc: 'Débloque les bureaux premium et leurs consultants.', cost: 24 },
-  { id: 'badge', name: 'Badgeuse', emoji: '⏰', desc: 'Tout le monde arrive à l’heure : la journée de travail dure une heure de plus.', cost: 22 },
-  { id: 'training', name: 'Formation continue', emoji: '🎓', desc: 'Chaque dossier rapporte 25 % de plus.', cost: 28 },
-  { id: 'servers', name: 'Serveurs maison', emoji: '🗄️', desc: 'Encore deux fois moins de pannes, réparations deux fois plus rapides.', cost: 26, req: 'pc' },
-  { id: 'lift2', name: 'Ascenseur rapide', emoji: '🛗', desc: 'Permet de moderniser les ascenseurs (niveau 2).', cost: 16 },
-  { id: 'escalators', name: 'Escalators', emoji: '↗️', desc: 'Débloque les escalators : un étage de plus sans attendre l’ascenseur.', cost: 12 },
-  { id: 'express', name: 'Ascenseur express', emoji: '⚡', desc: 'Débloque une cage express : très rapide, elle ne s’arrête qu’au hall, tous les 4 étages et au dernier.', cost: 30, req: 'lift2' },
-  { id: 'autopay', name: 'Virement automatique', emoji: '🏦', desc: 'L’argent des dossiers arrive directement sur ton compte (plus besoin de toucher les billets).', cost: 40 },
-  { id: 'lift3', name: 'Ascenseur haute vitesse', emoji: '🚀', desc: 'Permet le niveau 3 des ascenseurs.', cost: 40, req: 'lift2' },
-  { id: 'board', name: 'Conseil d’administration', emoji: '🏛️', desc: 'Débloque la salle du conseil et ses directeurs (5 étages requis).', cost: 60, req: 'pro' },
+  { id: 'espresso', name: 'Machine expresso', emoji: '☕', desc: 'Le café est servi deux fois plus vite et recharge plus d’énergie.', cost: 12 },
+  { id: 'plants', name: 'Plantes vertes', emoji: '🪴', desc: 'Des plantes dans tous les bureaux : +10 de moral pour tout le monde.', cost: 15 },
+  { id: 'chairs', name: 'Chaises ergonomiques', emoji: '🪑', desc: 'Les employés se fatiguent 35 % moins vite.', cost: 18 },
+  { id: 'pc', name: 'Ordinateurs neufs', emoji: '💻', desc: '+20 % de vitesse de traitement et deux fois moins de pannes.', cost: 21 },
+  { id: 'japaneseWc', name: 'Toilettes japonaises', emoji: '🚽', desc: 'Les toilettes se salissent deux fois moins.', cost: 18 },
+  { id: 'pause', name: 'Salle de pause', emoji: '🛋️', desc: 'Débloque la salle de pause (moral).', cost: 24 },
+  { id: 'securite', name: 'Vidéosurveillance', emoji: '📹', desc: 'Débloque le poste de sécurité et ses vigiles.', cost: 22 },
+  { id: 'coaching', name: 'Coaching managérial', emoji: '📣', desc: 'Les superviseurs motivent plus longtemps et marchent plus vite d’un bureau à l’autre.', cost: 30 },
+  { id: 'screens', name: 'Double écran', emoji: '🖥️', desc: '+25 % de vitesse de traitement.', cost: 33, req: 'pc' },
+  { id: 'pro', name: 'Bureaux premium', emoji: '💼', desc: 'Débloque les bureaux premium et leurs consultants.', cost: 36 },
+  { id: 'badge', name: 'Badgeuse', emoji: '⏰', desc: 'Tout le monde arrive à l’heure : la journée de travail dure une heure de plus.', cost: 33 },
+  { id: 'training', name: 'Formation continue', emoji: '🎓', desc: 'Chaque dossier rapporte 25 % de plus.', cost: 42 },
+  { id: 'servers', name: 'Serveurs maison', emoji: '🗄️', desc: 'Encore deux fois moins de pannes, réparations deux fois plus rapides.', cost: 39, req: 'pc' },
+  { id: 'lift2', name: 'Ascenseur rapide', emoji: '🛗', desc: 'Permet de moderniser les ascenseurs (niveau 2).', cost: 24 },
+  { id: 'escalators', name: 'Escalators', emoji: '↗️', desc: 'Débloque les escalators : un étage de plus sans attendre l’ascenseur.', cost: 18 },
+  { id: 'express', name: 'Ascenseur express', emoji: '⚡', desc: 'Débloque une cage express : très rapide, elle ne s’arrête qu’au hall, tous les 4 étages et au dernier.', cost: 45, req: 'lift2' },
+  { id: 'autopay', name: 'Virement automatique', emoji: '🏦', desc: 'L’argent des dossiers arrive directement sur ton compte (plus besoin de toucher les billets).', cost: 60 },
+  { id: 'lift3', name: 'Ascenseur haute vitesse', emoji: '🚀', desc: 'Permet le niveau 3 des ascenseurs.', cost: 60, req: 'lift2' },
+  { id: 'board', name: 'Conseil d’administration', emoji: '🏛️', desc: 'Débloque la salle du conseil et ses directeurs (5 étages requis).', cost: 90, req: 'pro' },
 ]
-export const RP_RATE = 0.35
+export const RP_RATE = 0.07
 
 // ── Géométrie (unités SVG) ───────────────────────────────────────────────────
 export const SLOTS = 10           // 5 cases de chaque côté de la cage d'ascenseur

@@ -727,10 +727,6 @@ function empOf(g: Game, a: Agent) {
 }
 
 
-const SUP_RANGE = (g: Game, r: Room) => r.level + (has(g, 'coaching') ? 1 : 0)
-function supervised(g: Game, floor: number) {
-  return g.rooms.some((r) => r.type === 'supervision' && Math.abs(r.floor - floor) <= SUP_RANGE(g, r))
-}
 
 // ── Employés ─────────────────────────────────────────────────────────────────
 function runWorker(g: Game, w: World, a: Agent, p: number, day: number) {
@@ -815,7 +811,7 @@ function workTick(g: Game, w: World, a: Agent, s: Extract<Step, { t: 'work' }>, 
   if (!has(g, 'autopay') && r.bank[s.idx] >= val * BANK_CAP) { if (!a.icon && Math.random() < dt * 0.3) say(a, '📥', 1.6); return }
   // Travail
   const speed = (0.55 + e.mood / 100 * 0.65) * (has(g, 'pc') ? 1.2 : 1) * (has(g, 'screens') ? 1.25 : 1)
-    * (a.boostT > 0 ? 1.7 : 1) * (supervised(g, r.floor) ? 1.1 : 1) * (unmet ? 0.5 : 1)
+    * (a.boostT > 0 ? 1.7 : 1) * (unmet ? 0.5 : 1)
   if (a.boostT > 0) a.boostT -= dt
   a.prog += dt * speed / (ROOMS[r.type].taskTime ?? 4)
   if (a.prog >= 1) {
@@ -880,7 +876,8 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
   const home = roomOf(g, a.roomId)
   if (!home) return
   // Chercheurs et superviseurs ont des horaires de bureau.
-  if (a.role === 'researcher' || a.role === 'supervisor') {
+  // Chercheurs, superviseurs et techniciens ont des horaires de bureau.
+  if (a.role === 'researcher' || a.role === 'supervisor' || a.role === 'tech') {
     const on = p > WORK_START + 0.01 && p < workEnd(g)
     if (!on) { if (!a.away) { a.carry = 'bag'; a.steps = [...routeA(a, 0, 20), { t: 'walk', x: EXIT_X }, { t: 'gone' }] } return }
     if (a.away) { a.away = false; a.floor = 0; a.x = EXIT_X; a.carry = 'bag'; a.steps = route(0, home.floor, slotX(home.slot) + 20); return }
@@ -894,14 +891,19 @@ function runStaff(g: Game, w: World, a: Agent, p: number, day: number) {
     return
   }
   if (a.role === 'supervisor') {
-    // Fait le tour des postes : les employés croisés reçoivent un coup de boost.
-    const range = SUP_RANGE(g, home)
-    const cands = w.agents.filter((x) => x.kind === 'worker' && !x.away && !x.inLift && x.steps[0]?.t === 'work' && x.boostT <= 0
-      && Math.abs(Math.round(x.floor) - home.floor) <= range && !claimed(x.id))
-    const t = cands.sort((x, y) => Math.abs(x.floor - a.floor) * 200 + Math.abs(x.x - a.x) - (Math.abs(y.floor - a.floor) * 200 + Math.abs(y.x - a.x)))[0]
-    if (t) {
-      a.task = t.id; a.carry = 'clipboard'
-      a.steps = [...routeA(a, Math.round(t.floor), t.x - 12), { t: 'coach', targetId: t.id, dur: 0.9 }]
+    // Tournée dans toute la tour : il va dans le bureau où le plus d'employés ont besoin d'être relancés,
+    // en tenant compte du trajet ; seul ce bureau profite de son passage.
+    let best: Room | null = null, score = -Infinity
+    for (const r of g.rooms) {
+      if (ROOMS[r.type].kind !== 'work' || claimed(r.id)) continue
+      const need = w.agents.filter((x) => x.kind === 'worker' && x.roomId === r.id && !x.away && x.steps[0]?.t === 'work' && x.boostT <= 1).length
+      if (!need) continue
+      const sc = need * 10 - Math.abs(r.floor - a.floor) * 6 - Math.abs(roomX(r) - a.x) / 30
+      if (sc > score) { score = sc; best = r }
+    }
+    if (best) {
+      a.task = best.id; a.carry = 'clipboard'
+      a.steps = [...routeA(a, best.floor, roomX(best)), { t: 'coach', targetId: best.id, dur: 1.6 }]
       return
     }
     goHome(g, a)
@@ -1066,7 +1068,7 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
   }
   if (s.t === 'walk') {
     const dx = s.x - a.x
-    const d = a.speed * dt * (a.role === 'guard' && a.task ? 1.6 : 1)   // le vigile court quand il est alerté
+    const d = a.speed * dt * (a.role === 'guard' && a.task ? 1.6 : a.role === 'supervisor' && has(g, 'coaching') ? 1.3 : 1)   // le vigile court quand il est alerté
     a.dir = dx >= 0 ? 1 : -1
     if (Math.abs(dx) <= d) { a.x = s.x; a.steps.shift() } else { a.x += Math.sign(dx) * d; a.walking = true }
   } else if (s.t === 'lift') {
@@ -1194,13 +1196,14 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
     s.dur -= dt
     if (s.dur <= 0) { a.bagN = 0; a.carry = undefined; a.steps.shift() }
   } else if (s.t === 'coach') {
-    const t = w.agents.find((x) => x.id === s.targetId)
+    // Il motive tout le bureau où il se trouve (et seulement celui-là).
     s.dur -= dt
-    a.dir = 1
+    a.dir = Math.sin(s.dur * 3) > 0 ? 1 : -1
+    if (!a.icon) say(a, Math.random() < 0.5 ? '👉' : '💬', 0.8)
     if (s.dur <= 0) {
-      if (t && t.steps[0]?.t === 'work' && Math.round(t.floor) === Math.round(a.floor)) {
-        t.boostT = has(g, 'coaching') ? 14 : 8
-        say(t, '⚡', 1.6); say(a, Math.random() < 0.5 ? '👉' : '💬', 1.2)
+      for (const t of w.agents) if (t.kind === 'worker' && t.roomId === s.targetId && t.steps[0]?.t === 'work' && Math.round(t.floor) === Math.round(a.floor)) {
+        t.boostT = has(g, 'coaching') ? 12 : 7
+        say(t, '⚡', 1.6)
       }
       a.steps.shift(); a.task = undefined
     }
