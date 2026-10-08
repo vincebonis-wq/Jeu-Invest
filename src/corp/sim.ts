@@ -596,7 +596,31 @@ export const escX = (r: Room) => ({ lo: slotX(r.slot) + 9, hi: slotX(r.slot) + S
 
 let G: Game | null = null
 let WREF: World | null = null
-function setLR(g: Game, w?: World) { G = g; if (w) WREF = w }
+/** Personnes qui vont prendre tel ascenseur à tel étage (déjà en file ou en chemin vers les portes). */
+let PEND = new Map<string, number>()
+function setLR(g: Game, w?: World) {
+  G = g
+  if (!w) return
+  WREF = w
+  PEND = new Map()
+  for (const a of w.agents) {
+    if (a.inLift || a.away) continue
+    for (const st of a.steps) {
+      if (st.t === 'stairs' || st.t === 'escal') break
+      if (st.t === 'lift') { const k = `${st.liftId}:${Math.round(a.floor)}`; PEND.set(k, (PEND.get(k) ?? 0) + 1); break }
+    }
+  }
+}
+/** Attente estimée à un palier : file (et ceux qui y vont) × durée d'un aller-retour de la cabine. */
+function liftWait(g: Game, d: LiftDef, f: number, self = false) {
+  const L = WREF?.lifts[d.id]
+  const q = (PEND.get(`${d.id}:${f}`) ?? 0) - (self ? 1 : 0)
+  let nStops = 0
+  for (let k = d.bottom; k <= d.top; k++) if (liftStops(d, k)) nStops++
+  const cycle = 2 * (d.top - d.bottom) / liftSpeed(g, d) + nStops * 1.2
+  const fromCab = L ? Math.abs(L.y - f) / liftSpeed(g, d) : 0
+  return 1 + fromCab * 0.5 + Math.max(0, q) / liftCap(g, d) * cycle + (L?.avgWait ?? 2) * 0.25
+}
 
 /**
  * Chemin le plus rapide d'un point à un autre (Dijkstra) : marche, attente et trajet
@@ -620,8 +644,7 @@ function route(fromFloor: number, toFloor: number, toX: number, fromX = 20): Ste
   const n = nodes.length
   const dist = new Array<number>(n).fill(Infinity), prev = new Array<number>(n).fill(-1), done = new Array<boolean>(n).fill(false)
   dist[0] = 0
-  // Attente estimée : moyenne réellement observée sur cet ascenseur + file sur le palier.
-  const wait = (d: LiftId, f: number) => { const L = WREF?.lifts[d]; return 2 + (L?.avgWait ?? 2) + (L?.waiting.get(f)?.length ?? 0) * 0.6 }
+  const wait = (d: LiftId, f: number) => liftWait(g, defs.find((x) => x.id === d)!, f)
   for (;;) {
     let u = -1, best = Infinity
     for (let i = 0; i < n; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i }
@@ -1121,13 +1144,22 @@ function moveAgent(g: Game, w: World, a: Agent, dt: number, ev: GEvent[]) {
     if (!q.includes(a.id)) { q.push(a.id); L.waiting.set(a.floor, q) }
     a.waitT += dt
     if (a.waitT > 8 && a.waitT - dt <= 8) say(a, '😤', 2.5)
-    if (a.waitT > 20) {
-      // Trop long : il change d'itinéraire (autre ascenseur, escalator ou escalier).
-      L.avgWait = Math.max(L.avgWait ?? 0, a.waitT)
-      L.waiting.set(a.floor, (L.waiting.get(a.floor) ?? []).filter((x) => x !== a.id))
-      a.waitT = 0
-      say(a, '🔀', 1.6)
-      a.steps.splice(0, 1, ...route(a.floor, s.to, a.x, a.x).filter((st, i, arr) => !(i === arr.length - 1 && st.t === 'walk')))
+    // Toutes les 4 s, il se demande s'il n'irait pas plus vite autrement (autre ascenseur, escalator, escalier).
+    if (Math.floor(a.waitT / 4) !== Math.floor((a.waitT - dt) / 4) || a.waitT > 25) {
+      const q = L.waiting.get(a.floor) ?? []
+      const pos = q.indexOf(a.id)
+      // Ceux qui sont devant moi dans la file comptent ; pas ceux derrière.
+      PEND.set(`${s.liftId}:${Math.round(a.floor)}`, Math.max(0, pos))
+      const alt = route(a.floor, s.to, a.x, a.x).filter((st, i, arr) => !(i === arr.length - 1 && st.t === 'walk'))
+      const firstT = alt.find((st) => st.t === 'lift' || st.t === 'escal' || st.t === 'stairs')
+      const same = firstT && firstT.t === 'lift' && firstT.liftId === s.liftId
+      if (!same || a.waitT > 25) {
+        L.avgWait = Math.max(L.avgWait ?? 0, a.waitT)
+        L.waiting.set(a.floor, q.filter((x) => x !== a.id))
+        a.waitT = 0
+        say(a, '🔀', 1.6)
+        a.steps.splice(0, 1, ...alt)
+      }
     }
   } else if (s.t === 'escal') {
     const r = roomOf(g, s.roomId)
